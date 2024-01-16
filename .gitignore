@@ -1,0 +1,47 @@
+# Ignore general files and directories
+.Rhistory
+.RData
+.Ruserdata
+.Rproj
+.Rproj.user
+.DS_Store
+scrnaseq.Rproj
+/.quarto/
+/*_book/
+/*_freeze/
+/site_libs/
+
+# Ignore files and directories produced in datasets directories (except download.R files and pbmc_datasets.xlsx)
+/datasets/**
+/test_datasets
+!/datasets/**/download.R
+!/datasets/pbmc_datasets.xlsx
+!/datasets/pbmc_atac.xlsx
+!/datasets/10x_visium_human_brain_cancer.xlsx
+!/datasets/10x_xenium_mouse_brain.xlsx
+
+# Ignore files and directories produced in workflow directories (except qmd files)
+# To add new modules, comment these lines, create directory and quarto file
+# Then run 'git add' and uncomment these lines again
+/modules/**
+/modules/*/
+!/modules/**/*.qmd
+
+# Ignore files and directories produced in docs directory (except qmd files)
+/docs/**
+/docs/*/
+!/docs/*.qmd
+!/docs/*.html
+
+
+# Ignore files and directories produced at the project level
+/*.html
+/*.md
+/*_files
+
+
+# Ignore quarto local files that should not be cached
+environment.local
+
+# Ignore rstudio-server directories
+rstudio-server/**
