@@ -16,11 +16,7 @@ First get the code from the git repository.
 
 ``` bash
 # Clone git
-git clone https://github.com/ktrns/scrnaseq.git
-
-# Checkout branch version2
-cd scrnaseq
-git checkout version2
+git clone git@github.com:dcgc-bfx/scrnaseq2.git
 
 # Make sure up-to-date
 git pull
