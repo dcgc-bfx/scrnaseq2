@@ -1,0 +1,324 @@
+---
+# Module-specific parameters (that are not already in the profile yaml)
+params:
+  # Name of the module used in configurations
+  module: "normalization_rna"
+    
+  # Relative path to the module directory (which contains the qmd file)
+  module_dir: "modules/3_normalization/rna"
+
+  # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
+  prev_module_dir: null
+  
+  # Default assay.
+  default_assay: "RNA"
+  
+  # For large datasets: Do not keep counts in memory but store on disk in matrix directories. Computations will access only the relevant parts of the data. Once done, matrix directories will be saved together with the Seurat object in the module directory.
+  on_disk_counts: true
+  
+  # For large datasets: Copy matrix directories to a temporary directory for computations. This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). Once done, matrix directories will be copied back to the module directory. The temporary directory will be deleted once the R session exists.
+  on_disk_use_tmp: true
+  
+  # Which normalization should be used for analysis?
+  # lognorm (Seurat), scran or sct
+  normalisation_method: "lognorm"
+  
+  # Which method should be used for feature selection?
+  # vst (Seurat), scran or sct
+  feature_selection_method: "vst"
+  
+  # Number of variable features to use
+  num_variable_features: 3000
+  
+# Module execution
+execute:
+  # Should this module be frozen and never re-rendered?
+  # - auto: if the code has not changed (default)
+  # - true/false: freeze/re-render
+  # Does not apply in interactive mode or when explicitly rendering this document via in rstudio
+  freeze: auto
+---
+
+# Normalization (RNA)
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+# If running code interactively in rstudio, set profile here
+# When rendering with quarto, profile is already set and should not be overwritten
+if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "default")}
+
+# Source general configurations (always)
+source("R/general_configuration.R")
+
+# Source required R functions
+source("R/functions_util.R")
+source("R/functions_io.R")
+source("R/functions_plotting.R")
+source("R/functions_analysis.R")
+
+
+# Load libraries
+library(knitr)
+library(magrittr)
+library(gt)
+library(Seurat)
+library(ggplot2)
+library(future)
+
+# Get module name and directory (needed to access files within the module directory)
+module_name = params$module_name
+module_dir = params$module_dir
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=4, gc=TRUE)
+
+# Be verbose
+verbose=FALSE
+```
+
+```{r}
+#| label: normalization_rna_preparation
+
+###############
+# Directories #
+###############
+
+# Module directory 'results' contains all output that should be provided together with the final report of the project
+dir.create(file.path(module_dir, "results"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "results"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+# Module directory 'sc' contains the final Seurat object
+dir.create(file.path(module_dir, "sc"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "sc"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+#################
+# Seurat object #
+#################
+
+# Read in seurat object
+if (!is.null(param("prev_module_dir"))) {
+  prev_module_dir = param("prev_module_dir")
+} else {
+  prev_module_dir = PreviousModuleDir(module_dir)
+}
+prev_sc_obj = file.path(prev_module_dir, "sc", "sc.rds")
+if(!file.exists(prev_sc_obj)) {
+  stop(FormatMessage("Could not find a sc.rds file in {{prev_module_dir}}. Was the respective module already run?"))
+}
+sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
+
+# Move on-disk layers to faster temp location if requested
+on_disk_counts = param("on_disk_counts")
+on_disk_use_tmp = param("on_disk_use_tmp")
+
+if (on_disk_counts & on_disk_use_tmp) {
+  on_disk_path = tempdir()
+  with_progress({
+    sc = UpdateMatrixDirs(sc, dir=on_disk_path)
+  }, enable=verbose)
+} else {
+  on_disk_path = file.path(module_dir, "sc")
+}
+
+# Set default assay
+default_assay = param("default_assay")
+Seurat::DefaultAssay(sc) = default_assay
+```
+
+## Normalisation
+
+```{r}
+#| label: normalization_rna_normalize
+#| results: asis
+
+normalisation_method = param("normalisation_method")
+
+# Do normalisation
+if (normalisation_method == "lognorm") {
+  # Apply log normalisation
+  sc = Seurat::NormalizeData(sc, 
+                             normalization.method="LogNormalize", 
+                             verbose=verbose)
+  layers = SeuratObject::Layers(sc, search="^counts") %>% 
+    gsub(pattern="counts", replacement="data", x=.)
+  
+  cat("We have used LogNormalize.")
+  
+} else if(normalisation_method == "scran") {
+  # Scran
+  with_progress({
+    sc = NormalizeDataScran(sc, 
+                            layer="counts", 
+                            save="data",
+                            chunk_size=50000)
+  }, enable=verbose)
+  layers = SeuratObject::Layers(sc, search="^counts") %>% 
+    gsub(pattern="counts", replacement="data", x=.)
+
+  cat("We have used Scran.")
+  
+} else if(normalisation_method == "sct") {
+  # SCTransform
+  sct_assay_name = paste(default_assay, "Sct", sep=".")
+  sc = SCTransform(sc, 
+                   new.assay.name=sct_assay_name,
+                   vst.flavor="v2",
+                   variable.features.n=param("num_variable_features"),
+                   vars.to.regress=c(),
+                   return.only.var.genes=TRUE,
+                   verbose=verbose,
+                   seed.use=getOption("random_seed"),
+                   conserve.memory=length(Cells(sc)) >= 100000)
+  SeuratObject::Key(sc[[sct_assay_name]]) = paste0(default_assay, "Sct", "_") %>% 
+    gsub(pattern="\\.", replacement="", x=.) %>%
+    tolower()
+  Seurat::DefaultAssay(sc) = sct_assay_name
+  layers = c()
+
+  cat("We have used SCTransform @Hafemeister_2019.")
+}
+
+# Convert queued operations into real data and write normalized data to disk
+# Not supported for SCTransform
+if (on_disk_counts & normalisation_method != "sct") {
+  for(i in seq_along(layers)) {
+    # Get IterableMatrix object
+    data = SeuratObject::LayerData(sc, layer=layers[i])
+    
+    # Write data to disk
+    matrix_dir = WriteCounts_MatrixDir(counts=data,
+                                       path=file.path(on_disk_path, paste(Seurat::DefaultAssay(sc), layers[i], sep=".")),
+                                       overwrite=TRUE)
+    
+    # Load into Seurat object
+    SeuratObject::LayerData(sc, layer=layers[i]) = matrix_dir
+  }
+}
+```
+
+We check whether normalisation was successfull.
+
+```{r}
+#| label: normalization_rna_rle
+#| fig-cap:
+#|  - Relative log expression plot 1
+#|  - Relative log expression plot 2
+#| fig-asp: 0.7
+#| warning: false
+
+normalisation_method = param("normalisation_method")
+
+# Do relative log expression plots
+p1 = PlotRLE(sc, assay=default_assay, layer="^counts", is_log=FALSE)
+print(p1)
+
+if (normalisation_method == "sct") {
+  sct_assay_name = paste(default_assay, "Sct", sep=".")
+  p2 = PlotRLE(sc, assay=sct_assay_name, layer="^data", is_log=TRUE)
+} else {
+  p2 = PlotRLE(sc, assay=default_assay, layer="^data", is_log=TRUE)
+}
+print(p2)
+```
+
+## Variable features
+
+Then we identify variable features.
+
+```{r}
+#| label: normalization_rna_variable_features
+
+feature_selection_method = param("feature_selection_method")
+num_variable_features = param("num_variable_features")
+
+# Identify variable features
+# Runs methods 'vst' or 'scran', method 'sct' was already done when running SCTransform
+if(feature_selection_method != "sct") {
+  sc = FindVariableFeaturesWrapper(sc, 
+                                   feature_selection_method=feature_selection_method,
+                                   num_variable_features=num_variable_features,
+                                   verbose=verbose)
+}
+```
+
+They look like this:
+
+```{r}
+#| label: normalization_rna_variable_features_plots
+#| results: asis
+
+normalisation_method = param("normalisation_method")
+feature_selection_method = param("feature_selection_method")
+
+# Plot variable features
+if (normalisation_method == "sct") {
+  plist = PlotVariableFeatures(sc, 
+                     method="sct",
+                     assay=paste(default_assay, "Sct", sep="."),
+                     top=10)
+} else {
+  plist = PlotVariableFeatures(sc, 
+                     method=feature_selection_method,
+                     assay=default_assay,
+                     top=10)
+}
+
+
+
+orig_idents = gsub(pattern="varFeatures_", replacement="", x=names(plist))
+captions = GeneratePlotCaptions(names(plist), remove="_\\S+")
+captions = paste(captions, "for", orig_idents)
+
+# Generate chunks
+chunk_template = "
+##### {{name}}
+
+\`\`\`{r}
+#| label: fig-normalization_rna_variable_features_{{name}}
+#| fig-asp: 0.5
+#| fig-cap: '{{caption}}'
+#| echo: false
+#| warning: false
+
+print(plist[[{{i}}]])
+\`\`\`
+"
+
+cat("::: panel-tabset", sep="\n")
+for (i in seq(plist)) {
+  chunk_filled =  knitr::knit_expand(text=chunk_template, name=orig_idents[i], i=i, caption=captions[i])
+  if(interactive()) {
+    EvalKnitrChunk(chunk_filled)
+  } else {
+    chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+    cat(chunk_filled, sep='\n')
+  }
+}
+cat(":::")
+
+```
+
+## Save Seurat object
+
+```{r}
+#| label: normalization_rna_save_seurat
+
+# Save Seurat object and layer data
+with_progress({
+  SaveSeuratRds_Custom(sc,
+              outdir=file.path(module_dir, "sc"))
+}, enable=TRUE)
+
+```
+
+```{r}
+#| label: normalization_rna_finish
+
+# Stop multisession workers
+plan(sequential)
+```
