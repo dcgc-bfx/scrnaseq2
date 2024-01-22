@@ -24,9 +24,9 @@ profile:
 #################
 knitr:
   opts_chunk:
-    fig-width: 6
-    dpi: 96
-    fig.retina: 2
+    dpi: 300
+    fig-width: 8
+    fig-height: 5
     results: "hold"
     timeit: null
     tidy: "styler"
@@ -39,6 +39,11 @@ knitr:
 
 format:
   html:
+    number-sections: false
+    grid:
+      sidebar-width: 300px
+      margin-width: 0px
+      body-width: 1000px
     theme:
     - "sandstone"
     embed-resources: false
@@ -50,6 +55,7 @@ format:
     df-print: "kable"
     toc: true
     toc-depth: 2
+    toc-location: left
     fig-format: "png"
     keep-md: true
     #execute:
