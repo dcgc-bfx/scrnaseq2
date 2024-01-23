@@ -35,9 +35,9 @@ scrnaseq2.Rproj
 
 
 # Ignore files and directories produced at the project level
-*.html
-*.md
-*_files
+/*.html
+/*.md
+/*_files
 
 
 # Ignore quarto local files that should not be cached

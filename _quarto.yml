@@ -41,9 +41,9 @@ format:
   html:
     number-sections: false
     grid:
-      sidebar-width: 300px
-      margin-width: 0px
-      body-width: 1000px
+      sidebar-width: "300px"
+      margin-width: "0px"
+      body-width: "1000px"
     theme:
     - "sandstone"
     embed-resources: false
@@ -57,7 +57,7 @@ format:
     toc-depth: 2
     toc-location: left
     fig-format: "png"
-    keep-md: true
+    keep-md: false
     #execute:
     #  echo: false
     #  message: false

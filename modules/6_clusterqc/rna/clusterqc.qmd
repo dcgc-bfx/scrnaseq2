@@ -129,6 +129,8 @@ default_assay = param("default_assay")
 Seurat::DefaultAssay(sc) = default_assay
 ```
 
+NOTE: temporary until chapter 5 is written: 
+
 ```{r}
 #| label: temporary
 #| warning: false
@@ -144,15 +146,16 @@ sc <- suppressMessages(RunUMAP(sc, dims = 1:10))
 Do cells in individual clusters have particularly high counts, detected genes or mitochondrial content?
 
 ```{r}
-#| label: fig-clusterqc
+#| label: clusterqc
+#| results: asis
 #| warning: false
 #| message: false
-#| results: asis
 
+# Define QC features to plot
 qc_features = paste(c("nCount", "nFeature", "pMito", "pRibosomal", "pGlobin", "pERCC", "pXIST", "pChrY"), default_assay, sep="_")
 if ("DoubletScore" %in% colnames(sc[[]])) qc_features = c(qc_features, "DoubletScore")
 
-# Feature plots
+# Left: QC on UMAP
 plist1 = Seurat::FeaturePlot(sc, features=qc_features, combine=FALSE)
 for (i in seq(plist1)) {
   plist1[[i]] = plist1[[i]] + AddPlotStyle(title="") + viridis::scale_color_viridis()
@@ -160,26 +163,29 @@ for (i in seq(plist1)) {
 names(plist1) = qc_features
 if (default_assay == "RNA") plist1[["nCount_RNA"]] = plist1[["nCount_RNA"]] + viridis::scale_color_viridis(trans="log10")
 
-# Violin plots
+# Right: QC as violin plots
 plist2 = lapply(qc_features, function(x) {
-  ggplot(sc[[]], aes(x=seurat_clusters, y=!!sym(x), fill=seurat_clusters, group=seurat_clusters)) + 
-  geom_violin(scale="width") + 
-  AddPlotStyle(fill=ScColours(sc, "seurat_clusters"), xlab="Cluster", legend_position="none")
+  p = ggplot(sc[[]], aes(x=seurat_clusters, y=!!sym(x), fill=seurat_clusters, group=seurat_clusters)) + 
+    geom_violin(scale="width") + 
+    AddPlotStyle(fill=ScColours(sc, "seurat_clusters"), xlab="Cluster", legend_position="none")
+  return(p)
 })
 names(plist2) = qc_features
 
+# Combine both plots with the patchwork library
 plist = lapply(qc_features, function(x) {
-  return(plist1[[x]] + plist2[[x]])
+  p = plist1[[x]] + plist2[[x]]
+  return(p)
 })
 captions = GeneratePlotCaptions(qc_features, remove=paste0("_", default_assay), capitalize=TRUE)
 names(plist) = names(captions) = qc_features
 
-# Set up layout and generate chunks
+# Set up layout and automatically generate chunks
 chunk_template = "
 ##### {{type}}
 
 \`\`\`{r}
-#| label: fig-clusterqc_rna_{{type}}
+#| label: fig-clusterqc_{{type}}
 #| fig-cap: '{{caption}}'
 #| fig-height: 4
 
@@ -211,14 +217,15 @@ How much do gene expression profiles in the dataset reflect the cell cycle phase
 #| fig-cap: Cell Cycle Effects
 #| fig-height: 4
 
-# Get a feeling for how many cells are affected
+# Left: How strong are cell cycle effects?
 p1 = ggplot(sc[[]], aes(x=S.Score, y=G2M.Score, colour=Phase)) +
   geom_point() + 
   scale_x_continuous("S score") + 
   scale_y_continuous("G2/M score") + 
   AddPlotStyle(col=ScColours(sc, "Phase"), legend_position="bottom")
 
-p2 = ggplot(sc@meta.data %>% 
+# Middle: Phases per cluster
+p2 = ggplot(sc[[]] %>% 
               dplyr::group_by(seurat_clusters, Phase) %>% 
               dplyr::summarise(num_cells=length(Phase)), 
             aes(x=seurat_clusters, y=num_cells, fill=Phase)) + 
@@ -228,6 +235,7 @@ p2 = ggplot(sc@meta.data %>%
   AddPlotStyle(fill=ScColours(sc, "Phase"), legend_position="bottom") + 
   theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1)) 
 
+# Right: Phases per sample
 p3 = ggplot(sc[[]] %>% 
               dplyr::group_by(orig.ident, Phase) %>% 
               dplyr::summarise(num_cells=length(Phase)), 
@@ -237,6 +245,7 @@ p3 = ggplot(sc[[]] %>%
   AddPlotStyle(fill=ScColours(sc, "Phase"), legend_position="bottom") + 
   theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1)) + xlab("")
 
+# Combine plots with the patchwork library
 p = p1 + p2 + p3 & theme(legend.position="bottom")
 p = p + patchwork::plot_annotation(title="Cell cycle phases") + patchwork::plot_layout(guides="collect")
 p
@@ -245,8 +254,10 @@ p
 ```{r}
 #| label: cellcycle_umap
 #| results: asis
+#| warning: false
 #| message: false
 
+# Phases on UMAP
 plist = list()
 plist[["Phase"]] = Seurat::DimPlot(sc, group.by="Phase", pt.size=1, cols=ScColours(sc, "Phase")) + 
   AddPlotStyle(title="")
@@ -261,11 +272,12 @@ for (i in c("S.Score", "G2M.Score", "CC.Difference")) {
 captions = paste("UMAP coloured by", names(plist))
 names(captions) = names(plist)
 
+# Set up layout and automatically generate chunks
 chunk_template = "
 ##### {{type}}
 
 \`\`\`{r}
-#| label: fig-clusterqc_rna_umap_{{type}}
+#| label: fig-cellcycleeffects_umap_{{type}}
 #| fig-cap: '{{caption}}'
 
 print(plist[['{{type}}']])
@@ -288,6 +300,8 @@ cat(":::", sep="\n")
 ```
 
 ## Save Seurat object
+
+NOTE: object is not saved yet, as there was a problem with the merged `scale.data` path in the sc object. 
 
 ```{r}
 #| label: clusterqc_rna_save_seurat
