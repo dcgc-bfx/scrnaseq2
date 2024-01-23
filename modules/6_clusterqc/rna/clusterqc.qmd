@@ -132,7 +132,7 @@ Seurat::DefaultAssay(sc) = default_assay
 NOTE: temporary until chapter 5 is written: 
 
 ```{r}
-#| label: temporary
+#| label: clusterqc_rna_temporary
 #| warning: false
 #| message: false
 sc <- suppressMessages(ScaleData(sc))
@@ -146,7 +146,7 @@ sc <- suppressMessages(RunUMAP(sc, dims = 1:10))
 Do cells in individual clusters have particularly high counts, detected genes or mitochondrial content?
 
 ```{r}
-#| label: clusterqc
+#| label: clusterqc_rna
 #| results: asis
 #| warning: false
 #| message: false
@@ -185,7 +185,7 @@ chunk_template = "
 ##### {{type}}
 
 \`\`\`{r}
-#| label: fig-clusterqc_{{type}}
+#| label: fig-clusterqc_rna_{{type}}
 #| fig-cap: '{{caption}}'
 #| fig-height: 4
 
@@ -213,7 +213,7 @@ cat(":::", sep="\n")
 How much do gene expression profiles in the dataset reflect the cell cycle phases the single cells were in? After initial normalisation, we determined the effects of cell cycle heterogeneity by calculating a score for each cell based on its expression of G2M and S phase markers. Scoring is based on the strategy described in [@Tirosh_2016], and human gene symbols are translated to gene symbols of the species of interest using biomaRt. This section of the report visualises the above calculated cell cycle scores. 
 
 ```{r}
-#| label: fig-cellcycleeffects
+#| label: fig-clusterqc_rna_cellcycle
 #| fig-cap: Cell Cycle Effects
 #| fig-height: 4
 
@@ -252,7 +252,7 @@ p
 ```
 
 ```{r}
-#| label: cellcycle_umap
+#| label: clusterqc_rna_cellcycle_umap
 #| results: asis
 #| warning: false
 #| message: false
@@ -277,7 +277,7 @@ chunk_template = "
 ##### {{type}}
 
 \`\`\`{r}
-#| label: fig-cellcycleeffects_umap_{{type}}
+#| label: fig-clusterqc_rna_cellcycle_umap_{{type}}
 #| fig-cap: '{{caption}}'
 
 print(plist[['{{type}}']])
