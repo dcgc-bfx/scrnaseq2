@@ -35,26 +35,18 @@ execute:
   freeze: auto
 ---
 
-# Cluster QC
+# Cluster QC (RNA)
 
 ```{r}
 #| label: setup
 #| message: false
 #| warning: false
 
+# Note: Setup chunk changes working directory automatically to the folder of this qmd file
+
 # If running code interactively in rstudio, set profile here
 # When rendering with quarto, profile is already set and should not be overwritten
 if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "default")}
-
-# Source general configurations (always)
-source("R/general_configuration.R")
-
-# Source required R functions
-source("R/functions_util.R")
-source("R/functions_io.R")
-source("R/functions_plotting.R")
-source("R/functions_analysis.R")
-
 
 # Load libraries
 library(knitr)
@@ -71,18 +63,27 @@ module_dir = params$module_dir
 
 # Parallelisation plan for all functions that support future
 plan(multisession, workers=4, gc=TRUE)
-
-# Be verbose
-verbose=FALSE
 ```
 
 ```{r}
 #| label: clusterqc_rna_preparation
+#| message: false
+#| warning: false
 
-###############
-# Directories #
-###############
+# CODE
+# Working directory is automatically back to scrnaseq2 at this point
+# Source general configurations (always)
+source("R/general_configuration.R")
 
+# Source required R functions
+source("R/functions_util.R")
+source("R/functions_io.R")
+source("R/functions_plotting.R")
+source("R/functions_analysis.R")
+
+verbose = param("verbose")
+
+# DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
 dir.create(file.path(module_dir, "results"), showWarnings=FALSE)
 files = list.files(path=file.path(module_dir, "results"), full.names=TRUE)
@@ -93,10 +94,7 @@ dir.create(file.path(module_dir, "sc"), showWarnings=FALSE)
 files = list.files(path=file.path(module_dir, "sc"), full.names=TRUE)
 if (length(files) > 0) unlink(files, recursive=TRUE)
 
-#################
-# Seurat object #
-#################
-
+# SEURAT OBJECT
 # Read in seurat object
 if (!is.null(param("prev_module_dir"))) {
   prev_module_dir = param("prev_module_dir")
@@ -121,8 +119,6 @@ if (on_disk_counts & on_disk_use_tmp) {
 } else {
   on_disk_path = file.path(module_dir, "sc")
 }
-
-# sc = SeuratObject::LoadSeuratRds("modules/3_normalization/rna/sc/sc.rds")
 
 # Set default assay
 default_assay = param("default_assay")
@@ -189,7 +185,7 @@ chunk_template = "
 #| fig-cap: '{{caption}}'
 #| fig-height: 4
 
-print(plist[['{{type}}']])
+plist[['{{type}}']]
 \`\`\`
 "
 
@@ -280,7 +276,7 @@ chunk_template = "
 #| label: fig-clusterqc_rna_cellcycle_umap_{{type}}
 #| fig-cap: '{{caption}}'
 
-print(plist[['{{type}}']])
+plist[['{{type}}']]
 \`\`\`
 "
 
