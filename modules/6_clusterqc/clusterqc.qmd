@@ -3,15 +3,15 @@
 # Defaults
 params:
   # Name of the module used in configurations
-  module: "clusterqc_rna"
+  module: "clusterqc"
     
   # Relative path to the module directory (which contains the qmd file)
-  module_dir: "modules/6_clusterqc/rna"
+  module_dir: "modules/6_clusterqc"
 
   # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
-  prev_module_dir: null
+  # NOTE: Change to null if all modules are implemented and sc objects are written
+  prev_module_dir: "modules/3_normalization/rna"
   
-  # REMOVE THE FOLLOWING 3 PARAMS AND MAKE THEM PROJECT-WIDE
   # Default assay
   default_assay: "RNA"
   
@@ -35,7 +35,7 @@ execute:
   freeze: auto
 ---
 
-# Cluster QC (RNA)
+# Cluster QC
 
 ```{r}
 #| label: setup
@@ -66,7 +66,7 @@ plan(multisession, workers=4, gc=TRUE)
 ```
 
 ```{r}
-#| label: clusterqc_rna_preparation
+#| label: clusterqc_preparation
 #| message: false
 #| warning: false
 
@@ -128,7 +128,7 @@ Seurat::DefaultAssay(sc) = default_assay
 NOTE: temporary until chapter 5 is written: 
 
 ```{r}
-#| label: clusterqc_rna_temporary
+#| label: clusterqc_temporary
 #| warning: false
 #| message: false
 sc <- suppressMessages(ScaleData(sc))
@@ -142,7 +142,7 @@ sc <- suppressMessages(RunUMAP(sc, dims = 1:10))
 Do cells in individual clusters have particularly high counts, detected genes or mitochondrial content?
 
 ```{r}
-#| label: clusterqc_rna
+#| label: clusterqc
 #| results: asis
 #| warning: false
 #| message: false
@@ -181,7 +181,7 @@ chunk_template = "
 ##### {{type}}
 
 \`\`\`{r}
-#| label: fig-clusterqc_rna_{{type}}
+#| label: fig-clusterqc_{{type}}
 #| fig-cap: '{{caption}}'
 #| fig-height: 4
 
@@ -209,7 +209,7 @@ cat(":::", sep="\n")
 How much do gene expression profiles in the dataset reflect the cell cycle phases the single cells were in? After initial normalisation, we determined the effects of cell cycle heterogeneity by calculating a score for each cell based on its expression of G2M and S phase markers. Scoring is based on the strategy described in [@Tirosh_2016], and human gene symbols are translated to gene symbols of the species of interest using biomaRt. This section of the report visualises the above calculated cell cycle scores. 
 
 ```{r}
-#| label: fig-clusterqc_rna_cellcycle
+#| label: fig-clusterqc_cellcycle
 #| fig-cap: Cell Cycle Effects
 #| fig-height: 4
 
@@ -248,7 +248,7 @@ p
 ```
 
 ```{r}
-#| label: clusterqc_rna_cellcycle_umap
+#| label: clusterqc_cellcycle_umap
 #| results: asis
 #| warning: false
 #| message: false
@@ -273,7 +273,7 @@ chunk_template = "
 ##### {{type}}
 
 \`\`\`{r}
-#| label: fig-clusterqc_rna_cellcycle_umap_{{type}}
+#| label: fig-clusterqc_cellcycle_umap_{{type}}
 #| fig-cap: '{{caption}}'
 
 plist[['{{type}}']]
@@ -300,7 +300,7 @@ cat(":::", sep="\n")
 NOTE: object is not saved yet, as there was a problem with the merged `scale.data` path in the sc object. 
 
 ```{r}
-#| label: clusterqc_rna_save_seurat
+#| label: clusterqc_save_seurat
 
 # Save Seurat object and layer data
 #with_progress({
@@ -312,7 +312,7 @@ NOTE: object is not saved yet, as there was a problem with the merged `scale.dat
 ```
 
 ```{r}
-#| label: clusterqc_rna_finish
+#| label: clusterqc_finish
 
 # Stop multisession workers
 plan(sequential)
