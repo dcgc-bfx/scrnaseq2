@@ -157,7 +157,7 @@ Do cells in individual clusters have particularly high counts, detected genes or
 ```{r}
 #| label: clusterqc
 #| results: asis
-#| warning: true
+#| warning: false
 #| message: false
 
 # QC features to plot
@@ -198,18 +198,18 @@ if (length(qc_features) > 0) {
   
   # Set up layout and automatically generate chunks
   chunk_template = "
-  ##### {{type}}
+##### {{type}}
+
+\`\`\`{r}
+#| label: fig-clusterqc_{{type}}
+#| fig-cap: '{{caption}}'
+#| fig-height: 4
+
+plist[['{{type}}']]
+\`\`\`
+"
   
-  \`\`\`{r}
-  #| label: fig-clusterqc_{{type}}
-  #| fig-cap: '{{caption}}'
-  #| fig-height: 4
-  
-  plist[['{{type}}']]
-  \`\`\`
-  "
-  
-  cat("::: panel-tabset", sep="\n")
+  cat("::: panel-tabset\n")
   
   for (x in qc_features) {
     chunk_filled =  knitr::knit_expand(text=chunk_template, type=x, caption=captions[x])
@@ -221,7 +221,7 @@ if (length(qc_features) > 0) {
     }
   }
   
-  cat(":::", sep="\n")
+  cat(":::\n")
 }
 ```
 
