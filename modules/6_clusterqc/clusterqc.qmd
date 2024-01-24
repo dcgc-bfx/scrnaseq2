@@ -12,9 +12,22 @@ params:
   # NOTE: Change to null if all modules are implemented and sc objects are written
   prev_module_dir: "modules/3_normalization/rna"
   
-  # Default assay
+  # Default assay and normalization
   default_assay: "RNA"
+  normalization_method: "RNA"
   
+  # QC measures to look at 
+  qc_features:
+  - "nCount_RNA"
+  - "nFeature_RNA"
+  - "pMito_RNA"
+  - "pRibosomal_RNA"
+  - "pGlobin_RNA"
+  - "pERCC_RNA"
+  - "pXIST_RNA"
+  - "pChrY_RNA"
+  - "DoubletScore_RNA"
+    
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. 
   # Computations will access only the relevant parts of the data. 
   # Once done, matrix directories will be saved together with the Seurat object in the module directory.
@@ -103,7 +116,7 @@ if (!is.null(param("prev_module_dir"))) {
 }
 prev_sc_obj = file.path(prev_module_dir, "sc", "sc.rds")
 if(!file.exists(prev_sc_obj)) {
-  stop(FormatMessage("Could not find a sc.rds file in {{prev_module_dir}}. Was the respective module already run?"))
+  stop(FormatString("Could not find a sc.rds file in {{prev_module_dir}}. Was the respective module already run?"))
 }
 sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
 
@@ -144,64 +157,72 @@ Do cells in individual clusters have particularly high counts, detected genes or
 ```{r}
 #| label: clusterqc
 #| results: asis
-#| warning: false
+#| warning: true
 #| message: false
 
-# Define QC features to plot
-qc_features = paste(c("nCount", "nFeature", "pMito", "pRibosomal", "pGlobin", "pERCC", "pXIST", "pChrY"), default_assay, sep="_")
-if ("DoubletScore" %in% colnames(sc[[]])) qc_features = c(qc_features, "DoubletScore")
-
-# Left: QC on UMAP
-plist1 = Seurat::FeaturePlot(sc, features=qc_features, combine=FALSE)
-for (i in seq(plist1)) {
-  plist1[[i]] = plist1[[i]] + AddPlotStyle(title="") + viridis::scale_color_viridis()
+# QC features to plot
+qc_features = param("qc_features")
+f = qc_features %in% colnames(sc[[]])
+if (!all(f)) {
+  WarningBox(x="Cannot find QC {qc_features[!f]*} in barcode metadata.")
+  qc_features = qc_features[f]
 }
-names(plist1) = qc_features
-if (default_assay == "RNA") plist1[["nCount_RNA"]] = plist1[["nCount_RNA"]] + viridis::scale_color_viridis(trans="log10")
 
-# Right: QC as violin plots
-plist2 = lapply(qc_features, function(x) {
-  p = ggplot(sc[[]], aes(x=seurat_clusters, y=!!sym(x), fill=seurat_clusters, group=seurat_clusters)) + 
-    geom_violin(scale="width") + 
-    AddPlotStyle(fill=ScColours(sc, "seurat_clusters"), xlab="Cluster", legend_position="none")
-  return(p)
-})
-names(plist2) = qc_features
+# Don't plot QC if there aren't any features to plot
+if (length(qc_features) > 0) {
 
-# Combine both plots with the patchwork library
-plist = lapply(qc_features, function(x) {
-  p = plist1[[x]] + plist2[[x]]
-  return(p)
-})
-captions = GeneratePlotCaptions(qc_features, remove=paste0("_", default_assay), capitalize=TRUE)
-names(plist) = names(captions) = qc_features
-
-# Set up layout and automatically generate chunks
-chunk_template = "
-##### {{type}}
-
-\`\`\`{r}
-#| label: fig-clusterqc_{{type}}
-#| fig-cap: '{{caption}}'
-#| fig-height: 4
-
-plist[['{{type}}']]
-\`\`\`
-"
-
-cat("::: panel-tabset", sep="\n")
-
-for (x in qc_features) {
-  chunk_filled =  knitr::knit_expand(text=chunk_template, type=x, caption=captions[x])
-  if(interactive()) {
-    EvalKnitrChunk(chunk_filled)
-  } else {
-    chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
-    cat(chunk_filled, sep='\n')
+  # Left: QC on UMAP
+  plist1 = Seurat::FeaturePlot(sc, features=qc_features, combine=FALSE)
+  for (i in seq(plist1)) {
+    plist1[[i]] = plist1[[i]] + AddPlotStyle(title="") + viridis::scale_color_viridis()
   }
+  names(plist1) = qc_features
+  if (default_assay == "RNA") plist1[["nCount_RNA"]] = plist1[["nCount_RNA"]] + viridis::scale_color_viridis(trans="log10")
+  
+  # Right: QC as violin plots
+  plist2 = lapply(qc_features, function(x) {
+    p = ggplot(sc[[]], aes(x=seurat_clusters, y=!!sym(x), fill=seurat_clusters, group=seurat_clusters)) + 
+      geom_violin(scale="width") + 
+      AddPlotStyle(fill=ScColours(sc, "seurat_clusters"), xlab="Cluster", legend_position="none")
+    return(p)
+  })
+  names(plist2) = qc_features
+  
+  # Combine both plots with the patchwork library
+  plist = lapply(qc_features, function(x) {
+    p = plist1[[x]] + plist2[[x]]
+    return(p)
+  })
+  captions = GeneratePlotCaptions(qc_features, remove=paste0("_", default_assay), capitalize=TRUE)
+  names(plist) = names(captions) = qc_features
+  
+  # Set up layout and automatically generate chunks
+  chunk_template = "
+  ##### {{type}}
+  
+  \`\`\`{r}
+  #| label: fig-clusterqc_{{type}}
+  #| fig-cap: '{{caption}}'
+  #| fig-height: 4
+  
+  plist[['{{type}}']]
+  \`\`\`
+  "
+  
+  cat("::: panel-tabset", sep="\n")
+  
+  for (x in qc_features) {
+    chunk_filled =  knitr::knit_expand(text=chunk_template, type=x, caption=captions[x])
+    if(interactive()) {
+      EvalKnitrChunk(chunk_filled)
+    } else {
+      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+      cat(chunk_filled, sep='\n')
+    }
+  }
+  
+  cat(":::", sep="\n")
 }
-
-cat(":::", sep="\n")
 ```
 
 ## Cell Cycle Effects
