@@ -104,7 +104,7 @@ ReadMetadata_csv = function(csv_file) {
   
   # Assert that first column is unique
   assertthat::assert_that(all(not(duplicated(meta_data[, 1, drop=TRUE]))),
-                          msg=FormatMessage("Metadata file {file} contains duplicate values in first column."))
+                          msg=FormatString("Metadata file {file} contains duplicate values in first column."))
   
   # Create table
   rownames(meta_data) = meta_data[, 1, drop=TRUE]
@@ -126,7 +126,7 @@ ReadMetadata_excel = function(excel_file, sheet=1) {
   
   # Assert that first column is unique
   assertthat::assert_that(all(not(duplicated(meta_data[, 1, drop=TRUE]))),
-                          msg=FormatMessage("Metadata file {file} contains duplicate values in first column."))
+                          msg=FormatString("Metadata file {file} contains duplicate values in first column."))
   
   # Create table
   rownames(meta_data) = meta_data[, 1, drop=TRUE]
@@ -149,7 +149,7 @@ ReadMetadata_rds = function(rds_file) {
   
   # Assert that first column is unique
   assertthat::assert_that(all(not(duplicated(meta_data[, 1, drop=TRUE]))),
-                          msg=FormatMessage("Metadata file {file} contains duplicate values in first column."))
+                          msg=FormatString("Metadata file {file} contains duplicate values in first column."))
   
   # Create table
   rownames(meta_data) = meta_data[, 1, drop=TRUE]
@@ -172,7 +172,7 @@ ReadMetadata = function(file) {
   extension = tools::file_ext(gsub(pattern="\\.gz$", replacement="", x=file))
   valid_extensions = c("csv", "tsv", "xls", "xlsx", "rds")
   assertthat::assert_that(extension %in% valid_extensions,
-                          msg=FormatMessage("Metadata file type must be: {valid_extensions*} (file can be gzipped)."))
+                          msg=FormatString("Metadata file type must be: {valid_extensions*} (file can be gzipped)."))
   
   # Read metadata
   if (extension %in% c("csv", "tsv")) {
@@ -185,7 +185,7 @@ ReadMetadata = function(file) {
   
   # Assert that it is not empty
   assertthat::assert_that(assertthat::not_empty(meta_data),
-                          msg=FormatMessage("Metadata file {file} is empty."))
+                          msg=FormatString("Metadata file {file} is empty."))
 
   return(meta_data)
 }
@@ -208,7 +208,7 @@ ReadDatasetsTable = function(file) {
   extension = tools::file_ext(gsub(pattern="\\.gz$", replacement="", x=file))
   valid_extensions = c("csv", "tsv", "xls", "xlsx", "rds")
   assertthat::assert_that(extension %in% valid_extensions,
-                          msg=FormatMessage("Datasets file type must be: {valid_extensions*} (file can be gzipped)."))
+                          msg=FormatString("Datasets file type must be: {valid_extensions*} (file can be gzipped)."))
   
   # Read datasets table
   if (extension %in% c("csv", "tsv")) {
@@ -217,7 +217,7 @@ ReadDatasetsTable = function(file) {
     datasets_table = readxl::read_excel(file, sheet=sheet, col_names=TRUE)
   }
   assertthat::assert_that(assertthat::not_empty(datasets_table),
-                          msg=FormatMessage("Datasets file {file} is empty."))
+                          msg=FormatString("Datasets file {file} is empty."))
   
   # Check that all columns are present
   
@@ -244,15 +244,15 @@ ReadCounts_csv = function(csv_file, transpose=FALSE) {
   
   # Check that barcodes and features are unique
   assertthat::assert_that(sum(duplicated(col_ids)) == 0,
-                          msg=FormatMessage("Dataset {csv_file} contains at least two barcodes with the same name."))
+                          msg=FormatString("Dataset {csv_file} contains at least two barcodes with the same name."))
   
   assertthat::assert_that(sum(duplicated(row_ids)) == 0,
-                          msg=FormatMessage("Dataset {csv_file} contains at least two features with the same name.")) 
+                          msg=FormatString("Dataset {csv_file} contains at least two features with the same name.")) 
   
   # Check that all columns are numeric
   is_numeric = sapply(counts_data, is.numeric)
   assertthat::assert_that(all(is_numeric[-1]),
-                          msg=FormatMessage("There are non-numeric columns in dataset {csv_file}! Only the first column may be non-numeric."))
+                          msg=FormatString("There are non-numeric columns in dataset {csv_file}! Only the first column may be non-numeric."))
   
   
   # Create sparse matrix
@@ -409,14 +409,14 @@ ReadCounts_SmartSeq = function(path, assays, version, transpose=FALSE) {
   # Checks
   assertthat::is.readable(path)
   assertthat::assert_that(version %in% c("2", "3"),
-                          msg=FormatMessage("Smartseq version must be '2' or '3'."))
+                          msg=FormatString("Smartseq version must be '2' or '3'."))
   
   
   # Convert to feature type in dataset
   assay_to_feature_type = setNames(names(Assays_Smartseq), Assays_Smartseq)
   valid_assays = names(assay_to_feature_type)
   assertthat::assert_that(assays %in% valid_assays,
-                          msg=FormatMessage("'{assays*} must be: {valid_assays*}."))
+                          msg=FormatString("'{assays*} must be: {valid_assays*}."))
 
   if (dir.exists(path)) {
     # market exchange format
@@ -629,7 +629,7 @@ ReadCounts_10x = function(path, assays=NULL, transpose=FALSE) {
   # If assays are specified, check that they are valid
   if (!is.null(assays)) {
     assertthat::assert_that(all(assays %in% valid_assays),
-                            msg=FormatMessage("'{assays} must be: {valid_assays*}."))
+                            msg=FormatString("'{assays} must be: {valid_assays*}."))
   }
 
   # Read counts
@@ -656,7 +656,7 @@ ReadCounts_10x = function(path, assays=NULL, transpose=FALSE) {
     feature_types = assay_to_feature_type[assays]
     f = feature_types %in% names(counts_lst)
     assertthat::assert_that(all(f),
-                            msg=FormatMessage("Dataset {path} does not contain the following types of data: {assays[!f]*} (named {feature_types[!f]*} in the dataset)."))
+                            msg=FormatString("Dataset {path} does not contain the following types of data: {assays[!f]*} (named {feature_types[!f]*} in the dataset)."))
     counts_lst = counts_lst[feature_types]
   }
   
@@ -664,7 +664,7 @@ ReadCounts_10x = function(path, assays=NULL, transpose=FALSE) {
   feature_types = names(counts_lst)
   f = feature_types %in% names(feature_type_to_assay)
   assertthat::assert_that(all(f),
-                          msg=FormatMessage("Dataset {path} contains a type of data that was not recognized as an assay: {feature_types[!f]*}. Check list Assays_10x in functions_io.R."))
+                          msg=FormatString("Dataset {path} contains a type of data that was not recognized as an assay: {feature_types[!f]*}. Check list Assays_10x in functions_io.R."))
   names(counts_lst) = feature_type_to_assay[names(counts_lst)]
   
   # Add attributes technology and assay
@@ -772,7 +772,7 @@ ReadCounts_ParseBio = function(path, assays, transpose=FALSE) {
   assay_to_feature_type = setNames(names(Assays_Parse), Assays_Parse)
   valid_assays = names(assay_to_feature_type)
   assertthat::assert_that(all(assays %in% valid_assays),
-                          msg=FormatMessage("'{assay} must be: {valid_assays*}."))
+                          msg=FormatString("'{assay} must be: {valid_assays*}."))
   
   # Read counts
   if (dir.exists(path)) {
@@ -790,7 +790,7 @@ ReadCounts_ParseBio = function(path, assays, transpose=FALSE) {
   #  feature_types = assay_to_feature_type[assays]
   #  f = feature_types %in% names(counts_lst)
   #  assertthat::assert_that(all(f),
-  #                          msg=FormatMessage("Dataset {path} does not contain the following types of data: {assays[!f]*} (named {feature_types[!f]*} in the dataset)."))
+  #                          msg=FormatString("Dataset {path} does not contain the following types of data: {assays[!f]*} (named {feature_types[!f]*} in the dataset)."))
   #  counts_lst = counts_lst[feature_types]
   #}
   
@@ -798,7 +798,7 @@ ReadCounts_ParseBio = function(path, assays, transpose=FALSE) {
   #feature_types = names(counts_lst)
   #f = feature_types %in% names(feature_type_to_assay)
   #assertthat::assert_that(all(f),
-  #                        msg=FormatMessage("Dataset {path} contains a type of data that was not recognized as an assay: {feature_types[!f]*}. Check list Assays_Parse in functions_io.R."))
+  #                        msg=FormatString("Dataset {path} contains a type of data that was not recognized as an assay: {feature_types[!f]*}. Check list Assays_Parse in functions_io.R."))
   #names(counts_lst) = feature_type_to_assay[names(counts_lst)]
   counts_lst = counts_lst[1]
   names(counts_lst) = assays[1]
@@ -859,7 +859,7 @@ ReadCounts_ScaleBio = function(path, assays) {
   # If assays are specified, check that they are valid
   if (!is.null(assays)) {
     assertthat::assert_that(all(assays %in% valid_assays),
-                            msg=FormatMessage("'{assays} must be: {valid_assays*}."))
+                            msg=FormatString("'{assays} must be: {valid_assays*}."))
   }
 
   # Read counts
@@ -870,7 +870,7 @@ ReadCounts_ScaleBio = function(path, assays) {
     feature_types = assay_to_feature_type[assays]
     f = feature_types %in% names(counts_lst)
     assertthat::assert_that(all(f),
-                            msg=FormatMessage("Dataset {path} does not contain the following types of data: {assays[!f]*} (named {feature_types[!f]*} in the dataset)."))
+                            msg=FormatString("Dataset {path} does not contain the following types of data: {assays[!f]*} (named {feature_types[!f]*} in the dataset)."))
     counts_lst = counts_lst[feature_types]
   }
   
@@ -878,7 +878,7 @@ ReadCounts_ScaleBio = function(path, assays) {
   feature_types = names(counts_lst)
   f = feature_types %in% names(feature_type_to_assay)
   assertthat::assert_that(all(f),
-                          msg=FormatMessage("Dataset {path} contains a type of data that was not recognized as an assay: {feature_types[!f]*}. Check list Assays_Scale in functions_io.R."))
+                          msg=FormatString("Dataset {path} contains a type of data that was not recognized as an assay: {feature_types[!f]*}. Check list Assays_Scale in functions_io.R."))
   names(counts_lst) = feature_type_to_assay[names(counts_lst)]
   
   # Add attributes technology and assay
@@ -917,7 +917,7 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
   # Checks
   valid_technologies = c("smartseq2", "smartseq3", "10x", "10x_visium", "10x_xenium", "parse", "scale")
   assertthat::assert_that(technology %in% valid_technologies,
-                          msg=FormatMessage("Technology is {technology} but must be one of: {valid_technologies*}."))
+                          msg=FormatString("Technology is {technology} but must be one of: {valid_technologies*}."))
   
   # Read counts
   if (technology == "smartseq2") {
@@ -937,12 +937,12 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
   }
   
   assertthat::assert_that(assertthat::not_empty(counts_lst),
-                          msg=FormatMessage("Count not read counts for dataset {path}, assay {assay}."))
+                          msg=FormatString("Count not read counts for dataset {path}, assay {assay}."))
   
   # Add barcode metadata to counts objects
   if (!is.null(barcode_metadata)) {
     assertthat::assert_that(!is(barcode_metadata, "list") | length(barcode_metadata) == length(counts_lst),
-                            msg=FormatMessage("Barcode metadata must either be one table or a list of tables for each assay (dataset {path})."))
+                            msg=FormatString("Barcode metadata must either be one table or a list of tables for each assay (dataset {path})."))
     
     for(i in seq_along(counts_lst)) {
       # Do we have already other barcode metadata
@@ -972,7 +972,7 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
   # Add feature metadata to counts objects
   if (!is.null(feature_metadata)) {
     assertthat::assert_that(!is(feature_metadata, "list") | length(feature_metadata) == length(counts_lst),
-                            msg=FormatMessage("Feature metadata must either be one table or a list of tables for each assay (dataset {path})."))
+                            msg=FormatString("Feature metadata must either be one table or a list of tables for each assay (dataset {path})."))
     
     for(i in seq_along(counts_lst)) {
       # Do we have already other feature metadata
@@ -1006,11 +1006,11 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
     
     feature_names = rownames(counts_lst[[i]])
     if (any(grepl(pattern="_", x=feature_names, fixed=TRUE))) {
-      warning(FormatMessage("Feature names contain '_' for dataset {path}, assay {assay}. All occurences will be replaced with '-'."))
+      warning(FormatString("Feature names contain '_' for dataset {path}, assay {assay}. All occurences will be replaced with '-'."))
       feature_names = gsub(pattern="_", replacement="-", x=feature_names, fixed=TRUE)
     }
     if (any(duplicated(feature_names))) {
-      warning(FormatMessage("Features contains duplicate values for dataset {path}, assay {assay}. Feature names will be made unique."))
+      warning(FormatString("Features contains duplicate values for dataset {path}, assay {assay}. Feature names will be made unique."))
       feature_names = make.unique(feature_names)
     }
     
@@ -1123,7 +1123,7 @@ ReadImage_10xVisium = function(image_dir) {
   assertthat::is.readable(image_dir)
   for (f in c("tissue_lowres_image.png", "scalefactors_json.json")) {
     assertthat::assert_that(file.exists(file.path(image_dir, f)),
-                            msg=FormatMessage("10x Visium image directory {image_dir} misses the file {f}."))
+                            msg=FormatString("10x Visium image directory {image_dir} misses the file {f}."))
   }
   
   # Read image
@@ -1143,7 +1143,7 @@ CreateSegmentationImproved = function(coords) {
   library(SeuratObject)
   
   assertthat::assert_that(all(colnames(coords) == c("cell", "x", "y")),
-                          msg=FormatMessage("Function 'CreateSegmentationImproved' requires a table with columns 'cell', 'x' and 'y'."))
+                          msg=FormatString("Function 'CreateSegmentationImproved' requires a table with columns 'cell', 'x' and 'y'."))
   
   coords_cell_names = coords[[1]]
   coords_cell_names = factor(coords_cell_names, levels=unique(coords_cell_names))
@@ -1179,11 +1179,11 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
   # Checks
   assertthat::is.readable(image_dir)
   assertthat::assert_that(file.exists(file.path(image_dir, "cells.csv.gz")),
-                          msg=FormatMessage("10x Xenium image directory {image_dir} misses the file 'cells.csv.gz'."))
+                          msg=FormatString("10x Xenium image directory {image_dir} misses the file 'cells.csv.gz'."))
   assertthat::assert_that(file.exists(file.path(image_dir, "cell_boundaries.csv.gz")),
-                          msg=FormatMessage("10x Xenium image directory {image_dir} misses the file 'cell_boundaries.csv.gz'."))
+                          msg=FormatString("10x Xenium image directory {image_dir} misses the file 'cell_boundaries.csv.gz'."))
   assertthat::assert_that(file.exists(file.path(image_dir, "transcripts.csv.gz")),
-                          msg=FormatMessage("10x Xenium image directory {image_dir} misses the file 'transcripts.csv.gz'."))
+                          msg=FormatString("10x Xenium image directory {image_dir} misses the file 'transcripts.csv.gz'."))
   
   mols.qv.threshold = 20
   options(stringsAsFactors=FALSE)
@@ -1268,7 +1268,7 @@ ReadImage = function(image_dir, technology, assay, barcodes=NULL, coordinate_typ
   # Checks
   valid_technologies = c("10x_visium", "10x_xenium")
   assertthat::assert_that(technology %in% valid_technologies,
-                          msg=FormatMessage("Technology is {technology} but must be one of: {valid_technologies*}."))
+                          msg=FormatString("Technology is {technology} but must be one of: {valid_technologies*}."))
   
   # Read image
   if(technology == "10x_visium") {
@@ -1424,7 +1424,7 @@ ReadMetrics = function(metrics_file, technology) {
   # Checks
   valid_technologies = c("smartseq2", "smartseq3", "10x", "10x_visium", "10x_xenium", "parse", "scale")
   assertthat::assert_that(technology %in% valid_technologies,
-                          msg=FormatMessage("Technology is {technology} but must be one of: {valid_technologies*}."))
+                          msg=FormatString("Technology is {technology} but must be one of: {valid_technologies*}."))
   
   # Read metrics file
   if (technology %in% c("smartseq2", "smartseq3")) {
