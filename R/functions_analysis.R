@@ -8,7 +8,7 @@
 SumTopN = function(matrix, n=50, margin=1, chunk_size=NULL){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
-                          msg=FormatMessage("Margin can only be 1 - rows or 2 - columns."))
+                          msg=FormatString("Margin can only be 1 - rows or 2 - columns."))
   
   # Calculate totals
   if (margin == 1) {
@@ -107,7 +107,7 @@ SumTopN = function(matrix, n=50, margin=1, chunk_size=NULL){
 CalculateMedians = function(matrix, margin=1, chunk_size=NULL, cores=1){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
-                          msg=FormatMessage("Margin can only be 1 - rows or 2 - columns."))
+                          msg="Margin can only be 1 - rows or 2 - columns.")
   
   # Define chunks
   chunks = NULL
@@ -176,7 +176,7 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, cores=1){
 CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
-                          msg=FormatMessage("Margin can only be 1 - rows or 2 - columns."))
+                          msg=FormatString("Margin can only be 1 - rows or 2 - columns."))
   
   # Define chunks
   if (margin == 1) {
@@ -411,7 +411,7 @@ FindVariableFeaturesScran = function(sc, assay=NULL, nfeatures=2000, combined=TR
   # Checks
   layers = SeuratObject::Layers(sc[[assay]], "^data")
   assertthat::assert_that(length(layers) > 0,
-                          msg=FormatMessage("Could not find normalized data for assay {assay}."))
+                          msg=FormatString("Could not find normalized data for assay {assay}."))
   
   # Get normalized data
   if (combined) {
@@ -523,7 +523,7 @@ FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variabl
   # Check
   valid_feature_selection_methods = c("vst", "scran")
   assertthat::assert_that(feature_selection_method %in% valid_feature_selection_methods,
-                          msg=FormatMessage("Variable features method must must be one of: {valid_feature_selection_methods*}."))
+                          msg=FormatString("Variable features method must must be one of: {valid_feature_selection_methods*}."))
   
   # Find variable features
   if (feature_selection_method == "vst") {
@@ -560,10 +560,10 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   # Checks
   valid_integration_methods = c("CCAIntegration", "RPCAIntegration", "HarmonyIntegration", "FastMNNIntegration", "scVIIntegration")
   assertthat::assert_that(integration_method %in% valid_integration_methods,
-                          msg=FormatMessage("Variable features method must must be one of: {valid_integration_methods*}."))
+                          msg=FormatString("Variable features method must must be one of: {valid_integration_methods*}."))
   
   assertthat::assert_that(orig_reduct %in% SeuratObject::Reductions(sc),
-                          msg=FormatMessage("Original reduction {orig_reduct} is not part of the Seurat object."))
+                          msg=FormatString("Original reduction {orig_reduct} is not part of the Seurat object."))
   
   # New reduction name
   if (is.null(new_reduct)) {
