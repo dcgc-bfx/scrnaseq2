@@ -1,23 +1,27 @@
 ###########
+# Profile #
+###########
+
+profile: 
+  default: scrnaseq
+
+###########
 # Project #
 ###########
 
 project:
   type: "default"
-  output-dir: "_book"
+  output-dir: "book_default"
   execute-dir: "project"
   post-render: 
     - "R/collect_module_results.R"
+    
+book:
+  sidebar:
+    logo: "docs/scrnaseq2_cover.png"
 
 bibliography: "misc/references.bib"
 csl: "misc/nature.csl"
-
-###########
-# Profile #
-###########
-
-profile: 
-  default: "default"
 
 #################
 # Knitr options #

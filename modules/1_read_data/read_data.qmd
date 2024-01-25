@@ -86,16 +86,7 @@ In this chapter, we read in counts data as "features x barcodes" matrices. If pr
 
 # If running code interactively in rstudio, set profile here
 # When rendering with quarto, profile is already set and should not be overwritten
-if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "default")}
-
-# Source general configurations (always)
-source("R/general_configuration.R")
-
-# Source required R functions
-source("R/functions_util.R")
-source("R/functions_io.R")
-source("R/functions_plotting.R")
-source("R/functions_analysis.R")
+if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "scrnaseq")}
 
 # Load libraries
 library(knitr)
@@ -119,6 +110,15 @@ verbose=FALSE
 
 ```{r}
 #| label: read_data_preparation
+
+# Source general configurations (always)
+source("R/general_configuration.R")
+
+# Source required R functions
+source("R/functions_util.R")
+source("R/functions_io.R")
+source("R/functions_plotting.R")
+source("R/functions_analysis.R")
 
 # Module directory 'results' contains all output that should be provided together with the final report of the project
 dir.create(file.path(module_dir, "results"), showWarnings=FALSE)
