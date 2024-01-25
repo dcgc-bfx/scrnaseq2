@@ -4,7 +4,7 @@
 
 project:
   type: "book"
-  output-dir: "default_book"
+  output-dir: "book_scrnaseq"
 
 book:
   title: "Single-cell analysis results"

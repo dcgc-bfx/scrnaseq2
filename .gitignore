@@ -7,7 +7,7 @@
 .DS_Store
 scrnaseq2.Rproj
 /.quarto/
-/*_book/
+/book*/
 /*_freeze/
 /site_libs/
 
