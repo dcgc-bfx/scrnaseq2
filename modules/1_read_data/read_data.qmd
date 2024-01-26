@@ -250,7 +250,7 @@ chunk_template = "
 #| label: tbl-read_data_metric_{{technology}}
 #| tbl-cap: 'Metrics for technology {{technology}}'
 
-gt(metrics_tables_by_tech[['{{technology}}']])
+gt(metrics_tables_by_tech[['{{technology}}']], rowname_col='Dataset')
 \`\`\`
 "
 
@@ -1061,6 +1061,9 @@ Finally, we save the Seurat object and the layer data. The layer data is saved i
 
 ```{r}
 #| label: read_data_save_seurat
+
+# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
 
 # Save Seurat object and layer data
 with_progress({
