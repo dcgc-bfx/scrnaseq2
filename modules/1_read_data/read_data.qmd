@@ -250,7 +250,7 @@ chunk_template = "
 #| label: tbl-read_data_metric_{{technology}}
 #| tbl-cap: 'Metrics for technology {{technology}}'
 
-metrics_tables_by_tech[['{{technology}}']] %>% gt()
+gt(metrics_tables_by_tech[['{{technology}}']])
 \`\`\`
 "
 
@@ -259,7 +259,7 @@ for(n in names(metrics_tables_by_tech)) {
   chunk_filled = knitr::knit_expand(text=chunk_template, technology=n)
   
   if(interactive()) {
-    print(EvalKnitrChunk(chunk_filled))
+    EvalKnitrChunk(chunk_filled)
   } else {
     chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
     cat(chunk_filled, sep='\n')
