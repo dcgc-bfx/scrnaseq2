@@ -43,19 +43,29 @@ FormatString = function(x, quote=TRUE, sep=", ") {
 #' Generates a warning box
 #' 
 #' @param x Character string that will be formatted by the FormatString function
+#' @param print Whether to print (if TRUE) or to return (FALSE) the warning box
 #' @return Character string to generate a warning box
-WarningBox = function(x) {
+WarningBox = function(x, print=TRUE) {
   x = paste0("\n::: callout-warning\n", FormatString(x), "\n:::\n")
-  cat(x)
+  if (print) {
+    cat(x)
+  } else {
+    return(x)
+  }
 }
 
 #' Generates a message box
 #' 
 #' @param x Character string that will be formatted by the FormatString function
+#' @param print Whether to print (if TRUE) or to return (FALSE) the message box
 #' @return Character string to generate a message box
-MessageBox = function(x) {
+MessageBox = function(x, print=TRUE) {
   x = paste0("\n::: callout-message\n", FormatString(x), "\n:::\n")
-  cat(x)
+  if (print) {
+    cat(x)
+  } else {
+    return(x)
+  }
 }
 
 #' Returns the content of the profile yaml.

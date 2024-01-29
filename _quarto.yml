@@ -61,7 +61,7 @@ format:
     toc-depth: 2
     toc-location: left
     fig-format: "png"
-    keep-md: false
+    keep-md: true
     #execute:
     #  echo: false
     #  message: false
@@ -69,7 +69,7 @@ format:
     knitr:
       opts_chunk: 
         dev:
-        - "ragg_png"
+        - "png"
         - "cairo_pdf"
   # pdf:
   #   documentclass: "scrreprt"
