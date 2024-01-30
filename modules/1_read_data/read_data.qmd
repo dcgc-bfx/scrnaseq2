@@ -259,7 +259,7 @@ for(n in names(metrics_tables_by_tech)) {
   chunk_filled = knitr::knit_expand(text=chunk_template, technology=n)
   
   if(interactive()) {
-    EvalKnitrChunk(chunk_filled)
+    print(EvalKnitrChunk(chunk_filled))
   } else {
     chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
     cat(chunk_filled, sep='\n')
@@ -913,7 +913,7 @@ Finally we calculate some basic statistics such as percent counts in top50 featu
 ############
 # Calculate for each assay
 for (a in Seurat::Assays(sc)) {
-
+  # Add percentage of counts in top 50 features
   m = paste("pCountsTop50", a, sep="_")
   sc[[m]] = 0
 
@@ -930,7 +930,7 @@ for (a in Seurat::Assays(sc)) {
     }, enable=verbose)
     
     # Zero counts barcodes will not be in top50_counts - add them here
-    top50_perc = ifelse(total_counts>0, top50_counts/total_counts*100, NA)
+    top50_perc = ifelse(total_counts>0, top50_counts/total_counts*100, 0)
     
     # Then calculate percentage top50
     top50_perc = setNames(top50_perc, bcs)
@@ -1005,7 +1005,7 @@ for (a in Seurat::Assays(sc)) {
   chunk_filled =  knitr::knit_expand(text=chunk_template, assay=a)
   
   if(interactive()) {
-    EvalKnitrChunk(chunk_filled)
+    print(EvalKnitrChunk(chunk_filled))
   } else {
     chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
     cat(chunk_filled, sep='\n')
@@ -1024,33 +1024,88 @@ Here is a basic summary of the data.
 
 orig_idents = levels(sc$orig.ident)
 
-chunk_template = "
+# Do this per assay
+for (a in Seurat::Assays(sc)) {
+  cat("### Assay ", a, "\n\n")
+  
+  barcode_qc = c("nCount", "nFeature", "pCountsTop50")
+  barcode_qc = paste(barcode_qc, a, sep="_")
+  
+  # VIOLIN PLOTS
+  # Make violin plots and combine into patchworked object
+  plist = PlotBarcodeQC(sc, qc=barcode_qc)
+  p = patchwork::wrap_plots(plist, ncol=2)
+  
+  # Make chunk template for violin plots
+  chunk_template = "
 \`\`\`{r}
 #| label: fig-read_data_basic_summary_{{assay}}
 #| fig-cap: '{{caption}}'
-#| fig-height: 4
+#| fig-height: 8
 #| echo: false
 #| warning: false
 
 p
 \`\`\`
 "
-
-# Do this per assay
-for (a in Seurat::Assays(sc)) {
-  # Generate barcode plots
-  barcode_qc = paste(c("nCount", "nFeature", "pCountsTop50"), a, sep="_") 
-  plist = PlotBarcodeQC(sc, qc=barcode_qc)
   
-  # Combine into patchworked object
-  p = plist[[1]] + plist[[2]] + plist[[3]]
-
+  # Fill out and print violin plots
   chunk_filled =  knitr::knit_expand(text=chunk_template, assay=a, caption=paste("Basic stats for assay ", a))
   if(interactive()) {
-    EvalKnitrChunk(chunk_filled)
+    print(EvalKnitrChunk(chunk_filled))
   } else {
     chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
     cat(chunk_filled, '\n')
+  }
+  
+  ## SPATIAL PLOTS
+  if (length(SeuratObject::Images(sc)) > 0) {
+    
+    # For each QC metric
+    for(q in barcode_qc) {
+      
+      # Make spatial plots split by sample
+      plist = purrr::map(SeuratObject::Images(sc), function(n) {
+        if (grepl("^fov\\.", n)) {
+          # Xenium FOV plot
+          p = Seurat::ImageFeaturePlot(sc, features=q, fov=n)
+        } else {
+          # Visium image plot
+          p = Seurat::SpatialFeaturePlot(sc, features=q, image=n)
+        }
+        return(p)
+      })
+      
+      # Make captions
+      captions = GeneratePlotCaptions(q, remove=paste0("_", a))
+      dataset_names = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
+      captions = paste(captions, dataset_names, sep=" for dataset ")
+      
+      # Make chunk template for spatial plots
+      chunk_template = "
+\`\`\`{r}
+#| label: fig-read_data_image_summary_{{qc}}_dataset_{{dataset}}
+#| fig-cap: '{{caption}}'
+#| echo: false
+#| warning: false
+
+plist[[{{i}}]]
+\`\`\`
+"
+      # Fill out and print spatial plots
+      cat("::: panel-tabset\n")
+      for(i in seq_along(plist)) {
+        cat ("##### ", dataset_names[i], "\n\n")
+        chunk_filled =  knitr::knit_expand(text=chunk_template, qc=q, assay=a, dataset=dataset_names[i], caption=captions[i])
+        if(interactive()) {
+          print(EvalKnitrChunk(chunk_filled))
+        } else {
+          chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+          cat(chunk_filled, '\n')
+        }
+      }
+      cat(":::\n")
+    }
   }
 }
 ```

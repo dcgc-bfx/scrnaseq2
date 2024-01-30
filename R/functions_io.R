@@ -1196,8 +1196,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
                                      colClasses=c("cell_id"="character", "x_centroid"="numeric", "y_centroid"="numeric", "cell_area"="numeric", "nucleus_area"="numeric"),
                                      col.names=c("cell", "x", "y", "cell_area", "nucleus_area"), 
                                      key="cell",
-                                     showProgress=FALSE,
-                                     nThread=cores)
+                                     showProgress=FALSE)
   if (!is.null(barcodes)) {
     cell_centroids = cell_centroids[barcodes]
   }
@@ -1214,8 +1213,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
                                         colClasses=c("cell_id"="character", "vertex_x"="numeric", "vertex_y"="numeric"),
                                         col.names=c("cell", "x", "y"),
                                         key="cell",
-                                        showProgress=FALSE,
-                                        nThread=cores)
+                                        showProgress=FALSE)
     if (!is.null(barcodes)) {
       cell_boundaries = cell_boundaries[barcodes]
     }
@@ -1230,8 +1228,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
                                   colClasses=c("feature_name"="character", "x_location"="numeric", "y_location"="numeric", "qv"="numeric"),
                                   col.names=c("gene", "x", "y", "qv"),
                                   key="qv",
-                                  showProgress=FALSE,
-                                  nThread=cores)
+                                  showProgress=FALSE)
   transcripts = transcripts[qv >= mols.qv.threshold]
   transcripts$qv = NULL
   molecules = SeuratObject::CreateMolecules(transcripts, key='mols_')
@@ -1261,9 +1258,6 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
 #' @return A Seurat VisiumV1 object.
 ReadImage = function(image_dir, technology, assay, barcodes=NULL, coordinate_type=c("centroids", "segmentations")) {
   library(magrittr)
-  #image_dir = "/group/sequencing/Bfx/scripts/andreasp/scrnaseq/datasets/10x_visium_human_brain_cancer/spatial/"
-  #technology = "10x_xenium"
-  #barcodes = colnames(counts_lst[[1]][[1]])
   
   # Checks
   valid_technologies = c("10x_visium", "10x_xenium")
