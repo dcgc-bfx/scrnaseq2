@@ -17,9 +17,10 @@ params:
   on_disk_counts: true
   
   # For large datasets: Copy matrix directories to a temporary directory for computations. This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). Once done, matrix directories will be copied back to the module directory. The temporary directory will be deleted once the R session exists.
-  on_disk_use_tmp: false
+  on_disk_use_tmp: true
   
-  # Which barcode QC should be shown. Can be any barcode metadata column. 
+  # Which barcode QC should be shown. Can be any barcode metadata column.
+  # Set to 'null' to deacivate.
   barcode_qc:
   - "nCount_RNA"
   - "nFeature_RNA"
@@ -32,22 +33,23 @@ params:
   - "DoubletScore_RNA"
   
   # Which pairs of barcode QC should be should be plotted in scatter plots. 
-  # Seperate QC by space character. Can only be numeric barcode metadata columns. 
+  # Separate QC by space character. Can only be numeric barcode metadata columns.
+  # Set to 'null' to deacivate.
   barcode_qc_cor:
   - "nFeature_RNA nCount_RNA"
   - "nFeature_RNA pMito_RNA"
 
-  # Filter for barcodes
+  # Filter for barcodes. Set to 'null' to deactivate.
   barcode_filter: !expr list(
     nCount_RNA = c(1000, NA),
     nFeature_RNA = c(400, 4000))
 
-  # Filter for features
+  # Filter for features. Set to 'null' to deactivate.
   feature_filter: !expr list(
     min_counts = 1,
     min_cells = 3)
     
-  # List of samples to drop after initial QC. Set to 'null' for an empty list.
+  # List of samples to drop after initial QC. Set to 'null' to deactivate.
   # Example:
   #  - sampleA
   #  - sampleB
@@ -202,7 +204,13 @@ for (l in SeuratObject::Layers(sc, "^counts")) {
 
   # Get data for layer (sample) and count
   counts = sc[[default_assay]][l]
-  num_bcs_expr = rowSums(counts >= feature_filter[[n]]$min_counts)
+  if (!is.null(feature_filter) & 
+      n %in% names(feature_filter) &
+      "min_counts" %in% names(feature_filter[[n]])) {
+    num_bcs_expr = rowSums(counts >= feature_filter[[n]]$min_counts)
+  } else {
+    num_bcs_expr = rowSums(counts >= 1)
+  }
   
   # Add to metadata
   sc[[default_assay]][[paste("nBcsThreshold", n, sep="_")]] = num_bcs_expr
@@ -267,7 +275,7 @@ plist[[{{i}}]]
   for (i in seq(plist)) {
     chunk_filled =  knitr::knit_expand(text=chunk_template, type=barcode_qc[i], i=i, caption=captions[i])
     if(interactive()) {
-      EvalKnitrChunk(chunk_filled)
+      print(EvalKnitrChunk(chunk_filled))
     } else {
       chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
       cat(chunk_filled, sep='\n')
@@ -275,6 +283,8 @@ plist[[{{i}}]]
   }
   
   cat(":::\n")
+} else {
+  MessageBox(x="No barcode QC parameters for plotting available.")
 }
 ```
 
@@ -327,7 +337,7 @@ plist[[{{i}}]]
   for (i in seq(plist)) {
     chunk_filled =  knitr::knit_expand(text=chunk_template, type1=barcode_qc_cor[[i]][1], type2=barcode_qc_cor[[i]][2], i=i, caption=captions[i])
     if(interactive()) {
-      EvalKnitrChunk(chunk_filled)
+      print(EvalKnitrChunk(chunk_filled))
     } else {
       chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
       cat(chunk_filled, sep='\n')
@@ -335,6 +345,8 @@ plist[[{{i}}]]
   }
   
   cat(":::", sep="\n")
+} else {
+  MessageBox(x="No barcode QC parameters for correlation plots available.")
 }
 ```
 
@@ -415,7 +427,7 @@ p
 ```
 
 ```{r}
-#| label: preprocess_rna_highest_genes_samples
+#| label: preprocess_rna_highest_genes_datasets
 #| results: asis
 
 orig_idents = levels(sc$orig.ident)
@@ -447,11 +459,11 @@ names(plist) = orig_idents
 # Set up layout and generate chunks
 
 chunk_template = "
-##### {{sample}}
+##### {{dataset}}
 
 \`\`\`{r}
-#| label: fig-preprocess_rna_highest_genes_sample_{{sample}}
-#| fig-cap: 'Highest expressed genes for sample {{sample}}'
+#| label: fig-preprocess_rna_highest_genes_dataset_{{dataset}}
+#| fig-cap: 'Highest expressed genes for dataset {{dataset}}'
 #| echo: false
 #| message: false
 #| warning: false
@@ -463,9 +475,9 @@ plist[[{{i}}]]
 cat("::: panel-tabset", sep="\n")
 
 for (i in seq(plist)) {
-  chunk_filled =  knitr::knit_expand(text=chunk_template, sample=orig_idents[i], i=i)
+  chunk_filled =  knitr::knit_expand(text=chunk_template, dataset=orig_idents[i], i=i)
   if(interactive()) {
-    EvalKnitrChunk(chunk_filled)
+    print(EvalKnitrChunk(chunk_filled))
   } else {
     chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
     cat(chunk_filled, sep='\n')
@@ -498,7 +510,7 @@ if (sum(sc$pXIST_RNA) == 0 & sum(sc$pChrY_RNA) == 0) {
 #| fig-height: 4
 
 plist = PlotBarcodeQC(sc, qc=paste(c("pXIST", "pChrY"), default_assay, sep="_"))
-print(plist[[1]] + plist[[2]])
+plist[[1]] + plist[[2]]
 ```
 
 ## Filtering
@@ -507,6 +519,7 @@ Cells and genes are filtered based on the following thresholds:
 
 ```{r}
 #| label: preprocess_rna_filters
+#| results: asis
 
 orig_idents = levels(sc$orig.ident)
 
@@ -533,7 +546,7 @@ barcode_filter_tbl = purrr::map_dfr(names(barcode_filter), function(s) {
 })
 
 # FEATURES
-feature_filter = PrepareBarcodeFilter(param("feature_filter"), orig_idents)
+feature_filter = PrepareFeatureFilter(param("feature_filter"), orig_idents)
 feature_filter_tbl = purrr::map_dfr(names(feature_filter), function(s) {
   tbl = purrr::map(feature_filter[[s]], function(f) {
     if (is.numeric(f) & length(f)==2) {
@@ -553,6 +566,15 @@ feature_filter_tbl = purrr::map_dfr(names(feature_filter), function(s) {
   rownames(tbl) = NULL
   return(tbl)
 })
+
+# Provide info if no filtering is applied
+if (length(barcode_filter) == 0) {
+  MessageBox(x="No barcode filtering was specified. All barcodes will be kept.")
+}
+
+if (length(feature_filter) == 0) {
+  MessageBox(x="No feature filtering was specified. All features will be kept.")
+}
 ```
 
 ::: {layout-ncol=2}
@@ -561,6 +583,8 @@ feature_filter_tbl = purrr::map_dfr(names(feature_filter), function(s) {
 #| label: tbl-preprocess_rna_feature_print_barcode_filters
 #| echo: false
 #| tbl-cap: !expr paste("Filters applied to barcodes for assay", default_assay)
+#| eval: !expr length(barcode_filter) > 0
+#| include: !expr length(barcode_filter) > 0
 
 # Print barcode filters
 gt(barcode_filter_tbl)
@@ -570,6 +594,8 @@ gt(barcode_filter_tbl)
 #| label: tbl-preprocess_rna_feature_print_feature_filters
 #| echo: false
 #| tbl-cap: !expr paste("Filters applied to features for assay", default_assay)
+#| eval: !expr length(feature_filter) > 0
+#| include: !expr length(feature_filter) > 0
 
 # Print feature filters
 gt(feature_filter_tbl)
@@ -661,7 +687,13 @@ features_to_exclude = purrr::map(orig_idents, function(s) {
   metadata = feature_metadata[rownames(feature_metadata) %in% features, ]
   
   # Filter
-  exclude = metadata[[paste("nBcsThreshold", s, sep="_")]] < feature_filter[[s]][["min_cells"]]
+  if (!is.null(feature_filter) & 
+      s %in% names(feature_filter) &
+      "min_counts" %in% names(feature_filter[[s]])) {
+    exclude = metadata[[paste("nBcsThreshold", s, sep="_")]] < feature_filter[[s]][["min_counts"]]
+  } else {
+    exclude = rep(FALSE, nrow(metadata))
+  }
   names(exclude) = rownames(metadata)
   return(exclude)
 })
@@ -752,7 +784,7 @@ plist[[{{i}}]]
   for (i in seq(plist)) {
     chunk_filled =  knitr::knit_expand(text=chunk_template, type=barcode_qc[i], i=i, caption=captions[i])
     if(interactive()) {
-      EvalKnitrChunk(chunk_filled)
+      print(EvalKnitrChunk(chunk_filled))
     } else {
       chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
       cat(chunk_filled, sep='\n')
@@ -760,6 +792,8 @@ plist[[{{i}}]]
   }
   
   cat(":::\n")
+} else {
+  MessageBox(x="No barcode QC parameters for plotting available.")
 }
 ```
 
@@ -813,7 +847,7 @@ plist[[{{i}}]]
   for (i in seq(plist)) {
     chunk_filled =  knitr::knit_expand(text=chunk_template, type1=barcode_qc_cor[[i]][1], type2=barcode_qc_cor[[i]][2], i=i, caption=captions[i])
     if(interactive()) {
-      EvalKnitrChunk(chunk_filled)
+      print(EvalKnitrChunk(chunk_filled))
     } else {
       chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
       cat(chunk_filled, sep='\n')
@@ -821,6 +855,8 @@ plist[[{{i}}]]
   }
   
   cat(":::\n")
+}  else {
+  MessageBox(x="No barcode QC parameters for correlation plots available.")
 }
 ```
 
