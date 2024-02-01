@@ -20,12 +20,12 @@ params:
   on_disk_use_tmp: true
   
   # Which normalization should be used for analysis?
-  # lognorm (Seurat), scran or sct
-  normalisation_method: "lognorm"
+  # lognorm (Seurat), scran or SCT
+  normalisation_method: "SCT"
   
   # Which method should be used for feature selection?
-  # vst (Seurat), scran or sct
-  feature_selection_method: "vst"
+  # vst (Seurat), scran or SCT
+  feature_selection_method: "SCT"
   
   # Number of variable features to use
   num_variable_features: 3000
@@ -39,12 +39,10 @@ execute:
   freeze: auto
 ---
 
-# Normalization (RNA)
+# Data preprocessing
 
 ```{r}
 #| label: setup
-#| message: false
-#| warning: false
 
 # If running code interactively in rstudio, set profile here
 # When rendering with quarto, profile is already set and should not be overwritten
@@ -64,14 +62,12 @@ module_dir = params$module_dir
 
 # Parallelisation plan for all functions that support future
 plan(multisession, workers=4, gc=TRUE)
-
-# Be verbose
-verbose=FALSE
 ```
 
 ```{r}
 #| label: normalization_rna_preparation
 
+# CODE
 # Source general configurations (always)
 source("R/general_configuration.R")
 
@@ -81,10 +77,9 @@ source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
 
-###############
-# Directories #
-###############
+verbose = param("verbose")
 
+# DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
 dir.create(file.path(module_dir, "results"), showWarnings=FALSE)
 files = list.files(path=file.path(module_dir, "results"), full.names=TRUE)
@@ -95,10 +90,7 @@ dir.create(file.path(module_dir, "sc"), showWarnings=FALSE)
 files = list.files(path=file.path(module_dir, "sc"), full.names=TRUE)
 if (length(files) > 0) unlink(files, recursive=TRUE)
 
-#################
-# Seurat object #
-#################
-
+# SEURAT OBJECT
 # Read in seurat object
 if (!is.null(param("prev_module_dir"))) {
   prev_module_dir = param("prev_module_dir")
@@ -129,6 +121,58 @@ default_assay = param("default_assay")
 Seurat::DefaultAssay(sc) = default_assay
 ```
 
+In this section, we subsequently run a series of Seurat functions for each provided sample:
+
+| 1. We start by running a **standard log normalisation**, where counts for each cell are divided by the total counts for that cell and multiplied by 10,000. This is then natural-log transformed.
+
+<details class="details_box">
+
+<summary class="details_box">What do we need normalisation for?</summary>
+
+The number of raw sequencing reads per cell is influenced by technical differences in the capture, reverse transcription and sequencing of RNA molecules, particularly due to the difficulty of achieving consistent library preparation with minimal starting material. Thus, comparing gene expression between cells may reveal differences that are solely due to sampling effects. After low-quality cells were removed in the previous step, the primary goal of normalization is to remove technical sampling effects while preserving the true biological signal.
+
+Count depth scaling is the simplest and most commonly used normalization strategy. The underlying idea is that each cell initially contained an equal number of mRNA molecules, and differences arise due to sampling effects. For each cell, the number of reads per gene is divided by a cell-specific “size factor”, which is proportional to the total count depth of the cell. The resulting normalized data add up to 1 per cell, and is then typically multiplied by a factor of 10 (10,000 in this workflow).
+
+Finally, normalized data are log-transformed for three important reasons. First, distances between log-transformed expression data represent log fold changes. Log-transformation emphasizes contributions from genes with strong relative differences, for example a gene that is expressed at an average count of 50 in cell type A and 10 in cell type B rather than a gene that is expressed at an average count of 1100 in A and 1000 in B. Second, log-transformation mitigates the relation between mean and variance in the data. Lastly, log-transformation reduces that skewness of the data as many downstream analyses require the data to be normally distributed.
+
+</details>
+
+| 2. We assign **cell cycle scores** to each cell based on its normalised expression of G2/M and S phase markers. These scores are visualised in a separate section further below. If specified in the above parameter section, cell cycle effects are removed during scaling (step 3). Cell cycle effects removed for this report: `param$cc_remove`; *all* cell cycle effects removed for this report: `param$cc_remove_all`.
+
+<details class="details_box">
+
+<summary class="details_box">How does removal of cell cycle effects affect the data?</summary>
+
+Note that removing all signal associated to cell cycle can negatively impact downstream analysis. For example, in differentiating processes, stem cells are quiescent and differentiated cells are proliferating (or vice versa), and removing all cell cycle effects can blur the distinction between these cells. An alternative approach is to remove the difference between G2M and S phase scores. This way, signals separating non-cycling and cycling cells will be maintained, while differences amongst proliferating cells will be removed. For a more detailed explanation, see the cell cycle vignette for Seurat <https://satijalab.org/seurat/articles/cell_cycle_vignette>.
+
+</details>
+
+| 3. Dependent on the normalisation of your choice, we either
+
+| a. Run standard functions to select **variable genes**, and **scale** normalised gene counts. For downstream analysis it is beneficial to focus on genes that exhibit high cell-to-cell variation, that is they are highly expressed in some cells and lowly in others. To be able to compare normalised gene counts between genes, gene counts are further scaled to have zero mean and unit variance (z-score).
+
+<details class="details_box">
+
+<summary class="details_box">What do we need scaling for?</summary>
+
+After normalization, gene expression data can be compared between cells. However, expression of individual genes still cannot be compared. This is because genes have different lengths and, depending on the experimental set up, longer genes can be represented by a higher number of reads. To account for this effect, normalized data are further scaled using a z-transformation, resulting in the average expression of 0 and the variance of 1 for each gene across all cells. Note that additional unwanted sources of variations can be regressed out during the scaling process, such as cell cycle effects or the percentage of mitochondrial reads.
+
+</details>
+
+| b. Run **SCTransform**, a new and more sophisticated normalisation method that replaces the previous functions (**normalisation, variable genes and scaling**).
+
+<details class="details_box">
+
+<summary class="details_box">What is **SCTransform** special about?</summary>
+
+The standard log-transformation applied in step 1 assumes that count depth influences all genes equally. However, it has been shown that the use of a single size factor will introduce different effects on highly and lowly expressed genes @Hafemeister_2019. **SCTransform** is a new statistical approach for the modelling, normalization and variance stabilization of single-cell RNA-seq data, and is an alternative to steps 1 and 3a described above. Note that **SCTransform** has been developed for UMI count data and can therefore safely be applied to 10x but not SmartSeq-2 data. As for the scaling in step 3a, additional unwanted sources of variations can be regressed out during **SCTransform**.
+
+</details>
+
+Normalisation method used for this report: `param$norm`; with additional sources of variance regressed out: `param$vars_to_regress`.
+
+While raw data is typically used for statistical tests such as finding marker genes, normalised data is mainly used for visualising gene expression values. Scaled data include variable genes only, potentially without cell cycle effects, and are mainly used to determine the structure of the dataset(s) with Principal Component Analysis, and indirectly to cluster and visualise cells in 2D space.
+
 ## Normalisation
 
 ```{r}
@@ -136,66 +180,69 @@ Seurat::DefaultAssay(sc) = default_assay
 #| results: asis
 
 normalisation_method = param("normalisation_method")
+num_variable_features = param("num_variable_features")
 
 # Do normalisation
 if (normalisation_method == "lognorm") {
-  # Apply log normalisation
+  # Run log normalization
   sc = Seurat::NormalizeData(sc, 
                              normalization.method="LogNormalize", 
                              verbose=verbose)
-  layers = SeuratObject::Layers(sc, search="^counts") %>% 
-    gsub(pattern="counts", replacement="data", x=.)
   
-  cat("We have used LogNormalize.")
+  MessageBox("We have used the log normalisation of Seurat.")
   
 } else if(normalisation_method == "scran") {
-  # Scran
+  # Run scran normalization
   with_progress({
     sc = NormalizeDataScran(sc, 
                             layer="counts", 
                             save="data",
                             chunk_size=50000)
   }, enable=verbose)
-  layers = SeuratObject::Layers(sc, search="^counts") %>% 
-    gsub(pattern="counts", replacement="data", x=.)
-
-  cat("We have used Scran.")
   
-} else if(normalisation_method == "sct") {
-  # SCTransform
-  sct_assay_name = paste(default_assay, "Sct", sep=".")
+  MessageBox("We have used the scran normalization.")
+  
+} else if(normalisation_method == "SCT") {
+  # Run SCTransform normalization
+  sct_assay_name = paste(default_assay, "SCT", sep="_")
   sc = SCTransform(sc, 
                    new.assay.name=sct_assay_name,
                    vst.flavor="v2",
-                   variable.features.n=param("num_variable_features"),
+                   variable.features.n=num_variable_features,
                    vars.to.regress=c(),
                    return.only.var.genes=TRUE,
                    verbose=verbose,
                    seed.use=getOption("random_seed"),
                    conserve.memory=length(Cells(sc)) >= 100000)
-  SeuratObject::Key(sc[[sct_assay_name]]) = paste0(default_assay, "Sct", "_") %>% 
-    gsub(pattern="\\.", replacement="", x=.) %>%
-    tolower()
   Seurat::DefaultAssay(sc) = sct_assay_name
-  layers = c()
 
-  cat("We have used SCTransform @Hafemeister_2019.")
+  MessageBox("We have used the SCTransform normalization.")
 }
 
 # Convert queued operations into real data and write normalized data to disk
-# Not supported for SCTransform
-if (on_disk_counts & normalisation_method != "sct") {
-  for(i in seq_along(layers)) {
-    # Get IterableMatrix object
-    data = SeuratObject::LayerData(sc, layer=layers[i])
+if (on_disk_counts) {
+  
+  if (normalisation_method != "SCT") {
+    # For lognorm and scran, we just need to write all 'data' layers to disk
+  
+    layers = SeuratObject::Layers(sc, search="^counts") %>% 
+      gsub(pattern="counts", replacement="data", x=.)
+    for(i in seq_along(layers)) {
+      # Get IterableMatrix object
+      mat = SeuratObject::LayerData(sc, layer=layers[i])
+      
+      # Write data to disk
+      matrix_dir = WriteCounts_MatrixDir(counts=mat,
+                                         path=file.path(on_disk_path, paste(Seurat::DefaultAssay(sc), layers[i], sep=".")),
+                                         overwrite=TRUE)
+      
+      # Load into Seurat object
+      SeuratObject::LayerData(sc, layer=layers[i]) = matrix_dir
+    }
     
-    # Write data to disk
-    matrix_dir = WriteCounts_MatrixDir(counts=data,
-                                       path=file.path(on_disk_path, paste(Seurat::DefaultAssay(sc), layers[i], sep=".")),
-                                       overwrite=TRUE)
-    
-    # Load into Seurat object
-    SeuratObject::LayerData(sc, layer=layers[i]) = matrix_dir
+  } else {
+    # The SCT assay is not Seurat v5 compatible and therefore does not support on-disk counts. Furthermore,
+    # it produces no layers but only a 'counts', a 'data' and a 'scale.data' slot.
   }
 }
 ```
@@ -203,62 +250,53 @@ if (on_disk_counts & normalisation_method != "sct") {
 We check whether normalisation was successfull.
 
 ```{r}
-#| label: normalization_rna_rle
+#| label: normalization_rna_rle_plots
 #| fig-cap:
-#|  - Relative log expression plot 1
-#|  - Relative log expression plot 2
-#| fig-asp: 0.7
-#| warning: false
+#|  - "Relative log expression plot for raw counts"
+#|  - "Relative log expression plot for normalized counts"
 
 normalisation_method = param("normalisation_method")
 
 # Do relative log expression plots
-p1 = PlotRLE(sc, assay=default_assay, layer="^counts", is_log=FALSE)
-print(p1)
+p = PlotRLE(sc, layer="counts", is_log=FALSE)
+p
 
-if (normalisation_method == "sct") {
-  sct_assay_name = paste(default_assay, "Sct", sep=".")
-  p2 = PlotRLE(sc, assay=sct_assay_name, layer="^data", is_log=TRUE)
-} else {
-  p2 = PlotRLE(sc, assay=default_assay, layer="^data", is_log=TRUE)
-}
-print(p2)
+p = PlotRLE(sc, layer="data", is_log=TRUE)
+p
 ```
 
 ## Variable features
 
-Then we identify variable features.
+Experience shows that 1,000-2,000 genes with the highest cell-to-cell variation are often sufficient to describe the global structure of a single-cell dataset. For example, cell type-specific genes typically highly vary between cells. Housekeeping genes, on the other hand, are similarly expressed across cells and can be disregarded to differentiate between cells. Highly variable genes are typically the genes with a cell type specific expression profile, and are often the genes of interest in single-cell experiments. Housekeeping genes, with similar levels of expression across all cells, or genes with minor expression differences, might add random noise and mask relevant changes during downstream dimensionality reduction and clustering. We therefore aim to select a sensible set of variable genes that includes interesting biological signal and excludes noise. Here, the top 3,000 variable genes are selected and used for downstream analysis. 
+
+<details class="details_box">
+  <summary class="details_box">How are variable genes selected?</summary>
+
+To determine variable genes, we need to separate biological variability from technical variability. Technical variability arises especially for lowly expressed genes, where high variability corresponds to small absolute changes that we are not interested in. Here, we use the variance-stabilizing transformation (vst) method implemented in Seurat @Hafemeister_2019. This method first models the technical variability as a relationship between mean gene expression and variance using local polynomial regression. The model is then used to calculate the expected variance based on the observed mean gene expression. The difference between the observed and expected variance is called residual variance and likely reflects biological variability.
+</details>
 
 ```{r}
 #| label: normalization_rna_variable_features
+#| results: asis
 
+normalisation_method = param("normalisation_method")
 feature_selection_method = param("feature_selection_method")
 num_variable_features = param("num_variable_features")
 
 # Identify variable features
-# Runs methods 'vst' or 'scran', method 'sct' was already done when running SCTransform
-if(feature_selection_method != "sct") {
+# Runs methods 'vst' or 'scran', method 'SCT' was already done when running SCTransform
+if(normalisation_method != "SCT" & feature_selection_method == "SCT") {
   sc = FindVariableFeaturesWrapper(sc, 
                                    feature_selection_method=feature_selection_method,
                                    num_variable_features=num_variable_features,
                                    verbose=verbose)
 }
-```
-
-They look like this:
-
-```{r}
-#| label: normalization_rna_variable_features_plots
-#| results: asis
-
-normalisation_method = param("normalisation_method")
-feature_selection_method = param("feature_selection_method")
 
 # Plot variable features
-if (normalisation_method == "sct") {
+if (normalisation_method == "SCT") {
   plist = PlotVariableFeatures(sc, 
                      method="sct",
-                     assay=paste(default_assay, "Sct", sep="."),
+                     assay=paste(default_assay, "SCT", sep="_"),
                      top=10)
 } else {
   plist = PlotVariableFeatures(sc, 
@@ -267,11 +305,9 @@ if (normalisation_method == "sct") {
                      top=10)
 }
 
-
-
 orig_idents = gsub(pattern="varFeatures_", replacement="", x=names(plist))
 captions = GeneratePlotCaptions(names(plist), remove="_\\S+")
-captions = paste(captions, "for", orig_idents)
+captions = paste(captions, "for dataset", orig_idents)
 
 # Generate chunks
 chunk_template = "
@@ -279,26 +315,26 @@ chunk_template = "
 
 \`\`\`{r}
 #| label: fig-normalization_rna_variable_features_{{name}}
-#| fig-asp: 0.5
 #| fig-cap: '{{caption}}'
 #| echo: false
 #| warning: false
 
-print(plist[[{{i}}]])
+plist[[{{i}}]]
 \`\`\`
 "
 
-cat("::: panel-tabset", sep="\n")
+cat("::: panel-tabset\n")
+
 for (i in seq(plist)) {
   chunk_filled =  knitr::knit_expand(text=chunk_template, name=orig_idents[i], i=i, caption=captions[i])
   if(interactive()) {
-    EvalKnitrChunk(chunk_filled)
+    print(EvalKnitrChunk(chunk_filled))
   } else {
     chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
     cat(chunk_filled, sep='\n')
   }
 }
-cat(":::")
+cat(":::\n")
 
 ```
 
@@ -307,12 +343,23 @@ cat(":::")
 ```{r}
 #| label: normalization_rna_save_seurat
 
+# For the SCT assay: Is it really necessary to keep the 'counts' and the 'data' slots? There is no possiblity to save them on-disk. Do we want do clear the to save memory? (Especially for big datasets)
+# - 'data' appears to be neccessary for downstream analysis
+# - 'counts' is not neccessary for downstream analysis
+if (normalisation_method == "SCT") {
+  sct_assay_name = paste(default_assay, "SCT", sep="_")
+  SeuratObject::LayerData(sc, assay=sct_assay_name, layer="counts") = NULL
+}
+
+# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+#assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
+
 # Save Seurat object and layer data
 with_progress({
   SaveSeuratRds_Custom(sc,
-              outdir=file.path(module_dir, "sc"))
-}, enable=TRUE)
-
+                       on_disk_layers=on_disk_counts,
+                       outdir=file.path(module_dir, "sc"))
+}, enable=verbose)
 ```
 
 ```{r}
