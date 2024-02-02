@@ -24,8 +24,9 @@ profile:
 #################
 knitr:
   opts_chunk:
-    fig-width: 6
-    dpi: 96
+    dpi: 300
+    fig-width: 8
+    fig-height: 5
     fig.retina: 2
     results: "hold"
     timeit: null
@@ -59,7 +60,7 @@ format:
     knitr:
       opts_chunk: 
         dev:
-        - "ragg_png"
+        - "png"
         - "cairo_pdf"
   # pdf:
   #   documentclass: "scrreprt"

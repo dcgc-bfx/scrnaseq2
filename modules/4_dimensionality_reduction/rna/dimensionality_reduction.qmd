@@ -10,7 +10,7 @@ params:
   # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
   prev_module_dir: null
   
-  # Default assay.
+  # Default assay. If null, will be set to the default assay of the input Seurat object.
   default_assay: "RNA"
   
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. Computations will access only the relevant parts of the data. Once done, matrix directories will be saved together with the Seurat object in the module directory.
@@ -19,27 +19,24 @@ params:
   # For large datasets: Copy matrix directories to a temporary directory for computations. This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). Once done, matrix directories will be copied back to the module directory. The temporary directory will be deleted once the R session exists.
   on_disk_use_tmp: true
   
-  # Which normalization should be used for analysis?
-  # lognorm (Seurat), scran or sct
+  # Which normalization should be used for analysis? Can we read from seurat object
+  # lognorm (Seurat), scran or SCT
   normalisation_method: "lognorm"
   
-  # Number of variable features to use
-  num_variable_features: 3000
-  
-  # Which dimensionality reduction to use: pca
+  # Which dimensionality reduction to use: only pca supported
   dimensionality_reduction_method: "pca"
   
-  # Number of dimensions to compute
-  num_dimensions_compute: 50
+  # Number of dimensions (e.g. principal components) to compute
+  dim_n_compute: 50
   
-  # Number of dimensions to use
-  num_dimensions_use: 10
-  
+  # Number of dimensions (e.g. principal components) to use
+  dim_n: 10
+
   # Use sketch-based integration methods for analysis
   use_sketching: true
   
   # One or more integration method(s) to use. 
-  # The following methods are available: null (just merge), CCAIntegration, RPCAIntegration, HarmonyIntegration, FastMNNIntegration, scVIIntegration.
+  # The following methods are available: null (just merge), CCAIntegration, RPCAIntegration, HarmonyIntegration, FastMNNIntegration, scVIIntegration (does not work).
   integration_methods:
   - "CCAIntegration"
   - "RPCAIntegration"
@@ -102,10 +99,7 @@ plan(multisession, workers=4, gc=TRUE)
 ```{r}
 #| label: dimensionality_reduction_rna_preparation
 
-########
-# Code #
-########
-
+# CODE
 # Source general configurations (always)
 source("R/general_configuration.R")
 
@@ -118,10 +112,7 @@ source("R/functions_analysis.R")
 # Be verbose
 verbose=param("verbose")
 
-###############
-# Directories #
-###############
-
+# DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
 dir.create(file.path(module_dir, "results"), showWarnings=FALSE)
 files = list.files(path=file.path(module_dir, "results"), full.names=TRUE)
@@ -132,10 +123,7 @@ dir.create(file.path(module_dir, "sc"), showWarnings=FALSE)
 files = list.files(path=file.path(module_dir, "sc"), full.names=TRUE)
 if (length(files) > 0) unlink(files, recursive=TRUE)
 
-#################
-# Seurat object #
-#################
-
+# SEURAT OBJECT
 # Read in seurat object
 if (!is.null(param("prev_module_dir"))) {
   prev_module_dir = param("prev_module_dir")
@@ -164,19 +152,76 @@ if (on_disk_counts & on_disk_use_tmp) {
 # Set default assay standard
 default_assay = param("default_assay")
 normalisation_method = param("normalisation_method")
-use_sketching = param("use_sketching")
-default_assay = ifelse(normalisation_method=="SCT", 
-                       paste(default_assay, "SCT", sep="_"), 
-                       default_assay)
+Seurat::DefaultAssay(sc) = ifelse(normalisation_method=="SCT", 
+                         paste(default_assay, "SCT", sep="_"), 
+                         default_assay)
+
+# DELETE
+sc = Seurat::ScaleData(sc)
+sc = Seurat::SketchData(sc,
+                        ncells=5000,
+                        sketched.assay="RNA.sketch",
+                        verbose=verbose,
+                        method="LeverageScore",
+                        seed=getOption("random_seed"),
+                        over.write=TRUE)
+sc = FindVariableFeaturesWrapper(sc, feature_selection_method = "vst")
+sc = Seurat::ScaleData(sc)
+Seurat::DefaultAssay(sc) = "RNA"
+
+# DELETE
+FormatString = function(x, quote=TRUE, sep=", ") {
+  return(glue::glue(x, .transformer=GlueTransformer_quote_collapse(), .envir=parent.frame()))
+}
+
+# DELETE
+CalloutBox = function(x, type, print=TRUE) {
+  valid_types = c("note", "tip", "important", "caution", "warning")
+  assertthat::assert_that(type %in% valid_types,
+                          msg=FormatString("Callout box typ {type} but must be one of: {valid_types*}."))
+  
+  
+  
+  x = paste0("\n\n::: callout-", type, "\n", FormatString(x), "\n:::\n\n")
+  if (print) {
+    cat(x)
+  } else {
+    return(x)
+  }
+}
+
+# DELETE
+WarningBox = function(x, print=TRUE) {
+  x = CalloutBox(x, type="warning", print=FALSE)
+  if (print) {
+    cat(x)
+  } else {
+    return(x)
+  }
+}
+
+# DELETE
+MessageBox = function(x, print=TRUE) {
+  x = CalloutBox(x, type="note", print=FALSE)
+  if (print) {
+    cat(x)
+  } else {
+    return(x)
+  }
+}
+
 
 # If sketching should be used, check for the sketch assay and then set as default
+use_sketching = param("use_sketching")
 if (use_sketching) {
-  sketched_assay_name = paste(default_assay, "sketch", sep=".")
+  sketched_assay_name = paste(Seurat::DefaultAssay(sc), "sketch", sep=".")
   if (!sketched_assay_name %in% SeuratObject::Assays(sc)) {
-    stop(FormatMessage("The option 'use_sketching' is set to true but the sketch assay {sketched_assay_name} was not found. It should be created in one of the previous modules."))
+    stop(FormatMessage("The option 'use_sketching' is set to true but the sketch assay {sketched_assay_name} was not found."))
   }
   SeuratObject::DefaultAssay(sc) = sketched_assay_name
 }
+
+
 ```
 
 A single-cell dataset of 20,000 genes and 5,000 cells has 20,000 dimensions. At this point of the analysis, we have already reduced the dimensionality of the dataset to 3,000 variable genes. The biological manifold however can be described by far fewer dimensions than the number of (variable) genes, since expression profiles of different genes are correlated if they are involved in the same biological process. Dimension reduction methods aim to find these dimensions. There are two general purposes for dimension reduction methods: to __summarize__ a dataset, and to __visualize__ a dataset. 
@@ -199,22 +244,34 @@ To decide how many PCs to include in downstream analyses, we visualize the cells
 #| label: dimensionality_reduction_rna_run
 
 dimensionality_reduction_method = param("dimensionality_reduction_method")
-num_dimensions_compute = param("num_dimensions_compute")
+dim_n_compute = param("dim_n_compute")
 
 # Run dimensionality reduction
-sc = Seurat::RunPCA(sc, 
-                    verbose=verbose, 
-                    npcs=min(num_dimensions_compute, ncol(sc)),
-                    seed.use=getOption("random_seed"))
+sc = RunDimRedWrapper(sc, 
+                      method=dimensionality_reduction_method, 
+                      dim_n=dim_n_compute, 
+                      verbose=verbose)
 
-# If sketching was used, project PCA of sketch to full dataset
-
+if (use_sketching) {
+  # Project to full dataset if sketching was used
+  original_assay = ifelse(normalisation_method=="SCT", 
+                         paste(default_assay, "SCT", sep="_"), 
+                         default_assay)
+  sc = Seurat::ProjectData(sc, 
+                           assay=original_assay,
+                           sketched.assay=Seurat::DefaultAssay(sc),
+                           sketched.reduction=dimensionality_reduction_method,
+                           full.reduction=paste(dimensionality_reduction_method, "full", sep="."),
+                           normalization.method	 = ifelse(normalisation_method=="SCT", "SCT", "LogNormalize"),
+                           dims=1:50)
+}
 ```
 
 ```{r}
 #| label: dimensionality_reduction_rna_loadings
 #| fig-cap: "Loadings of the dimensionality reduction"
-#| fig-height: 4
+
+# When sketching is used, not available for the full dataset
 
 # Plot loadings for first and second dimension
 plist = Seurat::VizDimLoadings(sc, reduction=dimensionality_reduction_method, dims=1:2, combine=FALSE, balanced=TRUE)
@@ -223,31 +280,54 @@ for (i in seq(plist)) {
     AddPlotStyle()
 }
 
-print(plist[[1]] + plist[[2]])
+plist[[1]] + plist[[2]]
 ```
 
 ```{r}
 #| label: dimensionality_reduction_rna_dim_dimensions
-#| fig-cap: "Cells arranged by the first two dimensions"
+#| fig-cap: !expr paste("Barcodes arranged by the first two dimensions ", ifelse(use_sketching, "for the sketched dataset", ""))
 
-# Plot cells for the first two dimensions
-p = Seurat::DimPlot(sc, reduction=dimensionality_reduction_method, cols=ScColours(sc, "orig.ident")) +
+# Plot the first two dimensions of the computed dimensionality reduction
+p = Seurat::DimPlot(sc, 
+                    reduction=dimensionality_reduction_method, 
+                    cols=ScColours(sc, "orig.ident")) +
   AddPlotStyle()
-print(p)
+p
+```
+
+```{r}
+#| label: dimensionality_reduction_rna_dim_dimensions_full
+#| fig-cap: "Barcodes arranged by the first two dimensions projected to the full dataset"
+#| eval: !expr use_sketching
+#| include: !expr use_sketching
+
+# Only when sketching is used: plot the first two dimensions projected to the full dataset
+if (use_sketching) {
+  p = Seurat::DimPlot(sc, 
+                      reduction=paste(dimensionality_reduction_method, "full", sep="."), 
+                      cols=ScColours(sc, "orig.ident")) +
+    AddPlotStyle()
+  print(p)
+}
 ```
 
 ```{r}
 #| label: dimensionality_reduction_rna_loadings_heatmaps
 #| fig-cap: "Top gene loadings of the first dimensions"
 #| fig-subcap: ""
+#| echo: false
 #| layout-ncol: 3
-#| fig-height: 3
+#| fig-height: 4
 #| fig-width: 2.6
+
+# When sketching is used, not available for the full dataset
+
+dim_n_compute = param("dim_n_compute")
 
 # Plot loading for the top 20 dimensions
 plist = Seurat::DimHeatmap(sc, 
                            reduction=dimensionality_reduction_method,
-                           dims=1:min(20, ncol(sc)), 
+                           dims=1:min(min(20, dim_n_compute), ncol(sc)), 
                            cells=min(500, ncol(sc)),
                            balanced=TRUE, 
                            fast=FALSE, 
@@ -255,7 +335,7 @@ plist = Seurat::DimHeatmap(sc,
 
 for (i in seq(plist)) {
   plist[[i]] = plist[[i]] +
-    AddPlotStyle(base_font_size=9, title=paste("Dim", i)) +
+    AddPlotStyle(title=paste("Dim", i)) +
     theme(legend.position="none") +
     viridis::scale_fill_viridis() +
     theme(axis.text.x=element_blank(),
@@ -278,26 +358,43 @@ The top PC captures the greatest variance across cells and each subsequent PC re
 ```{r}
 #| label: dimensionality_reduction_rna_elbow_plot
 #| fig-cap: "Variance explained by computed dimensions"
+#| fig-cap-location: "top"
 
-num_dimensions_use = param("num_dimensions_use")
+# When sketching is used, not available for the full dataset
+
+dim_n_compute = param("dim_n_compute")
+dim_n = param("dim_n")
+
 
 # Plot the variance explained for the computed components
-p = Seurat::ElbowPlot(sc, reduction=dimensionality_reduction_method, ndims=min(50, ncol(sc))) + 
-  geom_vline(xintercept=num_dimensions_use + .5, col="firebrick", lty=2) + 
+p = Seurat::ElbowPlot(sc, reduction=dimensionality_reduction_method, ndims=min(dim_n_compute, ncol(sc))) + 
+  geom_vline(xintercept=dim_n + .5, col="firebrick", lty=2) + 
   AddPlotStyle() 
-print(p)
-```
+p
 
-For the current dataset, `r num_dimensions_use` PCs were chosen.
+# Print a message
+MessageBox("For the current dataset, {dim_n} dimensions were chosen.", print=FALSE) %>% knitr::asis_output()
+```
 
 ## Integration
 
+Integration of multiple samples is a crucial step in single-cell RNA-seq analysis. It is necessary to remove batch effects and to enable the comparison of cells across different samples. We can use a number of methods for integration:
+
+- Canonical Correlation Analysis (CCA)
+- Reciprocal PCA (RPCA)
+- Harmony
+- Fast MNN
+- scVI (not working)
+
+Methods might perform differently depending on the dataset and the biological question. We can use multiple methods and compare the results. 
+
+
 ```{r}
 #| label: integration_rna_run_integration
+#| results: asis
 
+# Get integration methods and their parameters
 integration_methods = param("integration_methods")
-min_barcodes_for_sketching = param("min_barcodes_for_sketching")
-num_barcodes_for_sketching = param("num_barcodes_for_sketching")
 integration_methods_params = purrr::map(integration_methods, function(method) {
   par_lst = param(method)
   
@@ -313,12 +410,10 @@ integration_methods_params = purrr::map(integration_methods, function(method) {
 })
 names(integration_methods_params) = integration_methods
 
+#
 normalisation_method = param("normalisation_method")
-feature_selection_method = param("feature_selection_method")
-num_variable_features = param("num_variable_features")
 num_datasets = length(SeuratObject::Layers(sc, assay=default_assay, search="^counts"))
 num_barcodes = length(SeuratObject::Cells(sc[[default_assay]]))
-use_sketching = num_barcodes > min_barcodes_for_sketching
 
 if (length(integration_methods) > 0 & num_datasets > 0) {
   # Integration requested and necessary
@@ -374,22 +469,24 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
   sc = SeuratObject::JoinLayers(sc)
   
   # Message
-  glue::glue("\n::: {{.callout-note}}\nSamples are integrated.\n:::\n") %>% 
-    knitr::asis_output()
+  MessageBox("Datasets have been integrated with the following methods: {integration_methods}!")
   
 } else if (length(integration_methods) == 0 & num_datasets > 1) {
   # Join layers
   sc = SeuratObject::JoinLayers(sc)
   
 # Integration not requested (just merge)
-  glue::glue("\n::: {{.callout-note}}\nSamples are merged. No integration needed!\n:::\n") %>% 
-    knitr::asis_output()
+  MessageBox("Datasets are simply merged and no integration is done!")
   
 } else if (num_datasets == 1) {
   # Integration not necessary
-  glue::glue("\n::: {{.callout-note}}\nOnly one sample. No integration needed!\n:::\n") %>% 
-    knitr::asis_output()
+  MessageBox("There is only one dataset so that integration is not neccessary.")
 }
+```
+
+
+```{r}
+knitr::knit_exit()
 ```
 
 ## Save Seurat object

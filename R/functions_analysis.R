@@ -542,6 +542,32 @@ FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variabl
   return(sc)
 }
 
+#' Wrapper for running a dimensionality reduction.
+#' 
+#' @param sc Seurat v5 object.
+#' @param method Dimensionality reduction method. Can be: pca.
+#' @param assay Assay to analyze. If NULL, will be default assay of the Seurat object.
+#' @param dim_n Number of dimensions to compute. Default is 50.
+#' @param verbose Be verbose.
+#' @return Seurat v5 object with a new (integrated) reduction.
+RunDimRedWrapper = function(sc, method="pca", assay=NULL, dim_n=50, verbose=TRUE) {
+  # Checks
+  valid_methods = c("pca")
+  assertthat::assert_that(method %in% valid_methods,
+                          msg=FormatMessage("Method is {method} but must be one of: {valid_methods*}."))
+  
+  # Run dimensionality reduction
+  if (method == "pca") {
+    sc = Seurat::RunPCA(sc, verbose=verbose, npcs=min(dim_n, ncol(sc)), seed.use=getOption("random_seed"))
+  }
+  
+  # Set key
+  SeuratObject::Key(sc[[method]]) = paste0(method, "_") %>% 
+    tolower()
+  
+  return(sc)
+}
+
 #' Wrapper for integrating the layers of an assay. Does not touch the data but converts an original reduction into an integrated reduction based on the data.
 #' 
 #' @param sc Seurat v5 object.
