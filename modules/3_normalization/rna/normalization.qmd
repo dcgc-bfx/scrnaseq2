@@ -517,7 +517,10 @@ if (use_sketching) {
                                      verbose=verbose)
     sc = Seurat::ScaleData(sc, verbose=verbose, vars.to.regress=vars_to_regress)
   }
-  
+
+  # Print sketched assay
+  print(sc)
+
   # Finally reset default assay to non-sketched assay
   SeuratObject::DefaultAssay(sc) = ifelse(normalisation_method=="SCT", 
                                           paste(default_assay, "SCT", sep="_"), 
