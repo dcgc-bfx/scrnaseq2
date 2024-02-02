@@ -425,6 +425,8 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
   
   # Integrate
   for(method in integration_methods) {
+    method = "RPCAIntegration"
+    
     # New reduction name
     new_reduct = dplyr::case_match(method,
                                    "CCAIntegration" ~ "cca",
@@ -447,9 +449,12 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
     
     # If sketching was used, project integrated dimensionality reduction of sketch to full dataset
     if (use_sketching) {
+      original_assay = ifelse(normalisation_method=="SCT", 
+                         paste(default_assay, "SCT", sep="_"), 
+                         default_assay)
       sc = Seurat::ProjectIntegration(sc,
                                       sketched.assay=SeuratObject::DefaultAssay(sc), 
-                                      assay=default_assay,
+                                      assay=original_assay,
                                       reduction=new_reduct,
                                       reduction.name=paste(new_reduct, "full", sep="."),
                                       reduction.key=paste0(new_reduct, "full", "_") %>% 

@@ -564,7 +564,7 @@ RunDimRedWrapper = function(sc, method="pca", assay=NULL, dim_n=50, verbose=TRUE
   # Set key
   SeuratObject::Key(sc[[method]]) = paste0(method, "_") %>% 
     tolower()
-  
+
   return(sc)
 }
 
@@ -608,7 +608,9 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   
   # Add method-specific additional arguments that are always required (set only if they are not already set)
   if (integration_method == "CCAIntegration") {
-    if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="Sct", x=assay), "SCT", "LogNormalize")
+    if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="SCT", x=assay), "SCT", "LogNormalize")
+  } else if (integration_method == "RPCAIntegration") {
+    if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="SCT", x=assay), "SCT", "LogNormalize")
   } else if (integration_method == "FastMNNIntegration") {
     if (!"reconstructed.assay" %in% names(additional_args)) additional_args[["reconstructed.assay"]] = paste(assay, "Mnn", sep=".")
   } else if (integration_method == "scVIIntegration") {
@@ -657,10 +659,12 @@ RPCAIntegration_Fixed <- function (object = NULL, assay = NULL, layers = NULL, o
                                    k.weight = 100, weight.reduction = NULL, sd.weight = 1, sample.tree = NULL, 
                                    preserve.order = FALSE, verbose = TRUE, ...) {
   
+  print("Start of RPCAIntegration_Fixed")
   op <- options(Seurat.object.assay.version = "v3", Seurat.object.assay.calcn = FALSE)
   on.exit(expr = options(op), add = TRUE)
   normalization.method <- match.arg(arg = normalization.method)
   features = VariableFeatures(object)
+  print("features")
   features <- features %||% SelectIntegrationFeatures5(object = object)
   assay <- assay %||% "RNA"
   layers <- layers %||% Layers(object = object, search = "data")
@@ -672,6 +676,7 @@ RPCAIntegration_Fixed <- function (object = NULL, assay = NULL, layers = NULL, o
     abort(message = "At least one layer has fewer cells than dimensions specified, please lower 'dims' accordingly.")
   }
   if (normalization.method == "SCT") {
+    print("Prep SCT")
     groups <- CreateIntegrationGroups(object, layers = layers, 
                                       scale.layer = scale.layer)
     object.sct <- CreateSeuratObject(counts = object, assay = "SCT")
@@ -686,6 +691,7 @@ RPCAIntegration_Fixed <- function (object = NULL, assay = NULL, layers = NULL, o
     })
   }
   else {
+    print("Prep LogNorm")
     object.list <- list()
     for (i in seq_along(along.with = layers)) {
       object.list[[i]] <- suppressMessages(suppressWarnings(CreateSeuratObject(CreateAssay5Object(data = object[layers[i]][features, ]))))
@@ -698,6 +704,7 @@ RPCAIntegration_Fixed <- function (object = NULL, assay = NULL, layers = NULL, o
       suppressWarnings(object.list[[i]][["RNA"]]$counts <- NULL)
     }
   }
+  print("Find anchors")
   anchor <- FindIntegrationAnchors(object.list = object.list, 
                                    anchor.features = features, scale = FALSE, reduction = "rpca", 
                                    normalization.method = normalization.method, dims = dims, 
