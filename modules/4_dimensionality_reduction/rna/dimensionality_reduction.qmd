@@ -33,15 +33,12 @@ params:
   dim_n: 10
 
   # Use sketch-based integration methods for analysis
-  use_sketching: true
+  use_sketching: false
   
   # One or more integration method(s) to use. 
-  # The following methods are available: null (just merge), CCAIntegration, RPCAIntegration, HarmonyIntegration, FastMNNIntegration, scVIIntegration (does not work).
+  # The following methods are available: null (just merge), CCAIntegration, RPCAIntegration, HarmonyIntegration, FastMNNIntegration, scVIIntegration.
   integration_methods:
-  - "CCAIntegration"
-  - "RPCAIntegration"
-  - "HarmonyIntegration"
-  - "FastMNNIntegration"
+  - "scVIIntegration"
 
   # Parameters for CCAIntegration
   CCAIntegration: null
@@ -94,6 +91,7 @@ module_dir = params$module_dir
 
 # Parallisation plan for all functions that support future
 plan(multisession, workers=4, gc=TRUE)
+#plan(sequential)
 ```
 
 ```{r}
@@ -388,6 +386,7 @@ Integration of multiple samples is a crucial step in single-cell RNA-seq analysi
 
 Methods might perform differently depending on the dataset and the biological question. We can use multiple methods and compare the results. 
 
+see https://www.nature.com/articles/s41592-021-01336-8
 
 ```{r}
 #| label: integration_rna_run_integration
@@ -413,20 +412,18 @@ names(integration_methods_params) = integration_methods
 #
 normalisation_method = param("normalisation_method")
 num_datasets = length(SeuratObject::Layers(sc, assay=default_assay, search="^counts"))
-num_barcodes = length(SeuratObject::Cells(sc[[default_assay]]))
 
 if (length(integration_methods) > 0 & num_datasets > 0) {
   # Integration requested and necessary
   
-  # This will overwrite the (bugged) function Seurat::RPCAIntegration with the content of our function RPCAIntegration_Fixed
-  assignInNamespace("RPCAIntegration",RPCAIntegration_Fixed, ns="Seurat")
-  # This will overwrite the (bugged) function Seurat::scVIIntegration with the content of our function scVIIntegration_Fixed
-  assignInNamespace("scVIIntegration",scVIIntegration_Fixed, ns="SeuratWrappers")
+  # Note: Seurat::RPCAIntegration is bugged. 
+  # IntegrateLayersWrapper will use RPCAIntegration_Fixed which is a copy from the Seurat develop branch where the bug is already solved.
   
+  # Note: Seurat::scVIIntegration is bugged,
+  # IntegrateLayersWrapper will use scVIIntegration_Fixed which is a copy from the Seurat develop branch where the bug is already solved.
+
   # Integrate
   for(method in integration_methods) {
-    method = "RPCAIntegration"
-    
     # New reduction name
     new_reduct = dplyr::case_match(method,
                                    "CCAIntegration" ~ "cca",
@@ -442,7 +439,7 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
     # Call wrapper
     sc = IntegrateLayersWrapper(sc=sc,
                                 integration_method=method,
-                                orig_reduct=dimensionality_reduction_method,
+                            orig_reduct=dimensionality_reduction_method,
                                 new_reduct=new_reduct,
                                 additional_args=additional_args,
                                 verbose=verbose)
@@ -474,7 +471,7 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
   sc = SeuratObject::JoinLayers(sc)
   
   # Message
-  MessageBox("Datasets have been integrated with the following methods: {integration_methods}!")
+  MessageBox("Datasets have been integrated with the following methods: {integration_methods*}!")
   
 } else if (length(integration_methods) == 0 & num_datasets > 1) {
   # Join layers
@@ -487,11 +484,6 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
   # Integration not necessary
   MessageBox("There is only one dataset so that integration is not neccessary.")
 }
-```
-
-
-```{r}
-knitr::knit_exit()
 ```
 
 ## Save Seurat object

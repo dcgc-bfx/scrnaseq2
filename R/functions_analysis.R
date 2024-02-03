@@ -607,20 +607,32 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   }
   
   # Add method-specific additional arguments that are always required (set only if they are not already set)
+  integration_method_arg = integration_method
   if (integration_method == "CCAIntegration") {
+    # Normalization method
     if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="SCT", x=assay), "SCT", "LogNormalize")
   } else if (integration_method == "RPCAIntegration") {
+    # Our fixed version of RPCAIntegration
+    integration_method_arg = RPCAIntegration_Fixed 
+    # Normalization method
     if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="SCT", x=assay), "SCT", "LogNormalize")
   } else if (integration_method == "FastMNNIntegration") {
-    if (!"reconstructed.assay" %in% names(additional_args)) additional_args[["reconstructed.assay"]] = paste(assay, "Mnn", sep=".")
+    # Name of batch-corrected assay
+    if (!"reconstructed.assay" %in% names(additional_args)) additional_args[["reconstructed.assay"]] = paste(assay, "mnn", sep=".")
+    # Add grouping information
+    additional_args[["groups"]] = data.frame(group=Idents(sc))
   } else if (integration_method == "scVIIntegration") {
+    # Our fixed version of scVIIntegration
+    integration_method_arg = scVIIntegration_Fixed
     # Conda environment for scVI
     if (!"conda_env" %in% names(additional_args)) additional_args[["conda_env"]] = "base"
+    # Add grouping information
+    additional_args[["groups"]] = data.frame(group=Idents(sc))
   }
   
   # Call integration method
   sc = purrr::exec(Seurat::IntegrateLayers,
-                   !!!c(list(sc, 
+                   !!!c(list(sc,
                              method=integration_method,
                              orig.reduction=orig_reduct,
                              assay=assay,
@@ -648,82 +660,87 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   return(sc)
 }
 
-####################################################################################
-# This is a copy of the Seurat::RPCAIntegration with the following bugs fixed:     #
-# - cannot scale data since only counts                                            #
-####################################################################################
+#####################################################################################
+# This is a copy of the Seurat::RPCAIntegration from the Seurat develop branch:     #
+# - cannot scale data since only counts                                             #
+#####################################################################################
 RPCAIntegration_Fixed <- function (object = NULL, assay = NULL, layers = NULL, orig = NULL, 
                                    new.reduction = "integrated.dr", reference = NULL, features = NULL, 
                                    normalization.method = c("LogNormalize", "SCT"), dims = 1:30, 
                                    k.filter = NA, scale.layer = "scale.data", dims.to.integrate = NULL, 
                                    k.weight = 100, weight.reduction = NULL, sd.weight = 1, sample.tree = NULL, 
                                    preserve.order = FALSE, verbose = TRUE, ...) {
-  
-  print("Start of RPCAIntegration_Fixed")
-  op <- options(Seurat.object.assay.version = "v3", Seurat.object.assay.calcn = FALSE)
-  on.exit(expr = options(op), add = TRUE)
-  normalization.method <- match.arg(arg = normalization.method)
-  features = VariableFeatures(object)
-  print("features")
-  features <- features %||% SelectIntegrationFeatures5(object = object)
-  assay <- assay %||% "RNA"
-  layers <- layers %||% Layers(object = object, search = "data")
-  ncells <- sapply(X = layers, FUN = function(x) {
-    ncell <- dim(object[x])[2]
-    return(ncell)
-  })
-  if (min(ncells) < max(dims)) {
-    abort(message = "At least one layer has fewer cells than dimensions specified, please lower 'dims' accordingly.")
-  }
-  if (normalization.method == "SCT") {
-    print("Prep SCT")
-    groups <- CreateIntegrationGroups(object, layers = layers, 
-                                      scale.layer = scale.layer)
-    object.sct <- CreateSeuratObject(counts = object, assay = "SCT")
-    object.sct$split <- groups[, 1]
-    object.list <- SplitObject(object = object.sct, split.by = "split")
-    object.list <- PrepSCTIntegration(object.list = object.list, 
-                                      anchor.features = features)
-    object.list <- lapply(X = object.list, FUN = function(x) {
-      x <- RunPCA(object = x, features = features, verbose = FALSE, 
-                  npcs = max(dims))
-      return(x)
-    })
-  }
-  else {
-    print("Prep LogNorm")
-    object.list <- list()
-    for (i in seq_along(along.with = layers)) {
-      object.list[[i]] <- suppressMessages(suppressWarnings(CreateSeuratObject(CreateAssay5Object(data = object[layers[i]][features, ]))))
-      #object.list[[i]] <- suppressMessages(suppressWarnings(CreateSeuratObject(counts = object[layers[i]][features, ])))
-      VariableFeatures(object = object.list[[i]]) <- features
-      object.list[[i]] <- suppressWarnings(ScaleData(object = object.list[[i]], 
-                                                     verbose = FALSE))
-      object.list[[i]] <- RunPCA(object = object.list[[i]], 
-                                 verbose = FALSE, npcs = max(dims))
-      suppressWarnings(object.list[[i]][["RNA"]]$counts <- NULL)
+    print("Runs RPCAIntegration_Fixed")
+    op <- options(Seurat.object.assay.version = "v3", Seurat.object.assay.calcn = FALSE)
+    on.exit(expr = options(op), add = TRUE)
+    normalization.method <- match.arg(arg = normalization.method)
+    features <- features %||% SelectIntegrationFeatures5(object = object)
+    assay <- assay %||% 'RNA'
+    layers <- layers %||% Layers(object = object, search = 'data')
+    #check that there enough cells present
+    ncells <- sapply(X = layers, FUN = function(x) {ncell <-  dim(object[x])[2]
+    return(ncell) })
+    if (min(ncells) < max(dims))  {
+        abort(message = "At least one layer has fewer cells than dimensions specified, please lower 'dims' accordingly.")
     }
-  }
-  print("Find anchors")
-  anchor <- FindIntegrationAnchors(object.list = object.list, 
-                                   anchor.features = features, scale = FALSE, reduction = "rpca", 
-                                   normalization.method = normalization.method, dims = dims, 
-                                   k.filter = k.filter, reference = reference, verbose = verbose, 
-                                   ...)
-  slot(object = anchor, name = "object.list") <- lapply(X = slot(object = anchor, 
-                                                                 name = "object.list"), FUN = function(x) {
-                                                                   suppressWarnings(expr = x <- DietSeurat(x, features = features[1:2]))
-                                                                   return(x)
-                                                                 })
-  object_merged <- IntegrateEmbeddings(anchorset = anchor, 
-                                       reductions = orig, new.reduction.name = new.reduction, 
-                                       dims.to.integrate = dims.to.integrate, k.weight = k.weight, 
-                                       weight.reduction = weight.reduction, sd.weight = sd.weight, 
-                                       sample.tree = sample.tree, preserve.order = preserve.order, 
-                                       verbose = verbose)
-  output.list <- list(object_merged[[new.reduction]])
-  names(output.list) <- c(new.reduction)
-  return(output.list)
+    if (normalization.method == 'SCT') {
+        #create grouping variables
+        groups <- CreateIntegrationGroups(object, layers = layers, scale.layer = scale.layer)
+        object.sct <- CreateSeuratObject(counts = object, assay = 'SCT')
+        object.sct$split <- groups[,1]
+        object.list <- SplitObject(object = object.sct, split.by = 'split')
+        object.list <- PrepSCTIntegration(object.list = object.list, anchor.features = features)
+        object.list <- lapply(X = object.list, FUN = function(x) {
+            x <- RunPCA(object = x, features = features, verbose = FALSE, npcs = max(dims))
+            return(x)
+        }
+        )
+    } else {
+        object.list <- list()
+        for (i in seq_along(along.with = layers)) {
+            object.list[[i]] <- suppressMessages(suppressWarnings(
+                CreateSeuratObject(counts = NULL, data = object[layers[i]][features,])
+            ))
+            VariableFeatures(object =  object.list[[i]]) <- features
+            object.list[[i]] <- suppressWarnings(ScaleData(object = object.list[[i]], verbose = FALSE))
+            object.list[[i]] <- RunPCA(object = object.list[[i]], verbose = FALSE, npcs=max(dims))
+            suppressWarnings(object.list[[i]][['RNA']]$counts <- NULL)
+        }
+    }
+    anchor <- FindIntegrationAnchors(object.list = object.list,
+                                     anchor.features = features,
+                                     scale = FALSE,
+                                     reduction = 'rpca',
+                                     normalization.method = normalization.method,
+                                     dims = dims,
+                                     k.filter = k.filter,
+                                     reference = reference,
+                                     verbose = verbose,
+                                     ...
+    )
+    slot(object = anchor, name = "object.list") <- lapply(
+        X = slot(
+            object = anchor,
+            name = "object.list"),
+        FUN = function(x) {
+            suppressWarnings(expr = x <- DietSeurat(x, features = features[1:2]))
+            return(x)
+        })
+    object_merged <- IntegrateEmbeddings(anchorset = anchor,
+                                         reductions = orig,
+                                         new.reduction.name = new.reduction,
+                                         dims.to.integrate = dims.to.integrate,
+                                         k.weight = k.weight,
+                                         weight.reduction = weight.reduction,
+                                         sd.weight = sd.weight,
+                                         sample.tree = sample.tree,
+                                         preserve.order = preserve.order,
+                                         verbose = verbose
+    )
+    
+    output.list <- list(object_merged[[new.reduction]])
+    names(output.list) <- c(new.reduction)
+    return(output.list)
 }
 
 ####################################################################################
@@ -734,11 +751,13 @@ scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers
                                   conda_env = NULL, new.reduction = "integrated.dr", ndims = 30, 
                                   nlayers = 2, gene_likelihood = "nb", max_epochs = NULL, ...) 
 {
+  print("Runs scVIIntegration_Fixed")
   reticulate::use_condaenv(conda_env, required = TRUE)
   sc <- reticulate::import("scanpy", convert = FALSE)
-  scvi <- reticulate::import("scvi", convert = FALSE)
   anndata <- reticulate::import("anndata", convert = FALSE)
   scipy <- reticulate::import("scipy", convert = FALSE)
+  scvi <- reticulate::import("scvi", convert = FALSE)
+  scvi$settings$seed = 0L
   object <- JoinLayers(object = object, layers = "counts")
   adata <- sc$AnnData(X = scipy$sparse$csr_matrix(as(Matrix::t(LayerData(object, 
                                                                          layer = "counts")[features, ]), "dgCMatrix")), obs = data.frame(group=groups), var = object[[]][features, 
