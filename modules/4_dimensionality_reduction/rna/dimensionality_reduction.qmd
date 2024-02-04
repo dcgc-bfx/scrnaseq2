@@ -38,7 +38,10 @@ params:
   # One or more integration method(s) to use. 
   # The following methods are available: null (just merge), CCAIntegration, RPCAIntegration, HarmonyIntegration, FastMNNIntegration, scVIIntegration.
   integration_methods:
-  - "scVIIntegration"
+  - "RPCAIntegration"
+  - "FastMNNIntegration"
+  - "CCAIntegration"
+  - "FastMNNIntegration"
 
   # Parameters for CCAIntegration
   CCAIntegration: null
@@ -65,6 +68,15 @@ execute:
 ---
 
 # Dimensionality reduction
+
+- rna.pca
+- rna.pca.full
+- rna.cca
+- rna.rpca
+- rna.harmony
+- rna.mnn
+- rna.scvi
+- rna.umap
 
 ```{r}
 #| label: setup
@@ -485,6 +497,23 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
   MessageBox("There is only one dataset so that integration is not neccessary.")
 }
 ```
+
+```{r}
+
+#| label: integration_rna_run_integration_plots
+#| results: asis
+#| eval: !expr length(integration_methods) > 0 & num_datasets > 0
+#| include: !expr length(integration_methods) > 0 & num_datasets > 0
+
+dimensionality_reduction_method = param("dimensionality_reduction_method")
+integration_methods = param("integration_methods")
+
+# Plot different integration methods
+
+
+
+```
+
 
 ## Save Seurat object
 

@@ -551,6 +551,8 @@ FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variabl
 #' @param verbose Be verbose.
 #' @return Seurat v5 object with a new (integrated) reduction.
 RunDimRedWrapper = function(sc, method="pca", assay=NULL, dim_n=50, verbose=TRUE) {
+  if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
+    
   # Checks
   valid_methods = c("pca")
   assertthat::assert_that(method %in% valid_methods,
@@ -558,12 +560,14 @@ RunDimRedWrapper = function(sc, method="pca", assay=NULL, dim_n=50, verbose=TRUE
   
   # Run dimensionality reduction
   if (method == "pca") {
-    sc = Seurat::RunPCA(sc, verbose=verbose, npcs=min(dim_n, ncol(sc)), seed.use=getOption("random_seed"))
+    sc = Seurat::RunPCA(sc,
+                        assay=assay,
+                        verbose=verbose, 
+                        npcs=min(dim_n, ncol(sc)), 
+                        seed.use=getOption("random_seed"),
+                        reduction.name="pca",
+                        reduction.key="pca_")
   }
-  
-  # Set key
-  SeuratObject::Key(sc[[method]]) = paste0(method, "_") %>% 
-    tolower()
 
   return(sc)
 }
@@ -633,7 +637,7 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   # Call integration method
   sc = purrr::exec(Seurat::IntegrateLayers,
                    !!!c(list(sc,
-                             method=integration_method,
+                             method=integration_method_arg,
                              orig.reduction=orig_reduct,
                              assay=assay,
                              new.reduction=new_reduct,
