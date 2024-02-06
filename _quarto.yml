@@ -67,10 +67,13 @@ format:
     #  message: false
     #  warning: false
     knitr:
-      opts_chunk: 
+      opts_chunk:
         dev:
-        - "ragg_png"
+        - "png"
         - "cairo_pdf"
+        dev.args:
+          png:
+            type: "cairo"
   # pdf:
   #   documentclass: "scrreprt"
   #   code-block-bg: true
@@ -86,10 +89,13 @@ format:
   #   #  message: false
   #   #  warning: false
   #   knitr:
-  #     opts_chunk: 
+  #     opts_chunk:
   #       dev:
   #       - "cairo_pdf"
-  #       - "ragg_png"
+  #       - "png"
+  #       dev.args:
+  #         png:
+  #           type: "cairo"
   #   include-in-header:
   #     text: |
   #       \usepackage{fvextra}
@@ -107,10 +113,13 @@ format:
   #   #  message: false
   #   #  warning: false
   #   knitr:
-  #     opts_chunk: 
+  #     opts_chunk:
   #       dev:
-  #       - "ragg_png"
+  #       - "png"
   #       - "cairo_pdf"
+  #       dev_args:
+  #         png:
+  #           type: "cairo"
 
 #########
 # Other #
