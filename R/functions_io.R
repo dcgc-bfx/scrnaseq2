@@ -1196,8 +1196,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
                                      colClasses=c("cell_id"="character", "x_centroid"="numeric", "y_centroid"="numeric", "cell_area"="numeric", "nucleus_area"="numeric"),
                                      col.names=c("cell", "x", "y", "cell_area", "nucleus_area"), 
                                      key="cell",
-                                     showProgress=FALSE,
-                                     nThread=cores)
+                                     showProgress=FALSE)
   if (!is.null(barcodes)) {
     cell_centroids = cell_centroids[barcodes]
   }
@@ -1214,8 +1213,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
                                         colClasses=c("cell_id"="character", "vertex_x"="numeric", "vertex_y"="numeric"),
                                         col.names=c("cell", "x", "y"),
                                         key="cell",
-                                        showProgress=FALSE,
-                                        nThread=cores)
+                                        showProgress=FALSE)
     if (!is.null(barcodes)) {
       cell_boundaries = cell_boundaries[barcodes]
     }
@@ -1230,8 +1228,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
                                   colClasses=c("feature_name"="character", "x_location"="numeric", "y_location"="numeric", "qv"="numeric"),
                                   col.names=c("gene", "x", "y", "qv"),
                                   key="qv",
-                                  showProgress=FALSE,
-                                  nThread=cores)
+                                  showProgress=FALSE)
   transcripts = transcripts[qv >= mols.qv.threshold]
   transcripts$qv = NULL
   molecules = SeuratObject::CreateMolecules(transcripts, key='mols_')
@@ -1261,9 +1258,6 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
 #' @return A Seurat VisiumV1 object.
 ReadImage = function(image_dir, technology, assay, barcodes=NULL, coordinate_type=c("centroids", "segmentations")) {
   library(magrittr)
-  #image_dir = "/group/sequencing/Bfx/scripts/andreasp/scrnaseq/datasets/10x_visium_human_brain_cancer/spatial/"
-  #technology = "10x_xenium"
-  #barcodes = colnames(counts_lst[[1]][[1]])
   
   # Checks
   valid_technologies = c("10x_visium", "10x_xenium")
@@ -1487,6 +1481,113 @@ ParsePlateInformation = function(cell_names, pattern='_(\\d+)_([A-Z])(\\d+)$') {
   return(plate_information)
 }
 
+####################################################################################
+# This is a copy of the SeuratObject::SaveSeuratRds with the following bugs fixed: #
+# - matrices consisting of multiple paths (submatrices) cannot be copied           #
+####################################################################################
+SaveSeuratRds_Fixed <- function (object, file = NULL, move = TRUE, destdir = deprecated(), relative = FALSE, ...) 
+{
+  library(lifecycle)
+  library(progressr)
+  library(rlang)
+  
+  file <- file %||% file.path(getwd(), paste0(Project(object = object), 
+                                              ".Rds"))
+  file <- normalizePath(path = file, winslash = "/", mustWork = FALSE)
+  if (is_present(arg = destdir)) {
+    .Deprecate(when = "5.0.1", what = "SaveSeuratRds(destdir = )", 
+               with = "SaveSeuratRds(move = )", details = paste("Specifying a directory to move on-disk layers stored in", 
+                                                                sQuote(x = normalizePath(path = tempdir(), winslash = "/", 
+                                                                                         mustWork = FALSE)), "is deprecated; now, specify `move = TRUE` either move all on-disk layers to", 
+                                                                sQuote(x = dirname(path = file)), "or `move = FALSE` leave them as-is"))
+    move <- is_bare_character(x = destdir, n = 1L) || is.null(x = destdir)
+  }
+  assays <- .FilterObjects(object = object, classes.keep = "StdAssay")
+  p <- progressor(along = assays, auto_finish = TRUE)
+  on.exit(expr = p(type = "finish"), add = TRUE)
+  p(message = paste("Running a bug-fixed version of SaveSeuratRds\nLooking for on-disk matrices in", length(x = assays), 
+                    "assays"), class = "sticky", amount = 0)
+  cache <- vector(mode = "list", length = length(x = assays))
+  names(x = cache) <- assays
+  destdir <- dirname(path = file)
+  if (isTRUE(x = move)) {
+    check_installed(pkg = "fs", reason = "for moving on-disk matrices")
+  }
+  for (assay in assays) {
+    p(message = paste("Searching through assay", assay),
+      class = "sticky", amount = 0)
+    df <- lapply(X = Layers(object = object[[assay]]), FUN = function(lyr) {
+      ldat <- LayerData(object = object[[assay]], layer = lyr)
+      path <- .FilePath(x = ldat)
+      path <- Filter(f = nzchar, x = path)
+      if (!length(x = path)) {
+        path <- NULL
+      }
+      if (is.null(x = path)) {
+        return(NULL)
+      }
+      return(data.frame(layer = lyr, path = path, class = paste(class(x = ldat), 
+                                                                collapse = ","), pkg = .ClassPkg(object = ldat), 
+                        fxn = .DiskLoad(x = ldat) %||% identity))
+    })
+    df <- do.call(what = "rbind", args = df)
+    if (is.null(x = df) || !nrow(x = df)) {
+      p(message = "No on-disk layers found", class = "sticky",
+        amount = 0)
+      next
+    }
+    if (isTRUE(x = move)) {
+      for (i in seq_len(length.out = nrow(x = df))) {
+        pth <- unlist(strsplit(df$path[i], ","))
+        p(message = paste("Moving layer", sQuote(x = df$layer[i]),
+                          "to", sQuote(x = destdir)), class = "sticky",
+          amount = 0)
+        new_pth <- lapply(pth, function(p) return(as.character(.FileMove(path = p, new_path = destdir))))
+        new_pth <- paste(unlist(new_pth), collapse=",")
+        df[i, "path"] <- new_pth
+      }
+    }
+    if (isTRUE(x = relative)) {
+      p(message = paste("Adjusting paths to be relative to",
+                        sQuote(x = dirname(path = file), q = FALSE)),
+        class = "sticky", amount = 0)
+      df$path <- as.character(x = fs::path_rel(path = df$path, 
+                                               start = dirname(path = file)))
+    }
+    df$assay <- assay
+    cache[[assay]] <- df
+    if (nrow(x = df) == length(x = Layers(object = object[[assay]]))) {
+      p(message = paste("Clearing layers from", assay),
+        class = "sticky", amount = 0)
+      adata <- S4ToList(object = object[[assay]])
+      adata$layers <- list()
+      adata$default <- 0L
+      adata$cells <- LogMap(y = colnames(x = object[[assay]]))
+      adata$features <- LogMap(y = rownames(x = object[[assay]]))
+      object[[assay]] <- ListToS4(x = adata)
+    } else {
+      p(message = paste("Clearing", nrow(x = df), "layers from",
+                        assay), class = "sticky", amount = 0)
+      for (layer in df$layer) {
+        LayerData(object = object[[assay]], layer = layer) <- NULL
+      }
+    }
+    p()
+  }
+  cache <- do.call(what = "rbind", args = cache)
+  if (!is.null(x = cache) && nrow(x = cache)) {
+    p(message = "Saving on-disk cache to object", class = "sticky", 
+      amount = 0)
+    row.names(x = cache) <- NULL
+    #Tool(object = object) <- cache
+    object@tools$SaveSeuratRds <- cache
+  }
+  saveRDS(object = object, file = file, ...)
+  return(invisible(x = file))
+}
+####################################################################################
+####################################################################################
+
 #' Saves Seurat object and - if available and requested - associated on-disk layers. Extension of Seurat's SaveSeuratRds.
 #' 
 #' @param sc A Seurat sc object.
@@ -1494,32 +1595,33 @@ ParsePlateInformation = function(cell_names, pattern='_(\\d+)_([A-Z])(\\d+)$') {
 #' @param on_disk_layers If TRUE also copy existing on-disk layers into this directory.
 #' @param clean If there are already files/directories in outdir, remove them.
 #' @param relative Make paths to on-disk layers relative.
-SaveSeuratRds_Custom = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, relative=FALSE) {
-  library(SeuratObject)
-  
+SaveSeuratRdsWrapper = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, relative=FALSE) {
   # If output directory does not exist, create it
   if (!dir.exists(outdir)) dir.create(outdir, recursive=TRUE)
-    
-  # If output directory is not empty, remove all files/directories if clean is set
-  if (clean) {
-    files = list.files(path=outdir, full.names=TRUE)
-    if (length(files) > 0) unlink(files, recursive=TRUE)
-  }
+  
+  # Make sure output directory is empty
+  files = list.files(outdir)
+  assertthat::assert_that(length(files) == 0,
+                          msg=FormatString("Target directory for Seurat object and associated matrix directories at {outdir} must be empty but is not. Please delete all files and directories in this directory."))
   
   # Save Seurat object and on-disk data using the SeuratObject function SaveSeuratRds
-  SaveSeuratRds(sc, file=file.path(outdir, "sc.rds"), move=on_disk_layers)
+  SeuratObject::SaveSeuratRds(sc, file=file.path(outdir, "sc.rds"), move=on_disk_layers)
   
   # Then make sure that the paths pointing to the layers are correct
   if (on_disk_layers) {
     sc = readRDS(file.path(outdir, "sc.rds"))
-    paths = basename(sc@tools$SaveSeuratRds$path)
-    if (!relative) paths = file.path(outdir, paths)
+    paths = sc@tools$SaveSeuratRds$path
+    paths = lapply(paths, function(p) {
+      p = unlist(strsplit(p, ","))
+      p = basename(p)
+      if (!relative) p = file.path(outdir, p)
+      return(paste(p, collapse=","))
+    })
+    paths = unlist(paths)
     sc@tools$SaveSeuratRds$path = paths
-    
     saveRDS(sc, file=file.path(outdir, "sc.rds"))
   }
 }
-
 
 #' Copies on-disk layers of a Seurat object to a new directory.
 #' 
@@ -1557,6 +1659,11 @@ UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL) {
       path = SeuratObject::.FilePath(x=data)
       path = Filter(f=nzchar, x=path)
       if (is.null(path)) next
+      
+      # Error if new path already exists
+      new_path = file.path(dir, basename(path))
+      assertthat::assert_that(!file.exists(new_path) & !dir.exists(new_path),
+                              msg=FormatString("Cannot copy matrix directory to already existing path {new_path}. Please delete this path first."))
       
       # Move on-disk matrix directory to new path
       progr(message = paste("Moving layer", layers[i], "to", dir), class="sticky", amount=0)
