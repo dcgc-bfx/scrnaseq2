@@ -40,23 +40,56 @@ FormatString = function(x, quote=TRUE, sep=", ") {
   return(glue::glue(x, .transformer=GlueTransformer_quote_collapse(), .envir=parent.frame()))
 }
 
+#' Generates a callout box for showing notes, tips or warnings
+#' 
+#' @param x Character string that will be formatted by the FormatString function
+#' @param type Type of callout box. Can be: 'note', 'tip', 'important', 'caution' and 'warning'.
+#' @param print Whether to print (if TRUE) or to return (FALSE) the message box
+#' @return Character string to generate a message box
+CalloutBox = function(x, type, print=TRUE) {
+  valid_types = c("note", "tip", "important", "caution", "warning")
+  assertthat::assert_that(type %in% valid_types,
+                          msg=FormatString("Callout box typ {type} but must be one of: {valid_types*}."))
+  
+  
+  
+  x = paste0("\n\n::: callout-", type, "\n", FormatString(x), "\n:::\n\n")
+  if (print) {
+    cat(x)
+  } else {
+    return(x)
+  }
+}
+
 #' Generates a warning box
 #' 
 #' @param x Character string that will be formatted by the FormatString function
+#' @param print Whether to print (if TRUE) or to return (FALSE) the warning box
 #' @return Character string to generate a warning box
-WarningBox = function(x) {
-  x = paste0("\n::: callout-warning\n", FormatString(x), "\n:::\n")
-  cat(x)
+WarningBox = function(x, print=TRUE) {
+  x = CalloutBox(x, type="warning", print=FALSE)
+  if (print) {
+    cat(x)
+  } else {
+    return(x)
+  }
 }
 
 #' Generates a message box
 #' 
 #' @param x Character string that will be formatted by the FormatString function
+#' @param print Whether to print (if TRUE) or to return (FALSE) the message box
 #' @return Character string to generate a message box
-MessageBox = function(x) {
-  x = paste0("\n::: callout-message\n", FormatString(x), "\n:::\n")
-  cat(x)
+MessageBox = function(x, print=TRUE) {
+  x = CalloutBox(x, type="note", print=FALSE)
+  if (print) {
+    cat(x)
+  } else {
+    return(x)
+  }
 }
+
+
 
 #' Returns the content of the profile yaml.
 #' 
@@ -360,10 +393,8 @@ EvalKnitrChunk = function(x) {
 #' @param orig_idents The samples in the analysis
 #' @return A filter with entries for each sample
 PrepareBarcodeFilter = function(filter, orig_idents) {
-  if (is.null(filter)) {
-    filter = rep(list(NULL), length(orig_idents))
-    names(filter) = orig_idents
-    return(filter)
+  if (is.null(filter) | length(filter) == 0) {
+    return(NULL)
   }
   
   sample_specific_filter = filter[names(filter) %in% orig_idents]
@@ -388,10 +419,8 @@ PrepareBarcodeFilter = function(filter, orig_idents) {
 #' @param orig_idents The samples in the analysis
 #' @return A filter with entries for each sample
 PrepareFeatureFilter = function(filter, orig_idents) {
-  if (is.null(filter)) {
-    filter = list(min_counts=1, min_cells=1)
-    filter = rep(filter, length(orig_idents))
-    names(filter) = orig_idents
+  if (is.null(filter) | length(filter) == 0) {
+    return(NULL)
   }
   
   sample_specific_filter = filter[names(filter) %in% orig_idents]

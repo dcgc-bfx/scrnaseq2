@@ -124,7 +124,7 @@ GeneratePlotCaptions = function(plot_names, remove=NULL, split=NULL, capitalize=
     }
     
     # Collapse
-    x = paste(x, collapse=" Vs ")
+    x = paste(x, collapse=" vs ")
     
     # If requested, make first letter upper-case
     if (capitalize) {

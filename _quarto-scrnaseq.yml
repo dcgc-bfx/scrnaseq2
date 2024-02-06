@@ -12,7 +12,7 @@ book:
   chapters:
   - "index.qmd"
   - "modules/1_read_data/read_data.qmd"
-  #- "modules/2_preprocessing/rna/preprocessing.qmd"
+  - "modules/2_qc_filtering/rna/qc_filtering.qmd"
   #- "modules/3_normalization/rna/normalization.qmd"
   #- "modules/6_clusterqc/clusterqc.qmd"
   #- "modules/8_cluster_composition/cluster_composition.qmd"
