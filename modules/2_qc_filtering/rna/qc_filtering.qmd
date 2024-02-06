@@ -821,7 +821,7 @@ plist[[{{i}}]]
   
   cat(":::\n")
 } else {
-  CalloutBox(x="No barcode QC parameters for plotting available.", type="note"
+  CalloutBox(x="No barcode QC parameters for plotting available.", type="note")
 }
 ```
 

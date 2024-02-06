@@ -172,13 +172,6 @@ if (cellcycle_remove) {
     vars_to_regress = c(vars_to_regress, "CC.Difference") %>% unique()
   }
 }
-
-# DELETE
-MessageBox = function(x) {
-  x = paste0("\n::: callout-note\n", FormatString(x), "\n:::\n")
-  cat(x)
-}
-
 ```
 
 In this section, we subsequently run a series of Seurat functions for each provided sample:
@@ -231,6 +224,8 @@ While raw data is typically used for statistical tests such as finding marker ge
 #| label: normalization_rna_normalize
 #| results: asis
 
+# Run normalisation
+
 normalisation_method = param("normalisation_method")
 num_variable_features = param("num_variable_features")
 
@@ -241,7 +236,7 @@ if (normalisation_method == "lognorm") {
                              normalization.method="LogNormalize", 
                              verbose=verbose)
   
-  MessageBox("We have used the log normalisation of Seurat.")
+  CalloutBox("We have used the log normalisation of Seurat.", type="note")
   
 } else if(normalisation_method == "scran") {
   # Run scran normalization
@@ -252,7 +247,7 @@ if (normalisation_method == "lognorm") {
                             chunk_size=50000)
   }, enable=verbose)
   
-  MessageBox("We have used the scran normalization.")
+  CalloutBox("We have used the scran normalization.")
   
 } else if(normalisation_method == "SCT") {
   # Run SCTransform normalization
@@ -269,7 +264,7 @@ if (normalisation_method == "lognorm") {
                    conserve.memory=length(Cells(sc)) >= 100000)
   Seurat::DefaultAssay(sc) = sct_assay_name
 
-  MessageBox("We have used the SCTransform normalization.")
+  CalloutBox("We have used the SCTransform normalization.", type="note")
 }
 
 # Convert queued operations into real data and write normalized data to disk
@@ -310,6 +305,8 @@ For each gene, we calculate its median expression across all cells, and then cal
 #|  - "Relative log expression plot for raw counts"
 #|  - "Relative log expression plot for normalized counts"
 
+# Plot relative log expression
+
 normalisation_method = param("normalisation_method")
 
 # Do relative log expression plots
@@ -334,6 +331,8 @@ To determine variable genes, we need to separate biological variability from tec
 #| label: normalization_rna_variable_features
 #| results: asis
 
+# Find variable features
+
 normalisation_method = param("normalisation_method")
 feature_selection_method = param("feature_selection_method")
 num_variable_features = param("num_variable_features")
@@ -347,7 +346,7 @@ if(normalisation_method != "SCT" & feature_selection_method != "SCT") {
                                    verbose=verbose)
 }
 
-MessageBox("We have used the {feature_selection_method} method to select {num_variable_features} variable features.")
+CalloutBox("We have used the {feature_selection_method} method to select {num_variable_features} variable features.", type="note")
 ```
 
 ```{r}
@@ -358,6 +357,7 @@ MessageBox("We have used the {feature_selection_method} method to select {num_va
 #| results: asis
 
 # Plot variable features
+
 if (feature_selection_method == "SCT") {
   plist = PlotVariableFeatures(sc, 
                      method="sct",
@@ -419,6 +419,8 @@ After normalization, gene expression data can be compared between cells. However
 #| label: dimensionality_reduction_rna_scale_data
 #| results: asis
 
+# Scale data
+
 normalisation_method = param("normalisation_method")
 
 # SCTransform already scaled data
@@ -440,7 +442,7 @@ if(normalisation_method != "SCT") {
 }
 
 # Print a message
-MessageBox("The following variables were regressed out during scaling of the data: {vars_to_regress*}.")
+CalloutBox("The following variables were regressed out during scaling of the data: {vars_to_regress*}.", type="note", type="note")
 ```
 
 ## Sketching
@@ -450,6 +452,8 @@ Depending on the size of the datasets, it may not possible anymore to run the do
 ```{r}
 #| label: normalization_rna_sketching
 #| results: asis
+
+# Prepare sketching
 
 normalisation_method = param("normalisation_method")
 feature_selection_method = param("feature_selection_method")
@@ -519,12 +523,15 @@ if (use_sketching) {
   }
 
   # Print sketched assay
+  CalloutBox("We have used sketching.", type="note")
   print(sc)
 
   # Finally reset default assay to non-sketched assay
   SeuratObject::DefaultAssay(sc) = ifelse(normalisation_method=="SCT", 
                                           paste(default_assay, "SCT", sep="_"), 
                                           default_assay)
+} else {
+  CalloutBox("We have not used sketching.", type="note")
 }
 ```
 
@@ -535,8 +542,8 @@ if (use_sketching) {
 #| label: normalization_rna_save_seurat
 
 # For the SCT assay: Is it really necessary to keep the 'counts' and the 'data' slots? There is no possiblity to save them on-disk. Do we want do clear the to save memory? (Especially for big datasets)
-# - 'data' appears to be neccessary for downstream analysis
-# - 'counts' is not neccessary for downstream analysis
+# - 'data' appears to be necessary for downstream analysis
+# - 'counts' is not necessary for downstream analysis
 if (normalisation_method == "SCT") {
   # Drop for full dataset
   sct_assay_name = paste(default_assay, "SCT", sep="_")
@@ -550,11 +557,11 @@ if (normalisation_method == "SCT") {
 }
 
 # This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-#assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
+assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
 
 # Save Seurat object and layer data
 with_progress({
-  SaveSeuratRds_Custom(sc,
+  SaveSeuratRdsWrapper(sc,
                        on_disk_layers=on_disk_counts,
                        outdir=file.path(module_dir, "sc"))
 }, enable=verbose)
