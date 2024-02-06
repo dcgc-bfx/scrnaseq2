@@ -62,7 +62,7 @@ execute:
   freeze: auto
 ---
 
-# Data preprocessing
+# Normalization
 
 ```{r}
 #| label: setup
@@ -218,7 +218,7 @@ Normalisation method used for this report: `param$norm`; with additional sources
 
 While raw data is typically used for statistical tests such as finding marker genes, normalised data is mainly used for visualising gene expression values. Scaled data include variable genes only, potentially without cell cycle effects, and are mainly used to determine the structure of the dataset(s) with Principal Component Analysis, and indirectly to cluster and visualise cells in 2D space.
 
-## Normalisation
+## Normalisation method
 
 ```{r}
 #| label: normalization_rna_normalize
@@ -299,11 +299,15 @@ To better understand the efficiency of the applied normalisation procedures, we 
 
 For each gene, we calculate its median expression across all cells, and then calculate the deviation from this median for each cell. For each cell, we plot the median expression (black), the interquartile range (<span style="color:lightgrey;font-weight:bold">lightgrey</span>), whiskers defined as 1.5 times the interquartile range (<span style="color:darkgrey;font-weight:bold">darkgrey</span>), and outliers (`r paste0('<span style="color:', unname(ScColours(sc, "orig.ident")), ';font-weight:bold">', unname(ScColours(sc, "orig.ident")), '</span>', collapse=', ')`)
 
+::: panel-tabset
+
+##### Raw counts
+
 ```{r}
-#| label: normalization_rna_rle_plots
-#| fig-cap:
-#|  - "Relative log expression plot for raw counts"
-#|  - "Relative log expression plot for normalized counts"
+
+```{r}
+#| label: normalization_rna_rle_plot_raw
+#| fig-cap: "Relative log expression plot for raw counts"
 
 # Plot relative log expression
 
@@ -312,10 +316,26 @@ normalisation_method = param("normalisation_method")
 # Do relative log expression plots
 p = PlotRLE(sc, layer="counts", is_log=FALSE)
 p
+```
 
+##### Normalized counts
+
+```{r}
+
+```{r}
+#| label: normalization_rna_rle_plot_normalized
+#| fig-cap: "Relative log expression plot for normalized counts"
+
+# Plot relative log expression
+
+normalisation_method = param("normalisation_method")
+
+# Do relative log expression plots
 p = PlotRLE(sc, layer="data", is_log=TRUE)
 p
 ```
+
+:::
 
 ## Variable features
 
@@ -416,7 +436,7 @@ After normalization, gene expression data can be compared between cells. However
 </details>
 
 ```{r}
-#| label: dimensionality_reduction_rna_scale_data
+#| label: normalization_rna_scale_data
 #| results: asis
 
 # Scale data
@@ -442,7 +462,7 @@ if(normalisation_method != "SCT") {
 }
 
 # Print a message
-CalloutBox("The following variables were regressed out during scaling of the data: {vars_to_regress*}.", type="note", type="note")
+CalloutBox("The following variables were regressed out during scaling of the data: {vars_to_regress*}.", type="note")
 ```
 
 ## Sketching
@@ -523,7 +543,7 @@ if (use_sketching) {
   }
 
   # Print sketched assay
-  CalloutBox("We have used sketching.", type="note")
+  CalloutBox(paste("Sketching was applied using a subset of", num_barcodes_for_sketching, "barcodes."), type="note")
   print(sc)
 
   # Finally reset default assay to non-sketched assay
@@ -531,7 +551,7 @@ if (use_sketching) {
                                           paste(default_assay, "SCT", sep="_"), 
                                           default_assay)
 } else {
-  CalloutBox("We have not used sketching.", type="note")
+  CalloutBox("Sketching was not applied.", type="note")
 }
 ```
 
