@@ -33,7 +33,7 @@ scrnaseq2.Rproj
 /docs/*/
 !/docs/*.qmd
 !/docs/*.html
-
+!/docs/*.png
 
 # Ignore files and directories produced at the project level
 /*.html
