@@ -159,6 +159,7 @@ The following datasets are defined in the table:
 #| tbl-cap: "Datasets to be read"
 
 # Read table with datasets
+
 datasets_file = param("datasets_file")
 datasets = ReadDatasetsTable(datasets_file)
 
@@ -216,6 +217,8 @@ Sequencing reads from SmartSeq-2 (and other) experiments can be mapped with any 
 ```{r}
 #| label: read_data_metrics
 #| results: asis
+
+# Show general metrics for datasets
 
 # Read metrics tables into list
 metrics_tables = purrr::map(1:nrow(datasets), function(i) {
@@ -283,7 +286,7 @@ In addition to the count matrix, the workflow stores additional information in t
 ```{r}
 #| label: read_data_read_counts
 
-# Read counts
+# Read counts of barcodes (cells, nuclei or spots) and features (genes, peaks or proteins) for each dataset
 
 ############################
 # Read counts for datasets #
@@ -416,7 +419,7 @@ for (i in 1:nrow(datasets)) {
     
     # Now make new feature names Seurat-compatible
     if (any(grepl(pattern="_", x=new_feature_names, fixed=TRUE))) {
-      warning(FormatString("New feature names contain '_' after renaming for dataset {path}, assay {assay}. All occurences will be replaced with '-'."))
+      CalloutBox(x="New feature names contain '_' after renaming for dataset {path}, assay {assay}. All occurences will be replaced with '-'.", type="warning")
       new_feature_names = gsub(pattern="_", replacement="-", x=new_feature_names, fixed=TRUE)
     }
     
@@ -544,7 +547,7 @@ Here is the summary of barcodes and features for each dataset:
 #| label: tbl-read_data_counts_summary
 #| tbl-cap: "Counts for each dataset"
 
-# Print summary of feature and barcodes
+# Print summary of barcodes (cells, nuclei or spots) and features (genes, peaks or proteins)
 counts_summary = data.frame(
   sample = purrr::map_depth(counts_lst, 2, attr, "sample") %>% purrr::flatten() %>% unlist(),
   dataset = purrr::map_depth(counts_lst, 2, attr, "orig.ident") %>% purrr::flatten() %>% unlist(),
@@ -560,7 +563,7 @@ In case, the counts datasets are very big, it is possible to (randomly) sample b
 ```{r}
 #| label: read_data_downsample
 
-# Downsample barcodes
+# Downsample barcodes (cells, nuclei or spots)
 
 # Determine number of barcodes to downsample
 downsample_barcodes_n = param("downsample_barcodes_n")
@@ -621,7 +624,7 @@ if (!is.null(downsample_barcodes_n) | downsample_barcodes_equally) {
   }
 }
 
-# Downsample features
+# Downsample features  (genes, peaks or proteins)
 downsample_features_n = param("downsample_features_n")
 
 if (!is.null(downsample_features_n)) {
@@ -663,11 +666,11 @@ if (!is.null(downsample_features_n)) {
   
 # Message
 if (!is.null(downsample_barcodes_n) & !is.null(downsample_features_n)) {
-  MessageBox("Your data has been downsampled to at most {downsample_barcodes_n} barcodes and at most {downsample_features_n} features.")
+  CalloutBox(x="Your data has been downsampled to at most {downsample_barcodes_n} barcodes and at most {downsample_features_n} features.", type="note")
 } else if (!is.null(downsample_barcodes_n)) {
-  MessageBox("Your data has been downsampled to at most {downsample_barcodes_n} barcodes.")
+  CalloutBox(x="Your data has been downsampled to at most {downsample_barcodes_n} barcodes.", type="note")
 } else if (!is.null(downsample_barcodes_n)) {
-  MessageBox("Your data has been downsampled to at most {downsample_features_n} features.")
+  CalloutBox(x="Your data has been downsampled to at most {downsample_features_n} features.", type="note")
 }
 ```
 
@@ -675,6 +678,8 @@ Next we create the Seurat object. This is a summary representation of the object
 
 ```{r}
 #| label: read_data_seurat_object
+
+# Create Seurat object with assays and metadata for barcodes (cells, nuclei or spots) and features (genes, peaks or proteins)
 
 # List all assays in all datasets
 all_assays = purrr::map_depth(counts_lst, 2, attr, "assay") %>% 
@@ -846,6 +851,8 @@ For spatial workflows we add the image information.
 ```{r}
 #| label: read_data_read_images
 
+# Read images
+
 # Add images (10x Visium and 10x Xenium only)
 for (i in seq_along(counts_lst)) {
   technology = attr(counts_lst[[i]][[1]], "technology")
@@ -908,6 +915,8 @@ Finally we calculate some basic statistics such as percent counts in top50 featu
 ```{r}
 #| label: read_data_basic_stats
 
+# Calculate basic statistics for barcodes (cells, nuclei or spots)
+
 ############
 # Barcodes #
 ############
@@ -943,6 +952,8 @@ for (a in Seurat::Assays(sc)) {
 # Features #
 ############
 
+# Calculate basic statistics for features (genes, peaks or proteins)
+
 # Calculate for each assay
 for (a in Seurat::Assays(sc)) {
   # And each layer (dataset)
@@ -975,6 +986,8 @@ The following first table shows available metadata (columns) of the first 5 cell
 #| label: tbl-read_data_barcode_metadata
 #| tbl-cap: "Barcode metadata"
 
+# This is the metadata for barcodes (cells, nuclei or spots)
+
 df = sc[[]] %>% head(5)
 gt(df, rownames_to_stub=TRUE)
 ```
@@ -984,6 +997,8 @@ The second table shows available metadata (columns) of the first 5 genes (rows) 
 ```{r}
 #| label: read_data_feature_metadata
 #| results: asis
+
+# This is the metadata for features (genes, peaks or proteins)
 
 # How to dynamically generate tables: https://stackoverflow.com/questions/73585417/iterating-to-create-tabs-with-gt-in-quarto
 # String to create a chunk for each assay ({{assay}} is placeholder)
@@ -1021,6 +1036,8 @@ Here is a basic summary of the data.
 ```{r}
 #| label: read_data_basic_summary
 #| results: asis
+
+# Plot basic sumary for barcodes (cells, nuclei or spots)
 
 orig_idents = levels(sc$orig.ident)
 

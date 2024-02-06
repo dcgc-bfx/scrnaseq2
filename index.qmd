@@ -21,45 +21,42 @@ execute:
 
 # If running code interactively in rstudio, set profile here
 # When rendering with quarto, profile is already set and should not be overwritten
-if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "default")}
-
-# Source general configurations (always)
-source("R/general_configuration.R")
-
-# Source required R functions
-source("R/functions_util.R")
-source("R/functions_io.R")
+if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "scrnaseq")}
 
 # Load libraries
+library(knitr)
 library(magrittr)
-suppressMessages(library(Seurat))
+library(gt)
+library(Seurat)
+library(ggplot2)
+library(future)
 
 # Get module name and directory (needed to access files within the module directory)
-module_name = param("module")
-module_dir = file.path("modules", module_name)
+module_name = params$module_name
+module_dir = params$module_dir
 ```
 
 ## Scientific project
 
 For this tutorial, we analyzed two datasets of Peripheral Blood Mononuclear Cells (PBMC) freely available from 10X Genomics.
 
-* Two datasets, 1k and 5k cells
-* 10x 3' assay
-* Blood cells
+-   Two datasets, 1k and 5k cells
+-   10x 3' assay
+-   Blood cells
 
 Questions
 
-* How many clusters do we find?
-* What are the most abundant cell types?
-* How many T-cells do we find?
+-   How many clusters do we find?
+-   What are the most abundant cell types?
+-   How many T-cells do we find?
 
 ## Analysis
 
 ### About
 
-This HTML report is generated with [**scrnaseq2**](https://github.com/dcgc-bfx/scrnaseq2). [**scrnaseq2**](https://github.com/dcgc-bfx/scrnaseq2) is a bioinformatics workflow to analyze single-cell data, and it is written by the bioinformatics team of the DRESDEN-concept Genome Center. It follows best practices recommendations [@Luecken_2019; @Heumos_2023] and contains additional visualisations, tables and documentation for a better understanding. The workflow is written in R  and is largely based on the [Seurat v5](https://satijalab.org/seurat/) R package. 
+This HTML report is generated with [**scrnaseq2**](https://github.com/dcgc-bfx/scrnaseq2). [**scrnaseq2**](https://github.com/dcgc-bfx/scrnaseq2) is a bioinformatics workflow to analyze single-cell data, and it is written by the bioinformatics team of the DRESDEN-concept Genome Center. It follows best practices recommendations [@Luecken_2019; @Heumos_2023] and contains additional visualisations, tables and documentation for a better understanding. The workflow is written in R and is largely based on the [Seurat v5](https://satijalab.org/seurat/) R package.
 
-For more information, visit our [**GitHub page**](https://github.com/dcgc-bfx/scrnaseq2). If you are happy with the analysis, you can help us by rewarding the workflow with a star on GitHub. 
+For more information, visit our [**GitHub page**](https://github.com/dcgc-bfx/scrnaseq2). If you are happy with the analysis, you can help us by rewarding the workflow with a star on GitHub.
 
 ### How to cite
 
