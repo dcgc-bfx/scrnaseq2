@@ -2,10 +2,10 @@
 # Module-specific parameters (that are not already in the profile yaml)
 params:
   # Name of the module used in configurations
-  module: "preprocessing_rna"
+  module: "qc_filtering_rna"
     
   # Relative path to the module directory (which contains the qmd file)
-  module_dir: "modules/2_preprocessing/rna"
+  module_dir: "modules/2_qc_filtering/rna"
   
   # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
   prev_module_dir: null
@@ -97,7 +97,7 @@ plan(multisession, workers=4, gc=TRUE)
 ```
 
 ```{r}
-#| label: preprocess_rna_preparation
+#| label: qc_filtering_rna_preparation
 
 # CODE
 # Source general configurations (always)
@@ -162,7 +162,7 @@ Cells may have been damaged during sample preparation and might be only partiall
 ## Quality control
 
 ```{r}
-#| label: preprocess_rna_qc_barcodes_features
+#| label: qc_filtering_rna_qc_barcodes_features
 
 # BARCODES
 barcode_metadata = sc[[]]
@@ -232,7 +232,7 @@ First of all, low-quality cells of different cell types might cluster together d
 </details>
 
 ```{r}
-#| label: preprocess_rna_qc_plots
+#| label: qc_filtering_rna_qc_plots
 #| results: asis
 
 orig_idents = levels(sc$orig.ident)
@@ -260,7 +260,7 @@ if (length(barcode_qc) > 0) {
 ##### {{type}}
 
 \`\`\`{r}
-#| label: fig-preprocessing_rna_qc_{{type}}
+#| label: fig-qc_filtering_rna_qc_{{type}}
 #| fig-cap: '{{caption}}'
 #| echo: false
 #| message: false
@@ -290,7 +290,7 @@ plist[[{{i}}]]
 
 
 ```{r}
-#| label: preprocess_rna_qc_cor_plots
+#| label: qc_filtering_rna_qc_cor_plots
 #| results: asis
 
 orig_idents = levels(sc$orig.ident)
@@ -322,7 +322,7 @@ if (length(barcode_qc_cor) > 0) {
 ##### {{i}}
 
 \`\`\`{r}
-#| label: fig-preprocessing_rna_qc_{{type1}}_vs_{{type2}}
+#| label: fig-qc_filtering_rna_qc_{{type1}}_vs_{{type2}}
 #| fig-cap: '{{caption}}'
 #| echo: false
 #| message: false
@@ -355,7 +355,7 @@ plist[[{{i}}]]
 We next investigate whether there are individual genes that are represented by an unusually high number of counts. For each cell, we first calculate the percentage of counts per gene. Subsequently, for each gene, we calculate the median value of these percentages in all cells. Genes with the highest median percentage of counts are plotted below. 
 
 ```{r}
-#| label: preprocess_rna_highest_genes
+#| label: qc_filtering_rna_highest_genes
 
 orig_idents = levels(sc$orig.ident)
 barcode_metadata = sc[[]]
@@ -412,7 +412,7 @@ highestExpr_summary$orig.ident = factor(highestExpr_summary$orig.ident, levels=o
 ```
 
 ```{r}
-#| label: fig-preprocess_rna_highest_genes
+#| label: fig-qc_filtering_rna_highest_genes
 #| fig-cap: "Highest expressed genes overall"
 #| warning: false
 
@@ -427,7 +427,7 @@ p
 ```
 
 ```{r}
-#| label: preprocess_rna_highest_genes_datasets
+#| label: qc_filtering_rna_highest_genes_datasets
 #| results: asis
 
 orig_idents = levels(sc$orig.ident)
@@ -462,7 +462,7 @@ chunk_template = "
 ##### {{dataset}}
 
 \`\`\`{r}
-#| label: fig-preprocess_rna_highest_genes_dataset_{{dataset}}
+#| label: fig-qc_filtering_rna_highest_genes_dataset_{{dataset}}
 #| fig-cap: 'Highest expressed genes for dataset {{dataset}}'
 #| echo: false
 #| message: false
@@ -492,10 +492,13 @@ cat(":::", sep="\n")
 When working with human or animal samples, you should ideally constrain you experiments to a single sex to avoid including sex bias in the conclusions. However this may not always be possible. By looking at reads from chromosome Y (males) and XIST (X-inactive specific transcript) expression (mainly female) it is quite easy to determine per sample which sex it is. It can also bee a good way to detect if there has been any sample mixups, if the sample metadata sex does not agree with the computational predictions. (COPIED)
 
 ```{r}
-#| label: fig-preprocess_rna_sample_sex
+#| label: fig-qc_filtering_rna_sample_sex
+
+sum_xist = sum(sc[[paste("pXIST", default_assay, sep="_")]])
+sum_chry = sum(sc[[paste("pChrY", default_assay, sep="_")]])
 
 # Check if XIST and chrY genes are expressed
-if (sum(sc$pXIST_RNA) == 0 & sum(sc$pChrY_RNA) == 0) {
+if (sum_xist == 0 & sum_chry == 0) {
   WarningBox(x="No XIST or chrY gene expression measured! Either the genes are not expressed or not available in the dataset.", print=FALSE) %>% 
     knitr::asis_output()
 }
@@ -503,10 +506,10 @@ if (sum(sc$pXIST_RNA) == 0 & sum(sc$pChrY_RNA) == 0) {
 ```
 
 ```{r}
-#| label: fig-preprocess_rna_sample_sex_xIST_chrY
+#| label: fig-qc_filtering_rna_sample_sex_xIST_chrY
 #| fig-cap: "Sample sex based on expression of XIST and chrY genes"
-#| eval: !expr sum(sc$pXIST_RNA) > 0 & sum(sc$pChrY_RNA) > 0
-#| include: !expr sum(sc$pXIST_RNA) > 0 & sum(sc$pChrY_RNA) > 0
+#| eval: !expr sum_xist > 0 | sum_chry > 0
+#| include: !expr sum_xist > 0 | sum_chry > 0
 #| fig-height: 4
 
 plist = PlotBarcodeQC(sc, qc=paste(c("pXIST", "pChrY"), default_assay, sep="_"))
@@ -518,7 +521,7 @@ plist[[1]] + plist[[2]]
 Cells and genes are filtered based on the following thresholds: 
 
 ```{r}
-#| label: preprocess_rna_filters
+#| label: qc_filtering_rna_filters
 #| results: asis
 
 orig_idents = levels(sc$orig.ident)
@@ -580,7 +583,7 @@ if (length(feature_filter) == 0) {
 ::: {layout-ncol=2}
 
 ```{r}
-#| label: tbl-preprocess_rna_feature_print_barcode_filters
+#| label: tbl-qc_filtering_rna_feature_print_barcode_filters
 #| echo: false
 #| tbl-cap: !expr paste("Filters applied to barcodes for assay", default_assay)
 #| eval: !expr length(barcode_filter) > 0
@@ -591,7 +594,7 @@ gt(barcode_filter_tbl)
 ```
 
 ```{r}
-#| label: tbl-preprocess_rna_feature_print_feature_filters
+#| label: tbl-qc_filtering_rna_feature_print_feature_filters
 #| echo: false
 #| tbl-cap: !expr paste("Filters applied to features for assay", default_assay)
 #| eval: !expr length(feature_filter) > 0
@@ -606,7 +609,7 @@ gt(feature_filter_tbl)
 The number of excluded cells and features is as follows: 
 
 ```{r}
-#| label: tbl-preprocess_rna_filter_barcodes
+#| label: tbl-qc_filtering_rna_filter_barcodes
 #| tbl-cap: !expr paste("Summary of excluded barcodes for assay", default_assay)
 
 orig_idents = levels(sc$orig.ident)
@@ -670,7 +673,7 @@ gt(barcodes_to_exclude_tbl, rownames_to_stub=TRUE)
 ```
 
 ```{r}
-#| label: tbl-preprocess_rna_filter_features
+#| label: tbl-qc_filtering_rna_filter_features
 #| tbl-cap: !expr paste("Summary of excluded features for assay", default_assay)
 
 orig_idents = levels(sc$orig.ident)
@@ -731,7 +734,7 @@ gt(features_to_exclude_tbl, rownames_to_stub=TRUE)
 
 After filtering, the size of the Seurat object is: 
 
-```{r preprocess_rna_filter_size}
+```{r qc_filtering_rna_filter_size}
 sc
 ```
 
@@ -740,7 +743,7 @@ sc
 The updated QC plots are:
 
 ```{r}
-#| label: preprocess_rna_postqc_plots
+#| label: qc_filtering_rna_postqc_plots
 #| results: asis
 
 orig_idents = levels(sc$orig.ident)
@@ -799,7 +802,7 @@ plist[[{{i}}]]
 
 
 ```{r}
-#| label: preprocess_rna_postqc_cor_plots
+#| label: qc_filtering_rna_postqc_cor_plots
 #| results: asis
 
 orig_idents = levels(sc$orig.ident)
@@ -863,7 +866,7 @@ plist[[{{i}}]]
 ## Cell Cycle
 
 ```{r}
-#| label: preprocess_rna_cell_cycle
+#| label: qc_filtering_rna_cell_cycle
 #| results: asis
 
 #########################
@@ -972,7 +975,7 @@ if (length(seurat_s_genes) < 20 | length(seurat_g2m_genes) < 20) {
 ```
 
 ```{r}
-#| label: tbl-preprocess_rna_cell_cycle_summary
+#| label: tbl-qc_filtering_rna_cell_cycle_summary
 #| tbl-cap: "Cell cycle summary"
 #| eval: !expr sc$Phase %>% is.na() %>% all() %>% not()
 #| include: !expr sc$Phase %>% is.na() %>% all() %>% not()
@@ -988,7 +991,7 @@ gt(cell_cycle_summary_tbl, rowname_col="orig.ident")
 ```
 
 ```{r}
-#| label: fig-preprocess_rna_cell_cycle_S_G2M
+#| label: fig-qc_filtering_rna_cell_cycle_S_G2M
 #| fig-cap: !expr GeneratePlotCaptions(c("S.Score__G2M.Score"), split="__")
 #| eval: !expr sc$Phase %>% is.na() %>% all() %>% not()
 #| include: !expr sc$Phase %>% is.na() %>% all() %>% not()
@@ -998,7 +1001,7 @@ plist[[1]]
 ```
 
 ```{r}
-#| label: fig-preprocess_rna_cell_cycle_S
+#| label: fig-qc_filtering_rna_cell_cycle_S
 #| fig-cap: !expr paste(GeneratePlotCaptions(c("S.Score", "G2M.Score")), collapse=" and ")
 #| eval: !expr sc$Phase %>% is.na() %>% all() %>% not()
 #| include: !expr sc$Phase %>% is.na() %>% all() %>% not()
@@ -1015,7 +1018,7 @@ plist[[1]] + plist[[2]]
 Finally, we save the Seurat object and the layer data. The layer data is saved in a matrix directory, which is a directory with a matrix market file for each sample. This allows to analyse big datasets without loading all data into memory.
 
 ```{r}
-#| label: preprocess_rna_save_seurat
+#| label: qc_filtering_rna_save_seurat
 
 # Dump the layers with the normalized data
 layers = SeuratObject::Layers(sc, search="^data")
@@ -1024,18 +1027,18 @@ for(i in seq_along(layers)) {
 }
 
 # This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-#assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
+assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
 
 # Save Seurat object and layer data
 with_progress({
-  SaveSeuratRds_Custom(sc,
+  SaveSeuratRdsWrapper(sc,
                        on_disk_layers=on_disk_counts,
                        outdir=file.path(module_dir, "sc"))
 }, enable=verbose)
 ```
 
 ```{r}
-#| label: preprocess_rna_finish
+#| label: qc_filtering_rna_finish
 
 # Stop multisession workers
 plan(sequential)
