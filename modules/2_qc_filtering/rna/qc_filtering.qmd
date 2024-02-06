@@ -164,6 +164,9 @@ Cells may have been damaged during sample preparation and might be only partiall
 ```{r}
 #| label: qc_filtering_rna_qc_barcodes_features
 
+# Calculate QC for barcodes (cells, nuclei or spots)
+# Calculate QC for features (genes, peaks, proteins)
+
 # BARCODES
 barcode_metadata = sc[[]]
 feature_metadata = sc[[default_assay]][[]]
@@ -235,6 +238,8 @@ First of all, low-quality cells of different cell types might cluster together d
 #| label: qc_filtering_rna_qc_plots
 #| results: asis
 
+# Plot QC measures for barcodes (cells, nuclei or spots)
+
 orig_idents = levels(sc$orig.ident)
 barcode_metadata = sc[[]]
 barcode_filter = PrepareBarcodeFilter(param("barcode_filter"), orig_idents)
@@ -243,7 +248,7 @@ barcode_filter = PrepareBarcodeFilter(param("barcode_filter"), orig_idents)
 barcode_qc = param("barcode_qc")
 f = barcode_qc %in% colnames(sc[[]])
 if (!all(f)) {
-  WarningBox(x="Cannot find QC {barcode_qc[!f]*} in barcode metadata.")
+  CalloutBox(x="Cannot find QC {barcode_qc[!f]*} in barcode metadata.", type="warning")
   barcode_qc = barcode_qc[f]
 }
 
@@ -284,7 +289,7 @@ plist[[{{i}}]]
   
   cat(":::\n")
 } else {
-  MessageBox(x="No barcode QC parameters for plotting available.")
+  CalloutBox(x="No barcode QC parameters for plotting available.", type="note")
 }
 ```
 
@@ -292,6 +297,8 @@ plist[[{{i}}]]
 ```{r}
 #| label: qc_filtering_rna_qc_cor_plots
 #| results: asis
+
+# Plot QC correlation plots for barcodes (cells, nuclei or spots)
 
 orig_idents = levels(sc$orig.ident)
 barcode_metadata = sc[[]]
@@ -304,7 +311,7 @@ missing_barcode_qc = purrr::map(barcode_qc_cor, function(b) {
   f = b %in% colnames(barcode_metadata)
   return(barcode_qc[!f])
 }) %>% unlist %>% unique()
-if (length(missing_barcode_qc) > 0) WarningBox(x=FormatString("Cannot find QC {missing_barcode_qc*} in barcode metadata."))
+if (length(missing_barcode_qc) > 0) CalloutBox(x="Cannot find QC {missing_barcode_qc*} in barcode metadata.", , type="warning")
 
 f = purrr::map_lgl(barcode_qc_cor, function(b) return(all(!b %in% missing_barcode_qc)))
 barcode_qc_cor = barcode_qc_cor[f]
@@ -346,7 +353,7 @@ plist[[{{i}}]]
   
   cat(":::", sep="\n")
 } else {
-  MessageBox(x="No barcode QC parameters for correlation plots available.")
+  CalloutBox(x="No barcode QC parameters for correlation plots available.", type="note")
 }
 ```
 
@@ -356,6 +363,8 @@ We next investigate whether there are individual genes that are represented by a
 
 ```{r}
 #| label: qc_filtering_rna_highest_genes
+
+# Calculate highest expressed genes
 
 orig_idents = levels(sc$orig.ident)
 barcode_metadata = sc[[]]
@@ -416,6 +425,8 @@ highestExpr_summary$orig.ident = factor(highestExpr_summary$orig.ident, levels=o
 #| fig-cap: "Highest expressed genes overall"
 #| warning: false
 
+# Plot highest expressed genes (overall)
+
 p = ggplot(highestExpr %>% dplyr::filter(rank<=10), aes(x=orig.ident, y=median, col=gene, group=gene)) + 
   geom_point() + 
   AddPlotStyle(title="Highest expression", 
@@ -429,6 +440,8 @@ p
 ```{r}
 #| label: qc_filtering_rna_highest_genes_datasets
 #| results: asis
+
+# Plot highest expressed genes (per sample)
 
 orig_idents = levels(sc$orig.ident)
 
@@ -494,12 +507,14 @@ When working with human or animal samples, you should ideally constrain you expe
 ```{r}
 #| label: fig-qc_filtering_rna_sample_sex
 
+# Test XIST and chrY expression for sample sex
+
 sum_xist = sum(sc[[paste("pXIST", default_assay, sep="_")]])
 sum_chry = sum(sc[[paste("pChrY", default_assay, sep="_")]])
 
 # Check if XIST and chrY genes are expressed
 if (sum_xist == 0 & sum_chry == 0) {
-  WarningBox(x="No XIST or chrY gene expression measured! Either the genes are not expressed or not available in the dataset.", print=FALSE) %>% 
+  CalloutBox(x="No XIST or chrY gene expression measured! Either the genes are not expressed or not available in the dataset.", print=FALSE, type="warning") %>% 
     knitr::asis_output()
 }
 
@@ -512,6 +527,8 @@ if (sum_xist == 0 & sum_chry == 0) {
 #| include: !expr sum_xist > 0 | sum_chry > 0
 #| fig-height: 4
 
+# Plot XIST and chrY expression for sample sex
+
 plist = PlotBarcodeQC(sc, qc=paste(c("pXIST", "pChrY"), default_assay, sep="_"))
 plist[[1]] + plist[[2]]
 ```
@@ -523,6 +540,8 @@ Cells and genes are filtered based on the following thresholds:
 ```{r}
 #| label: qc_filtering_rna_filters
 #| results: asis
+
+# Prepare filter tables for barcodes (cells, nuclei or spots) and features (genes, peaks, proteins)
 
 orig_idents = levels(sc$orig.ident)
 
@@ -572,11 +591,11 @@ feature_filter_tbl = purrr::map_dfr(names(feature_filter), function(s) {
 
 # Provide info if no filtering is applied
 if (length(barcode_filter) == 0) {
-  MessageBox(x="No barcode filtering was specified. All barcodes will be kept.")
+  CalloutBox(x="No barcode filtering was specified. All barcodes will be kept.", type="note")
 }
 
 if (length(feature_filter) == 0) {
-  MessageBox(x="No feature filtering was specified. All features will be kept.")
+  CalloutBox(x="No feature filtering was specified. All features will be kept.", type="note")
 }
 ```
 
@@ -589,7 +608,7 @@ if (length(feature_filter) == 0) {
 #| eval: !expr length(barcode_filter) > 0
 #| include: !expr length(barcode_filter) > 0
 
-# Print barcode filters
+# Print barcode filters (cells, nuclei or spots)
 gt(barcode_filter_tbl)
 ```
 
@@ -600,7 +619,7 @@ gt(barcode_filter_tbl)
 #| eval: !expr length(feature_filter) > 0
 #| include: !expr length(feature_filter) > 0
 
-# Print feature filters
+# Print feature filters (genes, peaks, proteins)
 gt(feature_filter_tbl)
 ```
 
@@ -611,6 +630,8 @@ The number of excluded cells and features is as follows:
 ```{r}
 #| label: tbl-qc_filtering_rna_filter_barcodes
 #| tbl-cap: !expr paste("Summary of excluded barcodes for assay", default_assay)
+
+# Filter barcodes (cells, nuclei or spots)
 
 orig_idents = levels(sc$orig.ident)
 barcode_filter = PrepareBarcodeFilter(param("barcode_filter"), orig_idents)
@@ -675,6 +696,8 @@ gt(barcodes_to_exclude_tbl, rownames_to_stub=TRUE)
 ```{r}
 #| label: tbl-qc_filtering_rna_filter_features
 #| tbl-cap: !expr paste("Summary of excluded features for assay", default_assay)
+
+# Filter features (genes, peaks, proteins)
 
 orig_idents = levels(sc$orig.ident)
 feature_filter = PrepareFeatureFilter(param("feature_filter"), orig_idents)
@@ -746,6 +769,8 @@ The updated QC plots are:
 #| label: qc_filtering_rna_postqc_plots
 #| results: asis
 
+# Plot QC measures for barcodes (cells, nuclei or spots) post filtering
+
 orig_idents = levels(sc$orig.ident)
 barcode_metadata = sc[[]]
 barcode_filter = PrepareBarcodeFilter(param("barcode_filter"), orig_idents)
@@ -754,7 +779,7 @@ barcode_filter = PrepareBarcodeFilter(param("barcode_filter"), orig_idents)
 barcode_qc = param("barcode_qc")
 f = barcode_qc %in% colnames(sc[[]])
 if (!all(f)) {
-  WarningBox(x="Cannot find QC {barcode_qc[!f]*} in barcode metadata.")
+  CalloutBox(x="Cannot find QC {barcode_qc[!f]*} in barcode metadata.", type="warning")
   barcode_qc = barcode_qc[f]
 }
 
@@ -796,7 +821,7 @@ plist[[{{i}}]]
   
   cat(":::\n")
 } else {
-  MessageBox(x="No barcode QC parameters for plotting available.")
+  CalloutBox(x="No barcode QC parameters for plotting available.", type="note"
 }
 ```
 
@@ -804,6 +829,8 @@ plist[[{{i}}]]
 ```{r}
 #| label: qc_filtering_rna_postqc_cor_plots
 #| results: asis
+
+# Plot QC correlation plots for barcodes (cells, nuclei or spots) post filtering
 
 orig_idents = levels(sc$orig.ident)
 barcode_metadata = sc[[]]
@@ -816,7 +843,7 @@ missing_barcode_qc = purrr::map(barcode_qc_cor, function(b) {
   f = b %in% colnames(barcode_metadata)
   return(barcode_qc[!f])
 }) %>% unlist %>% unique()
-if (length(missing_barcode_qc) > 0) WarningBox(x=FormatString("Cannot find QC {missing_barcode_qc*} in barcode metadata."))
+if (length(missing_barcode_qc) > 0) CalloutBox(x=FormatString("Cannot find QC {missing_barcode_qc*} in barcode metadata.", type="warning"))
 
 f = purrr::map_lgl(barcode_qc_cor, function(b) return(all(!b %in% missing_barcode_qc)))
 barcode_qc_cor = barcode_qc_cor[f]
@@ -859,7 +886,7 @@ plist[[{{i}}]]
   
   cat(":::\n")
 }  else {
-  MessageBox(x="No barcode QC parameters for correlation plots available.")
+  CalloutBox(x="No barcode QC parameters for correlation plots available.", type="note")
 }
 ```
 
@@ -868,6 +895,8 @@ plist[[{{i}}]]
 ```{r}
 #| label: qc_filtering_rna_cell_cycle
 #| results: asis
+
+# Calculate cell cycle scores
 
 #########################
 # Find cell-cycle genes #
@@ -970,7 +999,7 @@ sc = CCScoring(sc, genes_s=seurat_s_genes, genes_g2m=seurat_g2m_genes, verbose=v
 
 # Warn if there not enough genes for cell cycle scoring
 if (length(seurat_s_genes) < 20 | length(seurat_g2m_genes) < 20) {
-  WarningBox(x="Cannot not find enough known S or G2M phase genes to be used cell cycle scoring. Phases and scores will be NA!")
+  CalloutBox(x="Cannot not find enough known S or G2M phase genes to be used cell cycle scoring. Phases and scores will be NA!", type="warning")
 }
 ```
 
@@ -979,6 +1008,8 @@ if (length(seurat_s_genes) < 20 | length(seurat_g2m_genes) < 20) {
 #| tbl-cap: "Cell cycle summary"
 #| eval: !expr sc$Phase %>% is.na() %>% all() %>% not()
 #| include: !expr sc$Phase %>% is.na() %>% all() %>% not()
+
+# Summarize cell cycle states for barcodes (cells, nuclei or spots)
 
 barcode_metadata = sc[[]]
 
@@ -996,6 +1027,8 @@ gt(cell_cycle_summary_tbl, rowname_col="orig.ident")
 #| eval: !expr sc$Phase %>% is.na() %>% all() %>% not()
 #| include: !expr sc$Phase %>% is.na() %>% all() %>% not()
 
+# Plot S.Score vs G2.Score
+
 plist = PlotBarcodeQCCor(sc, qc=list(c("S.Score", "G2M.Score")))
 plist[[1]]
 ```
@@ -1008,6 +1041,7 @@ plist[[1]]
 #| echo: false
 #| fig-height: 4
 
+# Plot S.Score and G2.Score distributions
 
 plist = PlotBarcodeQC(sc, qc=c("S.Score", "G2M.Score"))
 plist[[1]] + plist[[2]]
