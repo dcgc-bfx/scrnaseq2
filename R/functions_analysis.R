@@ -295,7 +295,12 @@ CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
       cc_scores = s[[c("Phase", "S.Score", "G2M.Score")]]
       cc_scores[["CC.Difference"]] = cc_scores[["S.Score"]] - cc_scores[["G2M.Score"]]
     } else {
-      cc_scores = data.frame(Phase=character(), S.Score=numeric(), G2M.Score=numeric(), CC.Difference=numeric())
+      barcodes = Cells(s)
+      cc_scores = data.frame(Phase=rep(NA, length(barcodes)) %>% as.character(), 
+                             S.Score=rep(NA, length(barcodes)) %>% as.numeric(), 
+                             G2M.Score=rep(NA, length(barcodes)) %>% as.numeric(), 
+                             CC.Difference=rep(NA, length(barcodes)) %>% as.numeric(),
+                             row.names=barcodes)
     }
     cc_scores[["Phase"]] = factor(cc_scores[["Phase"]], levels=c("G1", "G2M", "S"))
     return(cc_scores)
@@ -303,10 +308,6 @@ CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
 
   # Add to barcode metadata
   sc = Seurat::AddMetaData(sc, cell_cycle_scores)
-  
-  # Add to 'gene_lists' slot in the misc slot of the Seurat object
-  sc = ScAddLists(sc, lists=list(CC_S_phase=genes_s, CC_G2M_phase=genes_g2m),
-                  lists_slot="gene_lists")
   
   # Log command
   sc = Seurat::LogSeuratCommand(sc)
