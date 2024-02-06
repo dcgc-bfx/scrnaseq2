@@ -69,7 +69,7 @@ format:
     knitr:
       opts_chunk: 
         dev:
-        - "ragg_png"
+        - "png"
         - "cairo_pdf"
   # pdf:
   #   documentclass: "scrreprt"
