@@ -39,7 +39,7 @@ params:
   on_disk_counts: true
   
   # For large datasets: Copy matrix directories to a temporary directory for computations. This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). Once done, matrix directories will be copied back to the module directory. The temporary directory will be deleted once the R session exists.
-  on_disk_use_tmp: false
+  on_disk_use_tmp: true
   
   # Downsample data to at most n barcodes per sample
   downsample_barcodes_n: null
@@ -77,9 +77,7 @@ execute:
 
 # Read data
 
-## Overview
-
-In this chapter, we read in counts data as "features x barcodes" matrices. If provided, we read in additional metadata for features and barcodes. For spatial data, we additionally read in the image data. All data is imported into an Seurat object. Basic summary stats are calculated and shown. Finally, the Seurat object is saved for further processing in the next chapters.
+The workflow can be run for pre-processed 10x data, as well as for pre-processed SmartSeq-2 or other data that are represented by a simple table with transcript counts per gene and cell. 
 
 ```{r}
 #| label: setup
@@ -103,14 +101,13 @@ module_dir = params$module_dir
 
 # Parallelisation plan for all functions that support future
 plan(multisession, workers=4, gc=TRUE)
-
-# Be verbose
-verbose=FALSE
 ```
 
 ```{r}
 #| label: read_data_preparation
 
+# CODE
+# Working directory is automatically back to scrnaseq2 at this point
 # Source general configurations (always)
 source("R/general_configuration.R")
 
@@ -120,6 +117,9 @@ source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
 
+verbose = param("verbose")
+
+# DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
 dir.create(file.path(module_dir, "results"), showWarnings=FALSE)
 files = list.files(path=file.path(module_dir, "results"), full.names=TRUE)
@@ -130,44 +130,12 @@ dir.create(file.path(module_dir, "sc"), showWarnings=FALSE)
 files = list.files(path=file.path(module_dir, "sc"), full.names=TRUE)
 if (length(files) > 0) unlink(files, recursive=TRUE)
 
-
+# Module directory 'tmp' is needed only in this module and only if parameters on_disk_counts=true and on_disk_use_tmp=false
+# In this case, we need to write the created on-disk matrices somewhere
+dir.create(file.path(module_dir, "tmp"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "sc"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
 ```
-
-## Datasets
-
-Raw data from single-cell experiments needs to be converted into count matrices. For example, for scRNA-seq, such a count matrix contains expression values per cell and gene. More generally spoken, a count matrix contains measurements per barcode (e.g. cell, nuclei or spot) and feature (e.g. gene, protein or ATAC peak) where barcodes correspond to columns and features correspond to rows (but vice versa is also possible).
-
-::: columns
-::: {.column width="70%"}
-| Gene    | Cell1 | Cell2 | Cell3 | Cell4 | ... |
-|---------|:-----:|:-----:|:-----:|:-----:|:---:|
-| SAMD11  |   1   |  10   |   0   |   0   | ... |
-| NOC2L   |   0   |   2   |   2   |   1   | ... |
-| PLEKHN1 |  23   |   2   |   7   |   1   | ... |
-| HES4    |   0   |   0   |   0   |   0   | ... |
-| AGRN    |  12   |  34   |  23   |  12   | ... |
-| ...     |  ...  |  ...  |  ...  |  ...  | ... |
-
-: Example of a counts matrix for scRNA-seq data
-:::
-:::
-
-How to construct such a count matrix depends on the experimental protocol used for the single-cell experiment. Here we roughly outline the steps needed for the protocols for officially supported -  Smartseq2, Smartseq3, 10x, 10x Visium, 10x Xenium, Parse Biosciences and Scale Bio - and describe their relevant output files.
-
-::: panel-tabset
-##### 10x
-
-##### 10x Visium
-
-##### 10x Xenium
-
-##### Smartseq2/3
-
-##### Parse Biosciences
-
-##### Scale Bio
-
-:::
 
 ## Datasets
 
@@ -184,7 +152,7 @@ All required information about the datasets is defined in an Excel table in the 
 -   `rename_features`: Whether to rename features based on a metadata column (index) or using `ENSEMBL`
 -   `barcode_suffix`: Suffix to make the barcodes unique across experiments
 
-The table of datasets used in this analysis is shown below:
+The following datasets are defined in the table:
 
 ```{r}
 #| label: tbl-read_data_datasets
@@ -224,10 +192,30 @@ if (any(is.na(datasets$barcode_suffix))) {
 gt(datasets)
 ```
 
-A dataset can have a file with run metrics. This file contains numbers about the general performance of the experiment and is a good starting point to judge the data quality. Here, all available metrics file are read and summarised by technology:
+## Read and print general metrics
+
+Prior to this workflow, raw sequencing reads were mapped to the reference transcriptome. The resulting mapping statistics are printed below for a first estimation of sample quality. 
+
+<details class="details_box">
+  <summary class="details_box">Pre-processing of 10x data with Cell Ranger</summary>
+
+We use the 10x Genomics Cell Ranger software to map 10x sequencing reads. The result is a count matrix that contains the number of unique transcripts per gene (rows) and cell (columns). To save storage space, the matrix is converted into a condensed format and described by the following 3 files:   
+<ul>
+<li>	“features.tsv.gz”: Tabular file with gene annotation (Ensembl gene ID and the gene symbol) to identify genes </li>
+<li>	“barcodes.tsv.gz”: File with cell barcodes to identify cells </li>
+<li> “matrix.mtx.gz”: A condensed version of the count matrix </li>
+</ul>
+</details>
+
+<details class="details_box">
+  <summary class="details_box">Pre-processing of SmartSeq-2 data</summary>
+
+Sequencing reads from SmartSeq-2 (and other) experiments can be mapped with any suitable mapping software as long as a count matrix is generated that contains the number of mapped reads per gene (rows) and cell (columns). The first row of the count matrix should contain cell barcodes or names, the first column of the matrix should contain Ensembl gene IDs. 
+</details>
 
 ```{r}
 #| label: read_data_metrics
+#| results: asis
 
 # Read metrics tables into list
 metrics_tables = purrr::map(1:nrow(datasets), function(i) {
@@ -252,11 +240,6 @@ metrics_tables_by_tech = purrr::map(dataset_rows_by_tech, function(rows) {
   metrics_table = dplyr::bind_rows(metrics_tables[rows])
   return(metrics_table)
 })
-```
-
-```{r}
-#| label: read_data_metric
-#| results: asis
 
 # How to dynamically generate tables: https://stackoverflow.com/questions/73585417/iterating-to-create-tabs-with-gt-in-quarto
 # String to create a chunk for each assay ({{assay}} is placeholder)
@@ -267,11 +250,11 @@ chunk_template = "
 #| label: tbl-read_data_metric_{{technology}}
 #| tbl-cap: 'Metrics for technology {{technology}}'
 
-metrics_tables_by_tech[['{{technology}}']] %>% gt()
+gt(metrics_tables_by_tech[['{{technology}}']], rowname_col='Dataset')
 \`\`\`
 "
 
-cat("::: panel-tabset", sep="\n")
+cat("::: panel-tabset\n")
 for(n in names(metrics_tables_by_tech)) {
   chunk_filled = knitr::knit_expand(text=chunk_template, technology=n)
   
@@ -282,12 +265,20 @@ for(n in names(metrics_tables_by_tech)) {
     cat(chunk_filled, sep='\n')
   }
 }
-cat(":::", sep="\n")
+cat(":::\n")
 ```
 
-## Read counts
+## Read counts and create Seurat object
 
-Once datasets are set
+We next read the single-cell RNA-seq data into a Seurat object. 
+<details class="details_box">
+  <summary class="details_box">What is Seurat and which information is contained in a Seurat object?</summary>
+
+Seurat is an R-package that is used for the analysis of single-cell RNA-seq data. We read pre-processed data as described above, and convert it to a count matrix in R. In the case of 10x data, the count matrix contains the number of unique RNA molecules (UMIs) per gene and cell. In the case of SmartSeq-2 data, the count matrix contains the number of reads per gene and cell.
+
+In addition to the count matrix, the workflow stores additional information in the Seurat object, including but not limited to the normalized data, dimensionality reduction and cluster results.
+</details>
+
 
 ```{r}
 #| label: read_data_read_counts
@@ -564,7 +555,7 @@ counts_summary = data.frame(
 gt(counts_summary)
 ```
 
-In case, the counts datasets are very big, it is possible to (randomly) sample barcodes to generate smaller counts subsets which may be faster to analyse but still give meaningful results. The number of barcodes to sample can either be a fix number or the number of barcodes in the smallest sample. Similarly, it also possible to sample features down to a fix number.
+In case, the counts datasets are very big, it is possible to (randomly) sample barcodes to generate smaller counts subsets which may be faster to analyse but still give meaningful results. The number of barcodes to sample can either be a fix number or the number of barcodes in the smallest sample. Similarly, it also possible to sample features down to a fixed number.
 
 ```{r}
 #| label: read_data_downsample
@@ -672,17 +663,15 @@ if (!is.null(downsample_features_n)) {
   
 # Message
 if (!is.null(downsample_barcodes_n) & !is.null(downsample_features_n)) {
-  glue::glue("\n::: {{.callout-note}}\nYour data has been downsampled to at most {downsample_barcodes_n} barcodes and at most {downsample_features_n} features!\n:::\n") %>% knitr::asis_output()
+  MessageBox("Your data has been downsampled to at most {downsample_barcodes_n} barcodes and at most {downsample_features_n} features.")
 } else if (!is.null(downsample_barcodes_n)) {
-  glue::glue("\n::: {{.callout-note}}\nYour data has been downsampled to at most {downsample_barcodes_n} barcodes!\n:::\n") %>% knitr::asis_output()
+  MessageBox("Your data has been downsampled to at most {downsample_barcodes_n} barcodes.")
 } else if (!is.null(downsample_barcodes_n)) {
-  glue::glue("\n::: {{.callout-note}}\nYour data has been downsampled to at most {downsample_features_n} features!\n:::\n") %>% knitr::asis_output()
+  MessageBox("Your data has been downsampled to at most {downsample_features_n} features.")
 }
 ```
 
-## Create Seurat object
-
-Create object
+Next we create the Seurat object. This is a summary representation of the object:
 
 ```{r}
 #| label: read_data_seurat_object
@@ -839,13 +828,8 @@ if (parse_plate_information) {
 
 # Set default identity
 Seurat::Idents(sc) = "orig.ident"
-```
 
-
-```{r}
-#| label: read_data_set_colours
-
-# Add colours
+# Set default colours
 sc = ScAddColours(sc, colours=list(
   orig.ident=setNames(zeileis_28[1:length(levels(sc$orig.ident))], levels(sc$orig.ident)),
   sample=setNames(zeileis_28[1:length(levels(sc$sample))], levels(sc$sample)),
@@ -854,9 +838,10 @@ sc = ScAddColours(sc, colours=list(
   Phase=c(G1="#FDD086", S="#9FD7E1", G2M="#FF8DA1")
 ))
 
+sc
 ```
 
-Add images
+For spatial workflows we add the image information.
 
 ```{r}
 #| label: read_data_read_images
@@ -914,8 +899,11 @@ for (i in seq_along(counts_lst)) {
     sc = Seurat::AddMetaData(sc, barcode_metadata)
   }
   
+  sc
 }
 ```
+
+Finally we calculate some basic statistics such as percent counts in top50 features or median counts.
 
 ```{r}
 #| label: read_data_basic_stats
@@ -925,7 +913,7 @@ for (i in seq_along(counts_lst)) {
 ############
 # Calculate for each assay
 for (a in Seurat::Assays(sc)) {
-
+  # Add percentage of counts in top 50 features
   m = paste("pCountsTop50", a, sep="_")
   sc[[m]] = 0
 
@@ -942,7 +930,7 @@ for (a in Seurat::Assays(sc)) {
     }, enable=verbose)
     
     # Zero counts barcodes will not be in top50_counts - add them here
-    top50_perc = ifelse(total_counts>0, top50_counts/total_counts*100, NA)
+    top50_perc = ifelse(total_counts>0, top50_counts/total_counts*100, 0)
     
     # Then calculate percentage top50
     top50_perc = setNames(top50_perc, bcs)
@@ -981,14 +969,7 @@ for (a in Seurat::Assays(sc)) {
 }
 ```
 
-The following table shows available metadata (columns) of the first five barcodes (rows). These metadata provide additional information such as:
-
--   the dataset it belongs to ("orig.ident")
--   the sample it belongs to
--   the technology with which it was produced
--   its original name in the dataset
--   additional metadata provided together with it
--   the total number of counts and features for each assay
+The following first table shows available metadata (columns) of the first 5 cells (rows). These metadata provide additional information about the cells in the dataset, such as the sample a cell belongs to ("orig.ident"), the number of mapped reads (“nCounts_RNA”),  or the above mentioned number of unique genes detected ("nFeature_RNA"). 
 
 ```{r}
 #| label: tbl-read_data_barcode_metadata
@@ -998,7 +979,7 @@ df = sc[[]] %>% head(5)
 gt(df, rownames_to_stub=TRUE)
 ```
 
-The next table shows available metadata (columns) of the first five features (rows) for each assay.
+The second table shows available metadata (columns) of the first 5 genes (rows) for each assay. 
 
 ```{r}
 #| label: read_data_feature_metadata
@@ -1019,7 +1000,7 @@ sc[['{{assay}}']][[]] %>% head(5) %>% gt(rownames_to_stub=TRUE)
 
 "
 
-cat("::: panel-tabset", sep="\n")
+cat("::: panel-tabset\n")
 for (a in Seurat::Assays(sc)) {
   chunk_filled =  knitr::knit_expand(text=chunk_template, assay=a)
   
@@ -1030,10 +1011,12 @@ for (a in Seurat::Assays(sc)) {
     cat(chunk_filled, sep='\n')
   }
 }
-cat(":::", sep="\n")
+cat(":::\n")
 ```
 
-## Basic summary
+## Basic summary of the data
+
+Here is a basic summary of the data.
 
 ```{r}
 #| label: read_data_basic_summary
@@ -1041,58 +1024,107 @@ cat(":::", sep="\n")
 
 orig_idents = levels(sc$orig.ident)
 
-chunk_template = "
+# Do this per assay
+for (a in Seurat::Assays(sc)) {
+  cat("### Assay ", a, "\n\n")
+  
+  barcode_qc = c("nCount", "nFeature", "pCountsTop50")
+  barcode_qc = paste(barcode_qc, a, sep="_")
+  
+  # VIOLIN PLOTS
+  # Make violin plots and combine into patchworked object
+  plist = PlotBarcodeQC(sc, qc=barcode_qc)
+  p = patchwork::wrap_plots(plist, ncol=2)
+  
+  # Make chunk template for violin plots
+  chunk_template = "
 \`\`\`{r}
-#| label: fig-read_data_basic_summary_{{assay}}_{{i}}
-#| fig-asp: 0.5
+#| label: fig-read_data_basic_summary_{{assay}}
+#| fig-cap: '{{caption}}'
+#| fig-height: 8
+#| echo: false
+#| warning: false
+
+p
+\`\`\`
+"
+  
+  # Fill out and print violin plots
+  chunk_filled =  knitr::knit_expand(text=chunk_template, assay=a, caption=paste("Basic stats for assay ", a))
+  if(interactive()) {
+    print(EvalKnitrChunk(chunk_filled))
+  } else {
+    chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+    cat(chunk_filled, '\n')
+  }
+  
+  ## SPATIAL PLOTS
+  if (length(SeuratObject::Images(sc)) > 0) {
+    
+    # For each QC metric
+    for(q in barcode_qc) {
+      
+      # Make spatial plots split by sample
+      plist = purrr::map(SeuratObject::Images(sc), function(n) {
+        if (grepl("^fov\\.", n)) {
+          # Xenium FOV plot
+          p = Seurat::ImageFeaturePlot(sc, features=q, fov=n)
+        } else {
+          # Visium image plot
+          p = Seurat::SpatialFeaturePlot(sc, features=q, image=n)
+        }
+        return(p)
+      })
+      
+      # Make captions
+      captions = GeneratePlotCaptions(q, remove=paste0("_", a))
+      dataset_names = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
+      captions = paste(captions, dataset_names, sep=" for dataset ")
+      
+      # Make chunk template for spatial plots
+      chunk_template = "
+\`\`\`{r}
+#| label: fig-read_data_image_summary_{{qc}}_dataset_{{dataset}}
 #| fig-cap: '{{caption}}'
 #| echo: false
 #| warning: false
 
-print(plist[[{{i}}]])
+plist[[{{i}}]]
 \`\`\`
 "
-
-# Do this per assay
-for (a in Seurat::Assays(sc)) {
-  cat("### ", a, "\n\n")
-  
-  # Generate barcode plots
-  barcode_qc = paste(c("nCount", "nFeature", "pCountsTop50"), a, sep="_") 
-  plist = PlotBarcodeQC(sc, qc=barcode_qc)
-
-  # Prepare captions
-  captions = GeneratePlotCaptions(names(plist), remove=paste0("_", a))
-  
-  # Set up layout and generate chunks
-  if (length(orig_idents) <= 10) {
-    cat("::: {layout-ncol=2}", sep="\n")
-  } else {
-    cat("::: {layout-ncol=1}", sep="\n")
-  }
-  
-  for (i in seq(plist)) {
-    chunk_filled =  knitr::knit_expand(text=chunk_template, assay=a, i=i, caption=captions[[i]])
-    if(interactive()) {
-      EvalKnitrChunk(chunk_filled)
-    } else {
-      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
-      cat(chunk_filled, '\n')
+      # Fill out and print spatial plots
+      cat("::: panel-tabset\n")
+      for(i in seq_along(plist)) {
+        cat ("##### ", dataset_names[i], "\n\n")
+        chunk_filled =  knitr::knit_expand(text=chunk_template, qc=q, assay=a, dataset=dataset_names[i], caption=captions[i])
+        if(interactive()) {
+          print(EvalKnitrChunk(chunk_filled))
+        } else {
+          chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+          cat(chunk_filled, '\n')
+        }
+      }
+      cat(":::\n")
     }
   }
-  cat(":::", sep="\n")
 }
 ```
 
 ## Save Seurat object
 
+Finally, we save the Seurat object and the layer data. The layer data is saved in a matrix directory, which is a directory with a matrix market file for each sample. This allows to analyse big datasets without loading all data into memory.
+
 ```{r}
 #| label: read_data_save_seurat
 
+# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
+
 # Save Seurat object and layer data
 with_progress({
-  SaveSeuratRds_Custom(sc,
-                outdir=file.path(module_dir, "sc"))
+  SaveSeuratRdsWrapper(sc,
+                       on_disk_layers=on_disk_counts,
+                       outdir=file.path(module_dir, "sc"))
 }, enable=verbose)
 ```
 
