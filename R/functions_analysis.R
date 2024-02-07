@@ -603,7 +603,6 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
                                    "HarmonyIntegration" ~ "harmony",
                                    "FastMNNIntegration" ~ "mnn",
                                    "scVIIntegration" ~ "scvii")
-    new_reduct = paste0("integrated.", new_reduct)
   }
   
   if (!is.null(new_reduct_suffix)) {

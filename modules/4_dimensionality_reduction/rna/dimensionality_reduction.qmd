@@ -166,61 +166,6 @@ Seurat::DefaultAssay(sc) = ifelse(normalisation_method=="SCT",
                          paste(default_assay, "SCT", sep="_"), 
                          default_assay)
 
-# DELETE
-sc = Seurat::ScaleData(sc)
-sc = Seurat::SketchData(sc,
-                        ncells=5000,
-                        sketched.assay="RNA.sketch",
-                        verbose=verbose,
-                        method="LeverageScore",
-                        seed=getOption("random_seed"),
-                        over.write=TRUE)
-sc = FindVariableFeaturesWrapper(sc, feature_selection_method = "vst")
-sc = Seurat::ScaleData(sc)
-Seurat::DefaultAssay(sc) = "RNA"
-
-# DELETE
-FormatString = function(x, quote=TRUE, sep=", ") {
-  return(glue::glue(x, .transformer=GlueTransformer_quote_collapse(), .envir=parent.frame()))
-}
-
-# DELETE
-CalloutBox = function(x, type, print=TRUE) {
-  valid_types = c("note", "tip", "important", "caution", "warning")
-  assertthat::assert_that(type %in% valid_types,
-                          msg=FormatString("Callout box typ {type} but must be one of: {valid_types*}."))
-  
-  
-  
-  x = paste0("\n\n::: callout-", type, "\n", FormatString(x), "\n:::\n\n")
-  if (print) {
-    cat(x)
-  } else {
-    return(x)
-  }
-}
-
-# DELETE
-WarningBox = function(x, print=TRUE) {
-  x = CalloutBox(x, type="warning", print=FALSE)
-  if (print) {
-    cat(x)
-  } else {
-    return(x)
-  }
-}
-
-# DELETE
-MessageBox = function(x, print=TRUE) {
-  x = CalloutBox(x, type="note", print=FALSE)
-  if (print) {
-    cat(x)
-  } else {
-    return(x)
-  }
-}
-
-
 # If sketching should be used, check for the sketch assay and then set as default
 use_sketching = param("use_sketching")
 if (use_sketching) {
@@ -383,7 +328,7 @@ p = Seurat::ElbowPlot(sc, reduction=dimensionality_reduction_method, ndims=min(d
 p
 
 # Print a message
-MessageBox("For the current dataset, {dim_n} dimensions were chosen.", print=FALSE) %>% knitr::asis_output()
+CalloutBox("For the current dataset, {dim_n} dimensions were chosen.", print=FALSE, type="note") %>% knitr::asis_output()
 ```
 
 ## Integration
@@ -443,8 +388,7 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
                                    "HarmonyIntegration" ~ "harmony",
                                    "FastMNNIntegration" ~ "mnn",
                                    "scVIIntegration" ~ "scvii")
-    new_reduct = paste("integrated", new_reduct, sep=".")
-    
+
     # Additional method-specific arguments passed by config
     additional_args = integration_methods_params[[method]]
     
@@ -483,18 +427,18 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
   sc = SeuratObject::JoinLayers(sc)
   
   # Message
-  MessageBox("Datasets have been integrated with the following methods: {integration_methods*}!")
+  CalloutBox("Datasets have been integrated with the following methods: {integration_methods*}!", type="note")
   
 } else if (length(integration_methods) == 0 & num_datasets > 1) {
   # Join layers
   sc = SeuratObject::JoinLayers(sc)
   
 # Integration not requested (just merge)
-  MessageBox("Datasets are simply merged and no integration is done!")
+  CalloutBox("Datasets are simply merged and no integration is done!", type="note")
   
 } else if (num_datasets == 1) {
   # Integration not necessary
-  MessageBox("There is only one dataset so that integration is not neccessary.")
+  CalloutBox("There is only one dataset so that integration is not neccessary.", type="note")
 }
 ```
 
