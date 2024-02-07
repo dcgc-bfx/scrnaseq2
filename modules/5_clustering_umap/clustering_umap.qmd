@@ -12,10 +12,9 @@ params:
   # NOTE: Change to null if all modules are implemented and sc objects are written
   prev_module_dir: "modules/3_normalization/rna"
   
-  # Default assay and normalization
+  # Default assay
   default_assay: "RNA"
-  normalization_method: "RNA"
-  
+
   # Number of dimensions to use, e.g. principal components
   dim_n: 10
   
@@ -151,10 +150,10 @@ sc <- suppressMessages(RunPCA(sc))
 
 # Clustering
 
-Seurat's clustering method first constructs a graph structure, where nodes are cells and edges are drawn between cells with similar gene expression patterns. Technically speaking, Seurat first constructs a K-nearest neighbor (KNN) graph based on Euclidean distance in PCA space, and refines edge weights between cells based on the shared overlap in their local neighborhoods (Jaccard similarity). To partition the graph into highly interconnected parts, cells are iteratively grouped together using the Leiden algorithm `r Cite("10.1038/s41598-019-41695-z", "citep")`. 
+Seurat's clustering method first constructs a graph structure, where nodes are cells and edges are drawn between cells with similar gene expression patterns. Technically speaking, Seurat first constructs a K-nearest neighbor (KNN) graph based on Euclidean distance in PCA space, and refines edge weights between cells based on the shared overlap in their local neighborhoods (Jaccard similarity). To partition the graph into highly interconnected parts, cells are iteratively grouped together using the Leiden algorithm @Traag_2019. 
 
 <details class="details_box">
-  <summary>Further explanation on clustering</summary>
+  <summary class="details_box">Further explanation on clustering</summary>
 
 At this point, we would like to define subpopulations of cells with similar gene expression profiles using unsupervised clustering. Clusters ultimately serve as approximations for biological objects like cell types or cell states.
 
@@ -286,7 +285,7 @@ Take care not to mis-read a UMAP:
 * Distances between clusters might not mean anything
 * You may need more than one plot
 
-For a nice read to intuitively understand UMAP, see `r Cite("https://pair-code.github.io/understanding-umap/")`.
+For a nice read to intuitively understand UMAP, see [here](https://pair-code.github.io/understanding-umap/).
 
 ```{r}
 #| label: clustering_umap
@@ -375,18 +374,18 @@ cat(":::\n")
 
 ## Save Seurat object
 
-NOTE: object is not saved yet, as there was a problem with the merged `scale.data` path in the sc object. 
-
 ```{r}
 #| label: clustering_save_seurat
 
-# Save Seurat object and layer data
-#with_progress({
-#  SaveSeuratRds_Custom(sc,
-#                       on_disk_layers=on_disk_counts,
-#                       outdir=file.path(module_dir, "sc"))
-#}, enable=TRUE)
+# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
 
+# Save Seurat object and layer data
+with_progress({
+  SaveSeuratRdsWrapper(sc,
+                       on_disk_layers=on_disk_counts,
+                       outdir=file.path(module_dir, "sc"))
+}, enable=verbose)
 ```
 
 ```{r}
