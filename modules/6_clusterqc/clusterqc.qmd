@@ -150,6 +150,7 @@ sc <- suppressMessages(FindNeighbors(sc, dims = 1:10))
 sc <- suppressMessages(FindClusters(sc, resolution = 0.5))
 sc <- suppressMessages(RunUMAP(sc, dims = 1:10))
 ```
+
 ## Quality Control 
 
 Do cells in individual clusters have particularly high counts, detected genes or mitochondrial content?

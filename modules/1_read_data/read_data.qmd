@@ -834,16 +834,22 @@ if (parse_plate_information) {
 # Set default identity
 Seurat::Idents(sc) = "orig.ident"
 
-# Set default colours
+# Print sc
+sc
+```
+
+```{r}
+#| label: read_data_colors
+
+# Add colours
+set.seed(1)
 sc = ScAddColours(sc, colours=list(
-  orig.ident=setNames(zeileis_28[1:length(levels(sc$orig.ident))], levels(sc$orig.ident)),
-  sample=setNames(zeileis_28[1:length(levels(sc$sample))], levels(sc$sample)),
-  technology=setNames(zeileis_28[1:length(levels(sc$technology))], levels(sc$technology)),
-  seurat_clusters=setNames(godsnot_102[1:length(godsnot_102)], 1:length(godsnot_102)),
+  orig.ident=setNames(zeileis_28 %>% sample(size=length(levels(sc$orig.ident))), levels(sc$orig.ident)),
+  sample=setNames(zeileis_28 %>% sample(size=length(levels(sc$sample))), levels(sc$sample)),
+  technology=setNames(zeileis_28 %>% sample(size=length(levels(sc$technology))), levels(sc$technology)),
+  seurat_clusters=setNames(godsnot_102 %>% sample(size=length(godsnot_102)), 1:length(godsnot_102)),
   Phase=c(G1="#FDD086", S="#9FD7E1", G2M="#FF8DA1")
 ))
-
-sc
 ```
 
 For spatial workflows we add the image information.
