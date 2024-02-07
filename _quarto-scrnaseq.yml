@@ -7,7 +7,9 @@ project:
   output-dir: "book_scrnaseq"
 
 book:
-  title: "Single-cell analysis results"
+  title: |
+    | scrnaseq2
+    | Single-cell analysis results
   subtitle: "bfx1234"
   chapters:
   - "index.qmd"
@@ -15,8 +17,8 @@ book:
   - "modules/2_qc_filtering/rna/qc_filtering.qmd"
   - "modules/3_normalization/rna/normalization.qmd"
   - "modules/5_clustering_umap/clustering_umap.qmd"
-  #- "modules/6_clusterqc/clusterqc.qmd"
-  #- "modules/8_cluster_composition/cluster_composition.qmd"
+  - "modules/6_clusterqc/clusterqc.qmd"
+  - "modules/8_cluster_composition/cluster_composition.qmd"
   - "references.qmd"
 
 ####################
@@ -26,8 +28,8 @@ book:
 execute: 
   freeze: "auto"
   echo: true
-  message: true
-  warning: true
+  message: false
+  warning: false
 
 ##########
 # Params #

@@ -61,36 +61,6 @@ CalloutBox = function(x, type, print=TRUE) {
   }
 }
 
-#' Generates a warning box
-#' 
-#' @param x Character string that will be formatted by the FormatString function
-#' @param print Whether to print (if TRUE) or to return (FALSE) the warning box
-#' @return Character string to generate a warning box
-WarningBox = function(x, print=TRUE) {
-  x = CalloutBox(x, type="warning", print=FALSE)
-  if (print) {
-    cat(x)
-  } else {
-    return(x)
-  }
-}
-
-#' Generates a message box
-#' 
-#' @param x Character string that will be formatted by the FormatString function
-#' @param print Whether to print (if TRUE) or to return (FALSE) the message box
-#' @return Character string to generate a message box
-MessageBox = function(x, print=TRUE) {
-  x = CalloutBox(x, type="note", print=FALSE)
-  if (print) {
-    cat(x)
-  } else {
-    return(x)
-  }
-}
-
-
-
 #' Returns the content of the profile yaml.
 #' 
 #' Note: The current profile must be set via the environment variable 'QUARTO_PROFILE'.
