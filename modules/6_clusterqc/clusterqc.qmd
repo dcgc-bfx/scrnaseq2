@@ -165,7 +165,7 @@ Do cells in individual clusters have particularly high counts, detected genes or
 qc_features = param("qc_features")
 f = qc_features %in% colnames(sc[[]])
 if (!all(f)) {
-  WarningBox(x="Cannot find QC {qc_features[!f]*} in barcode metadata.")
+  CalloutBox(x="Cannot find QC {qc_features[!f]*} in barcode metadata.", type="warning")
   qc_features = qc_features[f]
 }
 
@@ -226,9 +226,9 @@ plist[['{{type}}']]
 }
 ```
 
-## Cell Cycle Effects
+## Cell Cycle Effects {#sec-clusterqc-cc}
 
-How much do gene expression profiles in the dataset reflect the cell cycle phases the single cells were in? After initial normalisation, we determined the effects of cell cycle heterogeneity by calculating a score for each cell based on its expression of G2M and S phase markers. Scoring is based on the strategy described in [@Tirosh_2016], and human gene symbols are translated to gene symbols of the species of interest using biomaRt. This section of the report visualises the above calculated cell cycle scores. 
+How much do gene expression profiles in the dataset reflect the cell cycle phases the single cells were in? After initial normalisation, we determined the effects of cell cycle heterogeneity by calculating a score for each cell based on its expression of G2M and S phase markers. Scoring is based on the strategy described in @Tirosh_2016, and human gene symbols are translated to gene symbols of the species of interest using biomaRt. This section of the report visualizes the above calculated cell cycle scores. 
 
 ```{r}
 #| label: fig-clusterqc_cellcycle
@@ -319,18 +319,18 @@ cat(":::", sep="\n")
 
 ## Save Seurat object
 
-NOTE: object is not saved yet, as there was a problem with the merged `scale.data` path in the sc object. 
-
 ```{r}
 #| label: clusterqc_save_seurat
 
-# Save Seurat object and layer data
-#with_progress({
-#  SaveSeuratRds_Custom(sc,
-#                       on_disk_layers=on_disk_counts,
-#                       outdir=file.path(module_dir, "sc"))
-#}, enable=TRUE)
+# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
 
+# Save Seurat object and layer data
+with_progress({
+  SaveSeuratRdsWrapper(sc,
+                       on_disk_layers=on_disk_counts,
+                       outdir=file.path(module_dir, "sc"))
+}, enable=verbose)
 ```
 
 ```{r}

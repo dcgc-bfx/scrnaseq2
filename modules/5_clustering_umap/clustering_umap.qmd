@@ -152,20 +152,22 @@ sc <- suppressMessages(RunPCA(sc))
 
 Seurat's clustering method first constructs a graph structure, where nodes are cells and edges are drawn between cells with similar gene expression patterns. Technically speaking, Seurat first constructs a K-nearest neighbor (KNN) graph based on Euclidean distance in PCA space, and refines edge weights between cells based on the shared overlap in their local neighborhoods (Jaccard similarity). To partition the graph into highly interconnected parts, cells are iteratively grouped together using the Leiden algorithm @Traag_2019. 
 
-<details class="details_box">
-  <summary class="details_box">Further explanation on clustering</summary>
+::: {.callout-tip title="Further explanation on clustering" collapse="true"}
 
 At this point, we would like to define subpopulations of cells with similar gene expression profiles using unsupervised clustering. Clusters ultimately serve as approximations for biological objects like cell types or cell states.
 
 During the first step of clustering, a K-nearest neighbor (KNN) graph is constructed. In simplified terms this means that cells are connected to their K nearest neighbors based on cell-to-cell expression similarity using the PCs chosen in the previous step. The higher the similarity is, the higher the edge weight becomes. During the second step, the graph is partitioned into highly interconnected communities, whereby each community represents a cluster of cells with similar expression profiles. The separation of the graph into clusters is dependent on the chosen resolution. For scRNA-seq datasets of around 3000 cells, it is recommended to use a resolution value between 0.4 and 1.2. This value can be set even higher for larger datasets. Note that the choice of PCs and cluster resolution is an arbitrary one. Therefore, it is highly recommended to evaluate clusters and re-run the workflow with adapted parameters if needed. 
-</details>
 
-To get a first idea about how different cluster resolution values influence the clustering, we run and visualize the clustering multiple times, see below. For this report, you chose the resolution value `r param("cluster_resolution")` as the final value for further analyses. 
+:::
+
+To get a first idea about how different cluster resolution values influence the clustering, we run and visualize the clustering multiple times, see below. 
 
 ```{r}
 #| label: clustering
+#| results: asis
 
-cluster_resolutions = c(param("cluster_resolution"), param("cluster_resolution_test")) %>% unique() %>% sort()
+cluster_resolution = param("cluster_resolution")
+cluster_resolutions = c(cluster_resolution, param("cluster_resolution_test")) %>% unique() %>% sort()
 dim_n = param("dim_n")
 
 # Construct phylogenetic tree relating the "average" cell from each sample
@@ -204,12 +206,14 @@ for (r in cluster_resolutions) {
 }
 
 # Set default clustering
-n = paste0(DefaultAssay(sc), "_snn_res.", param("cluster_resolution"))
+n = paste0(DefaultAssay(sc), "_snn_res.", cluster_resolution)
 sc$seurat_clusters = sc[[n, drop=TRUE]]
 Seurat::Idents(sc) = sc$seurat_clusters
 if (length(levels(sc$seurat_clusters)) > 1) {
   suppressWarnings({Seurat::Misc(sc, "trees") = c(Seurat::Misc(sc, "trees"), list(seurat_clusters = Seurat::Misc(sc, "trees")[[n]]))})
 }
+
+CalloutBox("The resolution parameter {{cluster_resolution}} was used.", type="note")
 
 # Set up colors for default clustering
 sc = ScAddColours(sc, colours=list(seurat_clusters=ScColours(sc, n)))
@@ -274,13 +278,13 @@ for (r in names(plist)) {
 cat(":::\n")
 ```
 
-# Visualisation with UMAP
+# Visualization with UMAP
 
-We use a UMAP to visualise and explore a dataset. The goal is to place similar cells together in 2D space, and learn about the biology underlying the data. Cells are color-coded according to the graph-based clustering, and clusters typcially co-localise on the UMAP.
+We use a UMAP to visualize and explore a dataset. The goal is to place similar cells together in 2D space, and learn about the biology underlying the data. Cells are color-coded according to the graph-based clustering, and clusters typcially co-localise on the UMAP.
 
 Take care not to mis-read a UMAP:
   
-  * Parameters influence the plot (we use defaults here)
+* Parameters influence the plot (we use defaults here)
 * Cluster sizes relative to each other mean nothing, since the method has a local notion of distance
 * Distances between clusters might not mean anything
 * You may need more than one plot
@@ -288,7 +292,7 @@ Take care not to mis-read a UMAP:
 For a nice read to intuitively understand UMAP, see [here](https://pair-code.github.io/understanding-umap/).
 
 ```{r}
-#| label: clustering_umap
+#| label: clustering_umap_print
 #| results: asis
 
 # Generate UMAPS that are colored by cluster and by sample

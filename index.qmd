@@ -54,10 +54,10 @@ Questions
 
 ### About
 
-This HTML report is generated with [**scrnaseq2**](https://github.com/dcgc-bfx/scrnaseq2). [**scrnaseq2**](https://github.com/dcgc-bfx/scrnaseq2) is a bioinformatics workflow to analyze single-cell data, and it is written by the bioinformatics team of the DRESDEN-concept Genome Center. It follows best practices recommendations [@Luecken_2019; @Heumos_2023] and contains additional visualisations, tables and documentation for a better understanding. The workflow is written in R and is largely based on the [Seurat v5](https://satijalab.org/seurat/) R package.
+This HTML report is generated with [scrnaseq2](https://github.com/dcgc-bfx/scrnaseq2). It is a bioinformatics workflow to analyze single-cell data, and it is written by the bioinformatics team of the DRESDEN-concept Genome Center. It follows best practices recommendations [@Luecken_2019; @Heumos_2023] and contains additional visualizations, tables and documentation for a better understanding. The workflow is written in R and is largely based on the [Seurat v5](https://satijalab.org/seurat/) R package.
 
-For more information, visit our [**GitHub page**](https://github.com/dcgc-bfx/scrnaseq2). If you are happy with the analysis, you can help us by rewarding the workflow with a star on GitHub.
+For more information, visit our [GitHub page](https://github.com/dcgc-bfx/scrnaseq2). If you are happy with the analysis, you can help us by rewarding the workflow with a star on GitHub.
 
 ### How to cite
 
-If [**scrnaseq2**](https://github.com/dcgc-bfx/scrnaseq2) was used to analyze your data, please cite it by mentioning the DRESDEN-concept Genome Center URL "https://genomecenter.tu-dresden.de". (TODO: Zenodo!)
+If [scrnaseq2](https://github.com/dcgc-bfx/scrnaseq2) was used to analyze your data, please cite it by mentioning the DRESDEN-concept Genome Center URL "https://genomecenter.tu-dresden.de". (TODO: Zenodo!)
