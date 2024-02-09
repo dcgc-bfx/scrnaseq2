@@ -1,0 +1,402 @@
+---
+# Module-specific parameters (that are not already in the profile yaml)
+# Defaults
+params:
+  # Name of the module used in configurations
+  module: "clustering_umap"
+    
+  # Relative path to the module directory (which contains the qmd file)
+  module_dir: "modules/5_clustering_umap"
+
+  # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
+  prev_module_dir: null
+  
+  # Default assay. If null, will be set to the default assay of the input Seurat object.
+  default_assay: null
+  
+  # Which dimensionality reduction to use. If null, will be set to the default reduction of the default assay of the input Seurat object.
+  dimensionality_reduction_method: "pca"
+
+  # Number of dimensions to use. 
+  dim_n: 10
+  
+  # Cluster resolutions to use. The first one will be used as default clustering.
+  cluster_resolution: 
+  - 0.5
+  - 0.3
+  - 0.7
+  
+  # Number of neighbors to look at for clustering
+  cluster_k: 20
+  
+  # Number of neighbors to look at for umap calculation
+  umap_k: 30
+    
+  # For large datasets: Do not keep counts in memory but store on disk in matrix directories. 
+  # Computations will access only the relevant parts of the data. 
+  # Once done, matrix directories will be saved together with the Seurat object in the module directory.
+  on_disk_counts: true
+  
+  # For large datasets: Copy matrix directories to a temporary directory for computations. 
+  # This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). 
+  # Once done, matrix directories will be copied back to the module directory. 
+  # The temporary directory will be deleted once the R session exists.
+  on_disk_use_tmp: true
+  
+  # Use sketch-based methods for further analyses
+  use_sketching: false
+  
+# Module execution
+execute:
+  # Should this module be frozen and never re-rendered?
+  # - auto: if the code has not changed (default)
+  # - true/false: freeze/re-render
+  # Does not apply in interactive mode or when explicitly rendering this document via in rstudio
+  freeze: auto
+---
+
+# Clustering and UMAP
+
+```{r}
+#| label: setup
+
+# Note: Setup chunk changes working directory automatically to the folder of this qmd file
+
+# If running code interactively in rstudio, set profile here
+# When rendering with quarto, profile is already set and should not be overwritten
+if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "scrnaseq")}
+
+# Load libraries
+library(knitr)
+library(magrittr)
+library(gt)
+library(Seurat)
+library(ggplot2)
+library(future)
+library(patchwork)
+
+# Get module name and directory (needed to access files within the module directory)
+module_name = params$module_name
+module_dir = params$module_dir
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=4, gc=TRUE)
+```
+
+```{r}
+#| label: clustering_preparation
+
+# CODE
+# Source general configurations (always)
+source("R/general_configuration.R")
+
+# Source required R functions
+source("R/functions_util.R")
+source("R/functions_io.R")
+source("R/functions_plotting.R")
+source("R/functions_analysis.R")
+
+# Be verbose
+verbose=param("verbose")
+
+# DIRECTORIES
+# Module directory 'results' contains all output that should be provided together with the final report of the project
+dir.create(file.path(module_dir, "results"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "results"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+# Module directory 'sc' contains the final Seurat object
+dir.create(file.path(module_dir, "sc"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "sc"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+# SEURAT OBJECT
+# Read in seurat object
+if (!is.null(param("prev_module_dir"))) {
+  prev_module_dir = param("prev_module_dir")
+} else {
+  prev_module_dir = PreviousModuleDir(module_dir)
+}
+prev_sc_obj = file.path(prev_module_dir, "sc", "sc.rds")
+if(!file.exists(prev_sc_obj)) {
+  stop(FormatMessage("Could not find a sc.rds file in {{prev_module_dir}}. Was the respective module already run?"))
+}
+sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
+
+# Move on-disk layers to faster temp location if requested
+on_disk_counts = param("on_disk_counts")
+on_disk_use_tmp = param("on_disk_use_tmp")
+
+if (on_disk_counts & on_disk_use_tmp) {
+  on_disk_path = tempdir()
+  with_progress({
+    sc = UpdateMatrixDirs(sc, dir=on_disk_path)
+  }, enable=verbose)
+} else {
+  on_disk_path = file.path(module_dir, "sc")
+}
+
+# Set default assay standard
+default_assay = param("default_assay")
+if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
+Seurat::DefaultAssay(sc) = default_assay
+
+# If sketching should be used, check for the sketch assay and then set as default
+use_sketching = param("use_sketching")
+if (use_sketching) {
+  sketched_assay_name = paste(Seurat::DefaultAssay(sc), "sketch", sep=".")
+  if (!sketched_assay_name %in% SeuratObject::Assays(sc)) {
+    stop(FormatMessage("The option 'use_sketching' is set to true but the sketch assay {sketched_assay_name} was not found."))
+  }
+  SeuratObject::DefaultAssay(sc) = sketched_assay_name
+}
+```
+
+# Clustering
+
+Seurat's clustering method first constructs a graph structure, where nodes are cells and edges are drawn between cells with similar gene expression patterns. Technically speaking, Seurat first constructs a K-nearest neighbor (KNN) graph based on Euclidean distance in PCA space, and refines edge weights between cells based on the shared overlap in their local neighborhoods (Jaccard similarity). To partition the graph into highly interconnected parts, cells are iteratively grouped together using the Leiden algorithm @Traag_2019. 
+
+<details class="details_box">
+  <summary class="details_box">Further explanation on clustering</summary>
+
+At this point, we would like to define subpopulations of cells with similar gene expression profiles using unsupervised clustering. Clusters ultimately serve as approximations for biological objects like cell types or cell states.
+
+During the first step of clustering, a K-nearest neighbor (KNN) graph is constructed. In simplified terms this means that cells are connected to their K nearest neighbors based on cell-to-cell expression similarity using the PCs chosen in the previous step. The higher the similarity is, the higher the edge weight becomes. During the second step, the graph is partitioned into highly interconnected communities, whereby each community represents a cluster of cells with similar expression profiles. The separation of the graph into clusters is dependent on the chosen resolution. For scRNA-seq datasets of around 3000 cells, it is recommended to use a resolution value between 0.4 and 1.2. This value can be set even higher for larger datasets. Note that the choice of PCs and cluster resolution is an arbitrary one. Therefore, it is highly recommended to evaluate clusters and re-run the workflow with adapted parameters if needed. 
+</details>
+
+To get a first idea about how different cluster resolution values influence the clustering, we run and visualize the clustering multiple times, see below. For this report, you chose the resolution value `r param("cluster_resolution")` as the final value for further analyses. 
+
+```{r}
+#| label: clustering
+
+cluster_resolutions = param("cluster_resolution") %>% unique()
+default_cluster_resolution = cluster_resolutions[1]
+dim_n = param("dim_n")
+
+# Construct phylogenetic tree based on an average calculated for each sample
+if (sc$orig.ident %>% levels() %>% length() > 1) {
+  sc = Seurat::BuildClusterTree(sc, reduction=DefaultReduct(sc), dims=1:dim_n, verbose=verbose)
+  Seurat::Misc(sc, slot="trees") = list(orig.ident=Seurat::Tool(sc, "Seurat::BuildClusterTree"))
+}
+
+# Find neighbors for clustering
+sc = Seurat::FindNeighbors(sc, reduction=DefaultReduct(sc), dims=1:dim_n, verbose=verbose, k.param=param("cluster_k"))
+
+# Find clusters based on the neighbors
+sc = Seurat::FindClusters(sc, resolution=cluster_resolutions, algorithm=4, verbose=verbose, method="igraph")
+
+# Construct phylogenetic tree based on an average calculated for each cluster
+# Also add colour lists for each clustering
+for (r in cluster_resolutions) {
+  r = cluster_resolutions[1]
+  n = paste0(DefaultAssay(sc), "_snn_res.", r)
+  
+  # Tree
+  if (sc[[n, drop=TRUE]] %>% levels() %>% length() > 1) {
+    Seurat::Idents(sc) = n
+    sc = Seurat::BuildClusterTree(sc, reduction=DefaultReduct(sc), dims=1:dim_n, verbose=verbose)
+    lst = list(Seurat::Tool(sc, "Seurat::BuildClusterTree"))
+    names(lst) = n
+    suppressWarnings({Seurat::Misc(sc, "trees") = c(Seurat::Misc(sc, "trees"), lst)})
+  }
+
+  # Add colour lists for each clustering resolution
+  nms = levels(sc[[n, drop=TRUE]])
+  col = ScColours(sc, "seurat_clusters")[1:length(nms)]
+  names(col) = nms
+                                         
+  lst = list(col)
+  names(lst) = n
+  sc = ScAddColours(sc, colours=lst)
+}
+
+# Set default clustering
+n = paste0(DefaultAssay(sc), "_snn_res.", default_cluster_resolution)
+sc$seurat_clusters = sc[[n, drop=TRUE]]
+Seurat::Idents(sc) = sc$seurat_clusters
+if (length(levels(sc$seurat_clusters)) > 1) {
+  suppressWarnings({Seurat::Misc(sc, "trees") = c(Seurat::Misc(sc, "trees"), list(seurat_clusters = Seurat::Misc(sc, "trees")[[n]]))})
+}
+
+# Set up colors for default clustering
+sc = ScAddColours(sc, colours=list(seurat_clusters=ScColours(sc, n)))
+```
+
+```{r}
+#| label: clustering_umap
+
+# Generate UMAP
+sc = Seurat::RunUMAP(sc, reduction=DefaultReduct(sc), dims=1:dim_n, verbose=verbose, umap.method="uwot", n.neighbors=param("umap_k"))
+```
+
+```{r}
+#| label: clustering_tests
+#| results: asis
+#| echo: false
+
+# Test different resolution parameters
+
+# If there are any test resolutions other than the default, go ahead
+if (length(cluster_resolutions) > 1) {
+  plist = list()
+  for (r in cluster_resolutions) {
+    r = as.character(r)
+    n = paste0(DefaultAssay(sc), "_snn_res.", r)
+    
+    cluster_cells = table(sc[[n, drop=TRUE]])
+    cluster_labels = paste0(names(cluster_cells)," (", cluster_cells,")")
+    
+    plist[[r]] = Seurat::DimPlot(sc, reduction="umap", group.by=n, label=TRUE) + 
+      scale_color_manual(values=ScColours(sc, n), labels=cluster_labels) +
+      AddPlotStyle(legend_position="none", title="")
+  }
+}
+
+# Set up layout and automatically generate chunks
+chunk_template = "
+\`\`\`{r}
+#| label: fig-clustering_{{res}}
+#| fig-cap: '{{caption}}'
+#| fig-height: 3
+#| fig-width: 2.67
+#| echo: false
+
+plist[['{{res}}']]
+\`\`\`
+"
+
+cat("::: {layout-ncol=3}\n")
+
+for (r in names(plist)) {
+    chunk_filled =  knitr::knit_expand(text=chunk_template, res=r, caption=paste0("Cluster resolution ", r))
+    if(interactive()) {
+      print(EvalKnitrChunk(chunk_filled))
+    } else {
+      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+      cat(chunk_filled, sep='\n')
+    }
+}
+
+cat(":::\n")
+```
+
+# Visualisation with UMAP
+
+We use a UMAP to visualise and explore a dataset. The goal is to place similar cells together in 2D space, and learn about the biology underlying the data. Cells are color-coded according to the graph-based clustering, and clusters typcially co-localise on the UMAP.
+
+Take care not to mis-read a UMAP:
+  
+  * Parameters influence the plot (we use defaults here)
+* Cluster sizes relative to each other mean nothing, since the method has a local notion of distance
+* Distances between clusters might not mean anything
+* You may need more than one plot
+
+For a nice read to intuitively understand UMAP, see [here](https://pair-code.github.io/understanding-umap/).
+
+```{r}
+#| label: clustering_umap_print
+#| results: asis
+
+# Generate UMAPS that are colored by cluster and by sample
+
+# Labels for the UMAP
+cluster_cells = table(sc@active.ident)
+cluster_labels = paste0(levels(sc@active.ident)," (", cluster_cells[levels(sc@active.ident)],")")
+sample_cells = table(sc$orig.ident)
+sample_labels = paste0(levels(sc$orig.ident)," (", sample_cells[levels(sc$orig.ident)],")")
+
+# Initialize Plots 
+plist=list()
+plist[["by_cluster"]] = list()
+plist[["by_cluster"]][["all_samples"]] = Seurat::DimPlot(sc, reduction="umap", group.by="seurat_clusters")
+plist[["by_sample"]] = list()
+plist[["by_sample"]][["all_samples"]] = Seurat::DimPlot(sc, reduction="umap", group.by="orig.ident")
+
+if (length(levels(sc[["orig.ident"]])) <= 4 ) {
+  plist[["by_cluster"]][["per_sample"]] = Seurat::DimPlot(sc, reduction="umap", group.by="seurat_clusters", 
+                                                          split.by="orig.ident", ncol=2)
+  plist[["by_sample"]][["per_sample"]] = Seurat::DimPlot(sc, reduction="umap", group.by="orig.ident", 
+                                                         split.by="orig.ident", ncol=2)
+}
+
+# Add additional plot features
+for (i in names(plist)) {
+  for (j in names(plist[[i]])) {
+    # Add style
+    plist[[i]][[j]] = plist[[i]][[j]] + 
+      AddPlotStyle(title="", legend_position="bottom", legend_title="Clusters")
+    
+    # Add cluster labels
+    # Add cluster information to the plot if necessary
+    if (! ("seurat_clusters" %in% names(plist[[i]][[j]]))) {
+      plist[[i]][[j]]$data$seurat_clusters = sc[["seurat_clusters"]][rownames(plist[[i]][[j]]$data), ]
+    }
+    
+    # Repel? 
+    repel = ifelse((j == "per_sample") & length(unique(sc$orig.ident)) > 5, FALSE, TRUE)
+    plist[[i]][[j]] = LabelClusters(plist[[i]][[j]], 
+                                    id="seurat_clusters", box=TRUE, fill="white", repel=repel)
+    
+    # Add color
+    if (i == "by_cluster") { 
+      plist[[i]][[j]] = plist[[i]][[j]] + scale_color_manual(values=ScColours(sc, "seurat_clusters"), labels=cluster_labels)
+    } 
+    if (i == "by_sample") { 
+      plist[[i]][[j]] = plist[[i]][[j]] + scale_color_manual(values=ScColours(sc, "orig.ident"), labels=sample_labels)
+    }
+  }
+}
+
+# Plot 
+# Set up layout and automatically generate chunks
+chunk_template = "
+#### {{i}}_{{j}}
+\`\`\`{r}
+#| label: fig-clustering_umap_{{i}}_{{j}}
+#| fig-cap: '{{caption}}'
+
+plist[['{{i}}']][['{{j}}']]
+\`\`\`
+"
+
+cat("::: panel-tabset\n")
+
+for (i in names(plist)) {
+  for (j in names(plist[[i]])) {
+    caption = gsub(paste0("UMAP, cells coloured ", i, ", ", j),
+                   pattern="_", replacement=" ", perl=FALSE)
+    chunk_filled =  knitr::knit_expand(text=chunk_template, i=i, j=j, caption=caption)
+    if(interactive()) {
+      print(EvalKnitrChunk(chunk_filled))
+    } else {
+      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+      cat(chunk_filled, sep='\n')
+    }
+  }
+}
+
+cat(":::\n")
+```
+
+## Save Seurat object
+
+```{r}
+#| label: clustering_save_seurat
+
+# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
+
+# Save Seurat object and layer data
+with_progress({
+  SaveSeuratRdsWrapper(sc,
+                       on_disk_layers=on_disk_counts,
+                       outdir=file.path(module_dir, "sc"))
+}, enable=verbose)
+```
+
+```{r}
+#| label: clustering_finish
+
+# Stop multisession workers
+plan(sequential)
+```

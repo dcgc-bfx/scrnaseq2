@@ -8,7 +8,7 @@
 SumTopN = function(matrix, n=50, margin=1, chunk_size=NULL){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
-                          msg=FormatMessage("Margin can only be 1 - rows or 2 - columns."))
+                          msg=FormatString("Margin can only be 1 - rows or 2 - columns."))
   
   # Calculate totals
   if (margin == 1) {
@@ -107,7 +107,7 @@ SumTopN = function(matrix, n=50, margin=1, chunk_size=NULL){
 CalculateMedians = function(matrix, margin=1, chunk_size=NULL, cores=1){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
-                          msg=FormatMessage("Margin can only be 1 - rows or 2 - columns."))
+                          msg="Margin can only be 1 - rows or 2 - columns.")
   
   # Define chunks
   chunks = NULL
@@ -176,7 +176,7 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, cores=1){
 CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
-                          msg=FormatMessage("Margin can only be 1 - rows or 2 - columns."))
+                          msg=FormatString("Margin can only be 1 - rows or 2 - columns."))
   
   # Define chunks
   if (margin == 1) {
@@ -295,7 +295,12 @@ CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
       cc_scores = s[[c("Phase", "S.Score", "G2M.Score")]]
       cc_scores[["CC.Difference"]] = cc_scores[["S.Score"]] - cc_scores[["G2M.Score"]]
     } else {
-      cc_scores = data.frame(Phase=character(), S.Score=numeric(), G2M.Score=numeric(), CC.Difference=numeric())
+      barcodes = Cells(s)
+      cc_scores = data.frame(Phase=rep(NA, length(barcodes)) %>% as.character(), 
+                             S.Score=rep(NA, length(barcodes)) %>% as.numeric(), 
+                             G2M.Score=rep(NA, length(barcodes)) %>% as.numeric(), 
+                             CC.Difference=rep(NA, length(barcodes)) %>% as.numeric(),
+                             row.names=barcodes)
     }
     cc_scores[["Phase"]] = factor(cc_scores[["Phase"]], levels=c("G1", "G2M", "S"))
     return(cc_scores)
@@ -303,10 +308,6 @@ CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
 
   # Add to barcode metadata
   sc = Seurat::AddMetaData(sc, cell_cycle_scores)
-  
-  # Add to 'gene_lists' slot in the misc slot of the Seurat object
-  sc = ScAddLists(sc, lists=list(CC_S_phase=genes_s, CC_G2M_phase=genes_g2m),
-                  lists_slot="gene_lists")
   
   # Log command
   sc = Seurat::LogSeuratCommand(sc)
@@ -411,7 +412,7 @@ FindVariableFeaturesScran = function(sc, assay=NULL, nfeatures=2000, combined=TR
   # Checks
   layers = SeuratObject::Layers(sc[[assay]], "^data")
   assertthat::assert_that(length(layers) > 0,
-                          msg=FormatMessage("Could not find normalized data for assay {assay}."))
+                          msg=FormatString("Could not find normalized data for assay {assay}."))
   
   # Get normalized data
   if (combined) {
@@ -523,7 +524,7 @@ FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variabl
   # Check
   valid_feature_selection_methods = c("vst", "scran")
   assertthat::assert_that(feature_selection_method %in% valid_feature_selection_methods,
-                          msg=FormatMessage("Variable features method must must be one of: {valid_feature_selection_methods*}."))
+                          msg=FormatString("Variable features method must must be one of: {valid_feature_selection_methods*}."))
   
   # Find variable features
   if (feature_selection_method == "vst") {
@@ -550,16 +551,16 @@ FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variabl
 #' @param dim_n Number of dimensions to compute. Default is 50.
 #' @param verbose Be verbose.
 #' @return Seurat v5 object with a new (integrated) reduction.
-RunDimRedWrapper = function(sc, method="pca", assay=NULL, dim_n=50, verbose=TRUE) {
+RunDimRedWrapper = function(sc, method="PCA", assay=NULL, dim_n=50, verbose=TRUE) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
     
   # Checks
-  valid_methods = c("pca")
+  valid_methods = c("PCA")
   assertthat::assert_that(method %in% valid_methods,
                           msg=FormatMessage("Method is {method} but must be one of: {valid_methods*}."))
   
   # Run dimensionality reduction
-  if (method == "pca") {
+  if (method == "PCA") {
     sc = Seurat::RunPCA(sc,
                         assay=assay,
                         verbose=verbose, 
@@ -567,6 +568,10 @@ RunDimRedWrapper = function(sc, method="pca", assay=NULL, dim_n=50, verbose=TRUE
                         seed.use=getOption("random_seed"),
                         reduction.name="pca",
                         reduction.key="pca_")
+    SeuratObject::Misc(sc[["pca"]], slot="title") = "PCA"
+    
+    # Set as active dimensionality reduction
+    DefaultReduct(sc, assay=assay) = "pca"
   }
 
   return(sc)
@@ -590,10 +595,10 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   # Checks
   valid_integration_methods = c("CCAIntegration", "RPCAIntegration", "HarmonyIntegration", "FastMNNIntegration", "scVIIntegration")
   assertthat::assert_that(integration_method %in% valid_integration_methods,
-                          msg=FormatMessage("Variable features method must must be one of: {valid_integration_methods*}."))
+                          msg=FormatString("Variable features method must must be one of: {valid_integration_methods*}."))
   
   assertthat::assert_that(orig_reduct %in% SeuratObject::Reductions(sc),
-                          msg=FormatMessage("Original reduction {orig_reduct} is not part of the Seurat object."))
+                          msg=FormatString("Original reduction {orig_reduct} is not part of the Seurat object."))
   
   # New reduction name
   if (is.null(new_reduct)) {
@@ -644,7 +649,12 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
                         additional_args)
                    )
   
+  # Add title
+  SeuratObject::Misc(sc[[new_reduct]], slot="title") = integration_method
   
+  # Set as active dimensionality reduction
+  DefaultReduct(sc, assay=assay) = new_reduct
+
   # Post-process
   if (integration_method == "CCAIntegration") {
     
@@ -673,7 +683,6 @@ RPCAIntegration_Fixed <- function (object = NULL, assay = NULL, layers = NULL, o
                                    k.filter = NA, scale.layer = "scale.data", dims.to.integrate = NULL, 
                                    k.weight = 100, weight.reduction = NULL, sd.weight = 1, sample.tree = NULL, 
                                    preserve.order = FALSE, verbose = TRUE, ...) {
-    print("Runs RPCAIntegration_Fixed")
     op <- options(Seurat.object.assay.version = "v3", Seurat.object.assay.calcn = FALSE)
     on.exit(expr = options(op), add = TRUE)
     normalization.method <- match.arg(arg = normalization.method)
@@ -754,7 +763,6 @@ scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers
                                   conda_env = NULL, new.reduction = "integrated.dr", ndims = 30, 
                                   nlayers = 2, gene_likelihood = "nb", max_epochs = NULL, ...) 
 {
-  print("Runs scVIIntegration_Fixed")
   reticulate::use_condaenv(conda_env, required = TRUE)
   sc <- reticulate::import("scanpy", convert = FALSE)
   anndata <- reticulate::import("anndata", convert = FALSE)

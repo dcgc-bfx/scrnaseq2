@@ -1,0 +1,226 @@
+---
+# Module-specific parameters (that are not already in the profile yaml)
+# Defaults
+params:
+  # Name of the module used in configurations
+  module: "cluster_composition"
+    
+  # Relative path to the module directory (which contains the qmd file)
+  module_dir: "modules/8_cluster_composition"
+
+  # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
+  # NOTE: Change to null if all modules are implemented and sc objects are written
+  prev_module_dir: "modules/3_normalization/rna"
+  
+  # Default assay and normalization
+  default_assay: "RNA"
+  normalization_method: "RNA"
+  
+  # For large datasets: Do not keep counts in memory but store on disk in matrix directories. 
+  # Computations will access only the relevant parts of the data. 
+  # Once done, matrix directories will be saved together with the Seurat object in the module directory.
+  on_disk_counts: true
+  
+  # For large datasets: Copy matrix directories to a temporary directory for computations. 
+  # This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). 
+  # Once done, matrix directories will be copied back to the module directory. 
+  # The temporary directory will be deleted once the R session exists.
+  on_disk_use_tmp: true
+  
+# Module execution
+execute:
+  # Should this module be frozen and never re-rendered?
+  # - auto: if the code has not changed (default)
+  # - true/false: freeze/re-render
+  # Does not apply in interactive mode or when explicitly rendering this document via in rstudio
+  freeze: auto
+---
+
+# Cluster Composition
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+# Note: Setup chunk changes working directory automatically to the folder of this qmd file
+
+# If running code interactively in rstudio, set profile here
+# When rendering with quarto, profile is already set and should not be overwritten
+if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "scrnaseq")}
+
+# Load libraries
+library(knitr)
+library(magrittr)
+library(gt)
+library(Seurat)
+library(ggplot2)
+library(future)
+library(patchwork)
+
+# Get module name and directory (needed to access files within the module directory)
+module_name = params$module_name
+module_dir = params$module_dir
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=4, gc=TRUE)
+```
+
+```{r}
+#| label: cluster_composition_preparation
+#| message: false
+#| warning: false
+
+# CODE
+# Working directory is automatically back to scrnaseq2 at this point
+# Source general configurations (always)
+source("R/general_configuration.R")
+
+# Source required R functions
+source("R/functions_util.R")
+source("R/functions_io.R")
+source("R/functions_plotting.R")
+source("R/functions_analysis.R")
+
+verbose = param("verbose")
+
+# DIRECTORIES
+# Module directory 'results' contains all output that should be provided together with the final report of the project
+dir.create(file.path(module_dir, "results"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "results"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+# Module directory 'sc' contains the final Seurat object
+dir.create(file.path(module_dir, "sc"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "sc"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+# SEURAT OBJECT
+# Read in seurat object
+if (!is.null(param("prev_module_dir"))) {
+  prev_module_dir = param("prev_module_dir")
+} else {
+  prev_module_dir = PreviousModuleDir(module_dir)
+}
+prev_sc_obj = file.path(prev_module_dir, "sc", "sc.rds")
+if(!file.exists(prev_sc_obj)) {
+  stop(FormatString("Could not find a sc.rds file in {{prev_module_dir}}. Was the respective module already run?"))
+}
+sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
+
+# Move on-disk layers to faster temp location if requested
+on_disk_counts = param("on_disk_counts")
+on_disk_use_tmp = param("on_disk_use_tmp")
+
+if (on_disk_counts & on_disk_use_tmp) {
+  on_disk_path = tempdir()
+  with_progress({
+    sc = UpdateMatrixDirs(sc, dir=on_disk_path)
+  }, enable=verbose)
+} else {
+  on_disk_path = file.path(module_dir, "sc")
+}
+
+# Set default assay
+default_assay = ifelse (param("normalization_method") == "sct", 
+                        paste(param("default_assay"), "SCT", sep="_"), 
+                        param("default_assay"))
+```
+
+NOTE: temporary until chapter 5 is written: 
+
+```{r}
+#| label: cluster_composition_temporary
+#| warning: false
+#| message: false
+sc <- suppressMessages(ScaleData(sc))
+sc <- suppressMessages(RunPCA(sc))
+sc <- suppressMessages(FindNeighbors(sc, dims = 1:10))
+sc <- suppressMessages(FindClusters(sc, resolution = 0.5))
+sc <- suppressMessages(RunUMAP(sc, dims = 1:10))
+```
+
+## Samples per cluster
+
+```{r}
+#| label: cluster_composition_samples_per_cluster
+
+# Count cells per cluster and sample 
+cell_samples = sc[[]] %>% dplyr::pull(orig.ident) %>% levels()
+cell_clusters = sc[[]] %>% dplyr::pull(seurat_clusters) %>% levels()
+
+tbl = dplyr::count(sc[[c("orig.ident", "seurat_clusters")]], orig.ident, seurat_clusters) %>% tidyr::pivot_wider(names_from="seurat_clusters", names_prefix="Cl_", values_from=n, values_fill=0) %>% as.data.frame()
+rownames(tbl) = paste0(tbl[,"orig.ident"],"_n")
+tbl[,"orig.ident"] = NULL
+
+# Add percentages
+tbl_perc = round(t(tbl) / colSums(tbl) * 100, 2) %>% t()
+rownames(tbl_perc) = gsub(rownames(tbl_perc), pattern="_n$", replacement="_perc", perl=TRUE)
+tbl = rbind(tbl, tbl_perc)
+
+# Add enrichment
+if (length(cell_samples) > 1 & length(cell_clusters) > 1) tbl = rbind(tbl, CellsFisher(sc))
+
+# Sort
+tbl = tbl[order(rownames(tbl)),, drop=FALSE]
+```
+
+```{r}
+#| label: fig-cluster_composition_samples_per_cluster
+#| fig-cap: Percentage cells per sample and cluster
+
+# Plot percentages
+tbl_bar = tbl[paste0(cell_samples, "_perc"), , drop=FALSE] %>% 
+  tibble::rownames_to_column(var="Sample") %>%
+  tidyr::pivot_longer(tidyr::starts_with("Cl"), names_to="Cluster", values_to="Percentage")
+tbl_bar$Cluster = tbl_bar$Cluster %>% gsub(pattern="^Cl_", replacement="", perl=TRUE) %>% factor(levels=sc$seurat_clusters %>% levels())
+tbl_bar$Sample = tbl_bar$Sample %>% gsub(pattern="_perc$", replacement="", perl=TRUE) %>% as.factor()
+tbl_bar$Percentage = as.numeric(tbl_bar$Percentage)
+p = ggplot(tbl_bar, aes(x=Cluster, y=Percentage, fill=Sample)) + 
+  geom_bar(stat="identity" ) +
+  AddPlotStyle(fill=ScColours(sc, "orig.ident"),
+               legend_title="Sample",
+               legend_position="bottom")
+p
+```
+
+The following table shows the number of cells per sample and cluster:   
+
+* n: Number of cells per sample and cluster   
+* perc: Percentage of cells per sample and cluster compared to all other cells of that cluster   
+
+In case the dataset contains 2 or more samples, we also calculate whether or not the number of cells of a sample in a cluster is significantly higher or lower than expected:      
+
+* oddsRatio: Odds ratio calculated for cluster c1 and sample s1 as (# cells s1 in c1 / # cells not s1 in c1) / (# cells s1 not in c1 / # cells not s1 not in c1)    
+* p: P-value calculated with a Fisher test to test whether "n" is higher or lower than expected  
+
+```{r}
+#| label: tbl-cluster_composition_samples_per_cluster
+#| tbl-cap: Number of cells per sample and cluster
+
+# Print table
+gt(tbl, rownames_to_stub=TRUE)
+```
+
+## Save Seurat object
+
+NOTE: object is not saved yet, as there was a problem with the merged `scale.data` path in the sc object. 
+
+```{r}
+#| label: cluster_composition_save_seurat
+
+# Save Seurat object and layer data
+#with_progress({
+#  SaveSeuratRds_Custom(sc,
+#                       on_disk_layers=on_disk_counts,
+#                       outdir=file.path(module_dir, "sc"))
+#}, enable=TRUE)
+
+```
+
+```{r}
+#| label: cluster_composition_finish
+
+# Stop multisession workers
+plan(sequential)
+```

@@ -104,7 +104,7 @@ ReadMetadata_csv = function(csv_file) {
   
   # Assert that first column is unique
   assertthat::assert_that(all(not(duplicated(meta_data[, 1, drop=TRUE]))),
-                          msg=FormatMessage("Metadata file {file} contains duplicate values in first column."))
+                          msg=FormatString("Metadata file {file} contains duplicate values in first column."))
   
   # Create table
   rownames(meta_data) = meta_data[, 1, drop=TRUE]
@@ -126,7 +126,7 @@ ReadMetadata_excel = function(excel_file, sheet=1) {
   
   # Assert that first column is unique
   assertthat::assert_that(all(not(duplicated(meta_data[, 1, drop=TRUE]))),
-                          msg=FormatMessage("Metadata file {file} contains duplicate values in first column."))
+                          msg=FormatString("Metadata file {file} contains duplicate values in first column."))
   
   # Create table
   rownames(meta_data) = meta_data[, 1, drop=TRUE]
@@ -149,7 +149,7 @@ ReadMetadata_rds = function(rds_file) {
   
   # Assert that first column is unique
   assertthat::assert_that(all(not(duplicated(meta_data[, 1, drop=TRUE]))),
-                          msg=FormatMessage("Metadata file {file} contains duplicate values in first column."))
+                          msg=FormatString("Metadata file {file} contains duplicate values in first column."))
   
   # Create table
   rownames(meta_data) = meta_data[, 1, drop=TRUE]
@@ -172,7 +172,7 @@ ReadMetadata = function(file) {
   extension = tools::file_ext(gsub(pattern="\\.gz$", replacement="", x=file))
   valid_extensions = c("csv", "tsv", "xls", "xlsx", "rds")
   assertthat::assert_that(extension %in% valid_extensions,
-                          msg=FormatMessage("Metadata file type must be: {valid_extensions*} (file can be gzipped)."))
+                          msg=FormatString("Metadata file type must be: {valid_extensions*} (file can be gzipped)."))
   
   # Read metadata
   if (extension %in% c("csv", "tsv")) {
@@ -185,7 +185,7 @@ ReadMetadata = function(file) {
   
   # Assert that it is not empty
   assertthat::assert_that(assertthat::not_empty(meta_data),
-                          msg=FormatMessage("Metadata file {file} is empty."))
+                          msg=FormatString("Metadata file {file} is empty."))
 
   return(meta_data)
 }
@@ -208,7 +208,7 @@ ReadDatasetsTable = function(file) {
   extension = tools::file_ext(gsub(pattern="\\.gz$", replacement="", x=file))
   valid_extensions = c("csv", "tsv", "xls", "xlsx", "rds")
   assertthat::assert_that(extension %in% valid_extensions,
-                          msg=FormatMessage("Datasets file type must be: {valid_extensions*} (file can be gzipped)."))
+                          msg=FormatString("Datasets file type must be: {valid_extensions*} (file can be gzipped)."))
   
   # Read datasets table
   if (extension %in% c("csv", "tsv")) {
@@ -217,7 +217,7 @@ ReadDatasetsTable = function(file) {
     datasets_table = readxl::read_excel(file, sheet=sheet, col_names=TRUE)
   }
   assertthat::assert_that(assertthat::not_empty(datasets_table),
-                          msg=FormatMessage("Datasets file {file} is empty."))
+                          msg=FormatString("Datasets file {file} is empty."))
   
   # Check that all columns are present
   
@@ -244,15 +244,15 @@ ReadCounts_csv = function(csv_file, transpose=FALSE) {
   
   # Check that barcodes and features are unique
   assertthat::assert_that(sum(duplicated(col_ids)) == 0,
-                          msg=FormatMessage("Dataset {csv_file} contains at least two barcodes with the same name."))
+                          msg=FormatString("Dataset {csv_file} contains at least two barcodes with the same name."))
   
   assertthat::assert_that(sum(duplicated(row_ids)) == 0,
-                          msg=FormatMessage("Dataset {csv_file} contains at least two features with the same name.")) 
+                          msg=FormatString("Dataset {csv_file} contains at least two features with the same name.")) 
   
   # Check that all columns are numeric
   is_numeric = sapply(counts_data, is.numeric)
   assertthat::assert_that(all(is_numeric[-1]),
-                          msg=FormatMessage("There are non-numeric columns in dataset {csv_file}! Only the first column may be non-numeric."))
+                          msg=FormatString("There are non-numeric columns in dataset {csv_file}! Only the first column may be non-numeric."))
   
   
   # Create sparse matrix
@@ -409,14 +409,14 @@ ReadCounts_SmartSeq = function(path, assays, version, transpose=FALSE) {
   # Checks
   assertthat::is.readable(path)
   assertthat::assert_that(version %in% c("2", "3"),
-                          msg=FormatMessage("Smartseq version must be '2' or '3'."))
+                          msg=FormatString("Smartseq version must be '2' or '3'."))
   
   
   # Convert to feature type in dataset
   assay_to_feature_type = setNames(names(Assays_Smartseq), Assays_Smartseq)
   valid_assays = names(assay_to_feature_type)
   assertthat::assert_that(assays %in% valid_assays,
-                          msg=FormatMessage("'{assays*} must be: {valid_assays*}."))
+                          msg=FormatString("'{assays*} must be: {valid_assays*}."))
 
   if (dir.exists(path)) {
     # market exchange format
@@ -629,7 +629,7 @@ ReadCounts_10x = function(path, assays=NULL, transpose=FALSE) {
   # If assays are specified, check that they are valid
   if (!is.null(assays)) {
     assertthat::assert_that(all(assays %in% valid_assays),
-                            msg=FormatMessage("'{assays} must be: {valid_assays*}."))
+                            msg=FormatString("'{assays} must be: {valid_assays*}."))
   }
 
   # Read counts
@@ -656,7 +656,7 @@ ReadCounts_10x = function(path, assays=NULL, transpose=FALSE) {
     feature_types = assay_to_feature_type[assays]
     f = feature_types %in% names(counts_lst)
     assertthat::assert_that(all(f),
-                            msg=FormatMessage("Dataset {path} does not contain the following types of data: {assays[!f]*} (named {feature_types[!f]*} in the dataset)."))
+                            msg=FormatString("Dataset {path} does not contain the following types of data: {assays[!f]*} (named {feature_types[!f]*} in the dataset)."))
     counts_lst = counts_lst[feature_types]
   }
   
@@ -664,7 +664,7 @@ ReadCounts_10x = function(path, assays=NULL, transpose=FALSE) {
   feature_types = names(counts_lst)
   f = feature_types %in% names(feature_type_to_assay)
   assertthat::assert_that(all(f),
-                          msg=FormatMessage("Dataset {path} contains a type of data that was not recognized as an assay: {feature_types[!f]*}. Check list Assays_10x in functions_io.R."))
+                          msg=FormatString("Dataset {path} contains a type of data that was not recognized as an assay: {feature_types[!f]*}. Check list Assays_10x in functions_io.R."))
   names(counts_lst) = feature_type_to_assay[names(counts_lst)]
   
   # Add attributes technology and assay
@@ -698,7 +698,7 @@ ReadCounts_10xVisium = function(path, assays=NULL, transpose=FALSE) {
 
 #' Reads counts data produced by 10x Xenium.
 #' 
-#' @param path Path to 10x counts data for 10x Xenium. Can be a 10x h5 file (recommended for big datasets) or a 10x matrix exchange format directory.
+#' @param path Path to 10x counts data for 10x Xenium. Can be a 10x hdf5 file (recommended for big datasets) or a 10x matrix exchange format directory.
 #' @param assays Which assays to read. If NULL, read all assays.
 #' @return One sparse counts matrix per assay. Format is either IterableMatrix (when reading a h5 file) or dgCMatrix (when reading from a matrix exchange format directory). Additional information on barcodes and features is attached as attributes.
 ReadCounts_10xXenium = function(path, assays=NULL, transpose=FALSE) {
@@ -772,7 +772,7 @@ ReadCounts_ParseBio = function(path, assays, transpose=FALSE) {
   assay_to_feature_type = setNames(names(Assays_Parse), Assays_Parse)
   valid_assays = names(assay_to_feature_type)
   assertthat::assert_that(all(assays %in% valid_assays),
-                          msg=FormatMessage("'{assay} must be: {valid_assays*}."))
+                          msg=FormatString("'{assay} must be: {valid_assays*}."))
   
   # Read counts
   if (dir.exists(path)) {
@@ -790,7 +790,7 @@ ReadCounts_ParseBio = function(path, assays, transpose=FALSE) {
   #  feature_types = assay_to_feature_type[assays]
   #  f = feature_types %in% names(counts_lst)
   #  assertthat::assert_that(all(f),
-  #                          msg=FormatMessage("Dataset {path} does not contain the following types of data: {assays[!f]*} (named {feature_types[!f]*} in the dataset)."))
+  #                          msg=FormatString("Dataset {path} does not contain the following types of data: {assays[!f]*} (named {feature_types[!f]*} in the dataset)."))
   #  counts_lst = counts_lst[feature_types]
   #}
   
@@ -798,7 +798,7 @@ ReadCounts_ParseBio = function(path, assays, transpose=FALSE) {
   #feature_types = names(counts_lst)
   #f = feature_types %in% names(feature_type_to_assay)
   #assertthat::assert_that(all(f),
-  #                        msg=FormatMessage("Dataset {path} contains a type of data that was not recognized as an assay: {feature_types[!f]*}. Check list Assays_Parse in functions_io.R."))
+  #                        msg=FormatString("Dataset {path} contains a type of data that was not recognized as an assay: {feature_types[!f]*}. Check list Assays_Parse in functions_io.R."))
   #names(counts_lst) = feature_type_to_assay[names(counts_lst)]
   counts_lst = counts_lst[1]
   names(counts_lst) = assays[1]
@@ -859,7 +859,7 @@ ReadCounts_ScaleBio = function(path, assays) {
   # If assays are specified, check that they are valid
   if (!is.null(assays)) {
     assertthat::assert_that(all(assays %in% valid_assays),
-                            msg=FormatMessage("'{assays} must be: {valid_assays*}."))
+                            msg=FormatString("'{assays} must be: {valid_assays*}."))
   }
 
   # Read counts
@@ -870,7 +870,7 @@ ReadCounts_ScaleBio = function(path, assays) {
     feature_types = assay_to_feature_type[assays]
     f = feature_types %in% names(counts_lst)
     assertthat::assert_that(all(f),
-                            msg=FormatMessage("Dataset {path} does not contain the following types of data: {assays[!f]*} (named {feature_types[!f]*} in the dataset)."))
+                            msg=FormatString("Dataset {path} does not contain the following types of data: {assays[!f]*} (named {feature_types[!f]*} in the dataset)."))
     counts_lst = counts_lst[feature_types]
   }
   
@@ -878,7 +878,7 @@ ReadCounts_ScaleBio = function(path, assays) {
   feature_types = names(counts_lst)
   f = feature_types %in% names(feature_type_to_assay)
   assertthat::assert_that(all(f),
-                          msg=FormatMessage("Dataset {path} contains a type of data that was not recognized as an assay: {feature_types[!f]*}. Check list Assays_Scale in functions_io.R."))
+                          msg=FormatString("Dataset {path} contains a type of data that was not recognized as an assay: {feature_types[!f]*}. Check list Assays_Scale in functions_io.R."))
   names(counts_lst) = feature_type_to_assay[names(counts_lst)]
   
   # Add attributes technology and assay
@@ -917,7 +917,7 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
   # Checks
   valid_technologies = c("smartseq2", "smartseq3", "10x", "10x_visium", "10x_xenium", "parse", "scale")
   assertthat::assert_that(technology %in% valid_technologies,
-                          msg=FormatMessage("Technology is {technology} but must be one of: {valid_technologies*}."))
+                          msg=FormatString("Technology is {technology} but must be one of: {valid_technologies*}."))
   
   # Read counts
   if (technology == "smartseq2") {
@@ -937,12 +937,12 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
   }
   
   assertthat::assert_that(assertthat::not_empty(counts_lst),
-                          msg=FormatMessage("Count not read counts for dataset {path}, assay {assay}."))
+                          msg=FormatString("Count not read counts for dataset {path}, assay {assay}."))
   
   # Add barcode metadata to counts objects
   if (!is.null(barcode_metadata)) {
     assertthat::assert_that(!is(barcode_metadata, "list") | length(barcode_metadata) == length(counts_lst),
-                            msg=FormatMessage("Barcode metadata must either be one table or a list of tables for each assay (dataset {path})."))
+                            msg=FormatString("Barcode metadata must either be one table or a list of tables for each assay (dataset {path})."))
     
     for(i in seq_along(counts_lst)) {
       # Do we have already other barcode metadata
@@ -972,7 +972,7 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
   # Add feature metadata to counts objects
   if (!is.null(feature_metadata)) {
     assertthat::assert_that(!is(feature_metadata, "list") | length(feature_metadata) == length(counts_lst),
-                            msg=FormatMessage("Feature metadata must either be one table or a list of tables for each assay (dataset {path})."))
+                            msg=FormatString("Feature metadata must either be one table or a list of tables for each assay (dataset {path})."))
     
     for(i in seq_along(counts_lst)) {
       # Do we have already other feature metadata
@@ -1006,11 +1006,11 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
     
     feature_names = rownames(counts_lst[[i]])
     if (any(grepl(pattern="_", x=feature_names, fixed=TRUE))) {
-      warning(FormatMessage("Feature names contain '_' for dataset {path}, assay {assay}. All occurences will be replaced with '-'."))
+      warning(FormatString("Feature names contain '_' for dataset {path}, assay {assay}. All occurences will be replaced with '-'."))
       feature_names = gsub(pattern="_", replacement="-", x=feature_names, fixed=TRUE)
     }
     if (any(duplicated(feature_names))) {
-      warning(FormatMessage("Features contains duplicate values for dataset {path}, assay {assay}. Feature names will be made unique."))
+      warning(FormatString("Features contains duplicate values for dataset {path}, assay {assay}. Feature names will be made unique."))
       feature_names = make.unique(feature_names)
     }
     
@@ -1123,7 +1123,7 @@ ReadImage_10xVisium = function(image_dir) {
   assertthat::is.readable(image_dir)
   for (f in c("tissue_lowres_image.png", "scalefactors_json.json")) {
     assertthat::assert_that(file.exists(file.path(image_dir, f)),
-                            msg=FormatMessage("10x Visium image directory {image_dir} misses the file {f}."))
+                            msg=FormatString("10x Visium image directory {image_dir} misses the file {f}."))
   }
   
   # Read image
@@ -1143,7 +1143,7 @@ CreateSegmentationImproved = function(coords) {
   library(SeuratObject)
   
   assertthat::assert_that(all(colnames(coords) == c("cell", "x", "y")),
-                          msg=FormatMessage("Function 'CreateSegmentationImproved' requires a table with columns 'cell', 'x' and 'y'."))
+                          msg=FormatString("Function 'CreateSegmentationImproved' requires a table with columns 'cell', 'x' and 'y'."))
   
   coords_cell_names = coords[[1]]
   coords_cell_names = factor(coords_cell_names, levels=unique(coords_cell_names))
@@ -1179,11 +1179,11 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
   # Checks
   assertthat::is.readable(image_dir)
   assertthat::assert_that(file.exists(file.path(image_dir, "cells.csv.gz")),
-                          msg=FormatMessage("10x Xenium image directory {image_dir} misses the file 'cells.csv.gz'."))
+                          msg=FormatString("10x Xenium image directory {image_dir} misses the file 'cells.csv.gz'."))
   assertthat::assert_that(file.exists(file.path(image_dir, "cell_boundaries.csv.gz")),
-                          msg=FormatMessage("10x Xenium image directory {image_dir} misses the file 'cell_boundaries.csv.gz'."))
+                          msg=FormatString("10x Xenium image directory {image_dir} misses the file 'cell_boundaries.csv.gz'."))
   assertthat::assert_that(file.exists(file.path(image_dir, "transcripts.csv.gz")),
-                          msg=FormatMessage("10x Xenium image directory {image_dir} misses the file 'transcripts.csv.gz'."))
+                          msg=FormatString("10x Xenium image directory {image_dir} misses the file 'transcripts.csv.gz'."))
   
   mols.qv.threshold = 20
   options(stringsAsFactors=FALSE)
@@ -1196,8 +1196,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
                                      colClasses=c("cell_id"="character", "x_centroid"="numeric", "y_centroid"="numeric", "cell_area"="numeric", "nucleus_area"="numeric"),
                                      col.names=c("cell", "x", "y", "cell_area", "nucleus_area"), 
                                      key="cell",
-                                     showProgress=FALSE,
-                                     nThread=cores)
+                                     showProgress=FALSE)
   if (!is.null(barcodes)) {
     cell_centroids = cell_centroids[barcodes]
   }
@@ -1214,8 +1213,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
                                         colClasses=c("cell_id"="character", "vertex_x"="numeric", "vertex_y"="numeric"),
                                         col.names=c("cell", "x", "y"),
                                         key="cell",
-                                        showProgress=FALSE,
-                                        nThread=cores)
+                                        showProgress=FALSE)
     if (!is.null(barcodes)) {
       cell_boundaries = cell_boundaries[barcodes]
     }
@@ -1230,8 +1228,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
                                   colClasses=c("feature_name"="character", "x_location"="numeric", "y_location"="numeric", "qv"="numeric"),
                                   col.names=c("gene", "x", "y", "qv"),
                                   key="qv",
-                                  showProgress=FALSE,
-                                  nThread=cores)
+                                  showProgress=FALSE)
   transcripts = transcripts[qv >= mols.qv.threshold]
   transcripts$qv = NULL
   molecules = SeuratObject::CreateMolecules(transcripts, key='mols_')
@@ -1261,14 +1258,11 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
 #' @return A Seurat VisiumV1 object.
 ReadImage = function(image_dir, technology, assay, barcodes=NULL, coordinate_type=c("centroids", "segmentations")) {
   library(magrittr)
-  #image_dir = "/group/sequencing/Bfx/scripts/andreasp/scrnaseq/datasets/10x_visium_human_brain_cancer/spatial/"
-  #technology = "10x_xenium"
-  #barcodes = colnames(counts_lst[[1]][[1]])
   
   # Checks
   valid_technologies = c("10x_visium", "10x_xenium")
   assertthat::assert_that(technology %in% valid_technologies,
-                          msg=FormatMessage("Technology is {technology} but must be one of: {valid_technologies*}."))
+                          msg=FormatString("Technology is {technology} but must be one of: {valid_technologies*}."))
   
   # Read image
   if(technology == "10x_visium") {
@@ -1424,7 +1418,7 @@ ReadMetrics = function(metrics_file, technology) {
   # Checks
   valid_technologies = c("smartseq2", "smartseq3", "10x", "10x_visium", "10x_xenium", "parse", "scale")
   assertthat::assert_that(technology %in% valid_technologies,
-                          msg=FormatMessage("Technology is {technology} but must be one of: {valid_technologies*}."))
+                          msg=FormatString("Technology is {technology} but must be one of: {valid_technologies*}."))
   
   # Read metrics file
   if (technology %in% c("smartseq2", "smartseq3")) {
@@ -1487,6 +1481,113 @@ ParsePlateInformation = function(cell_names, pattern='_(\\d+)_([A-Z])(\\d+)$') {
   return(plate_information)
 }
 
+####################################################################################
+# This is a copy of the SeuratObject::SaveSeuratRds with the following bugs fixed: #
+# - matrices consisting of multiple paths (submatrices) cannot be copied           #
+####################################################################################
+SaveSeuratRds_Fixed <- function (object, file = NULL, move = TRUE, destdir = deprecated(), relative = FALSE, ...) 
+{
+  library(lifecycle)
+  library(progressr)
+  library(rlang)
+  
+  file <- file %||% file.path(getwd(), paste0(Project(object = object), 
+                                              ".Rds"))
+  file <- normalizePath(path = file, winslash = "/", mustWork = FALSE)
+  if (is_present(arg = destdir)) {
+    .Deprecate(when = "5.0.1", what = "SaveSeuratRds(destdir = )", 
+               with = "SaveSeuratRds(move = )", details = paste("Specifying a directory to move on-disk layers stored in", 
+                                                                sQuote(x = normalizePath(path = tempdir(), winslash = "/", 
+                                                                                         mustWork = FALSE)), "is deprecated; now, specify `move = TRUE` either move all on-disk layers to", 
+                                                                sQuote(x = dirname(path = file)), "or `move = FALSE` leave them as-is"))
+    move <- is_bare_character(x = destdir, n = 1L) || is.null(x = destdir)
+  }
+  assays <- .FilterObjects(object = object, classes.keep = "StdAssay")
+  p <- progressor(along = assays, auto_finish = TRUE)
+  on.exit(expr = p(type = "finish"), add = TRUE)
+  p(message = paste("Running a bug-fixed version of SaveSeuratRds\nLooking for on-disk matrices in", length(x = assays), 
+                    "assays"), class = "sticky", amount = 0)
+  cache <- vector(mode = "list", length = length(x = assays))
+  names(x = cache) <- assays
+  destdir <- dirname(path = file)
+  if (isTRUE(x = move)) {
+    check_installed(pkg = "fs", reason = "for moving on-disk matrices")
+  }
+  for (assay in assays) {
+    p(message = paste("Searching through assay", assay),
+      class = "sticky", amount = 0)
+    df <- lapply(X = Layers(object = object[[assay]]), FUN = function(lyr) {
+      ldat <- LayerData(object = object[[assay]], layer = lyr)
+      path <- .FilePath(x = ldat)
+      path <- Filter(f = nzchar, x = path)
+      if (!length(x = path)) {
+        path <- NULL
+      }
+      if (is.null(x = path)) {
+        return(NULL)
+      }
+      return(data.frame(layer = lyr, path = path, class = paste(class(x = ldat), 
+                                                                collapse = ","), pkg = .ClassPkg(object = ldat), 
+                        fxn = .DiskLoad(x = ldat) %||% identity))
+    })
+    df <- do.call(what = "rbind", args = df)
+    if (is.null(x = df) || !nrow(x = df)) {
+      p(message = "No on-disk layers found", class = "sticky",
+        amount = 0)
+      next
+    }
+    if (isTRUE(x = move)) {
+      for (i in seq_len(length.out = nrow(x = df))) {
+        pth <- unlist(strsplit(df$path[i], ","))
+        p(message = paste("Moving layer", sQuote(x = df$layer[i]),
+                          "to", sQuote(x = destdir)), class = "sticky",
+          amount = 0)
+        new_pth <- lapply(pth, function(p) return(as.character(.FileMove(path = p, new_path = destdir))))
+        new_pth <- paste(unlist(new_pth), collapse=",")
+        df[i, "path"] <- new_pth
+      }
+    }
+    if (isTRUE(x = relative)) {
+      p(message = paste("Adjusting paths to be relative to",
+                        sQuote(x = dirname(path = file), q = FALSE)),
+        class = "sticky", amount = 0)
+      df$path <- as.character(x = fs::path_rel(path = df$path, 
+                                               start = dirname(path = file)))
+    }
+    df$assay <- assay
+    cache[[assay]] <- df
+    if (nrow(x = df) == length(x = Layers(object = object[[assay]]))) {
+      p(message = paste("Clearing layers from", assay),
+        class = "sticky", amount = 0)
+      adata <- S4ToList(object = object[[assay]])
+      adata$layers <- list()
+      adata$default <- 0L
+      adata$cells <- LogMap(y = colnames(x = object[[assay]]))
+      adata$features <- LogMap(y = rownames(x = object[[assay]]))
+      object[[assay]] <- ListToS4(x = adata)
+    } else {
+      p(message = paste("Clearing", nrow(x = df), "layers from",
+                        assay), class = "sticky", amount = 0)
+      for (layer in df$layer) {
+        LayerData(object = object[[assay]], layer = layer) <- NULL
+      }
+    }
+    p()
+  }
+  cache <- do.call(what = "rbind", args = cache)
+  if (!is.null(x = cache) && nrow(x = cache)) {
+    p(message = "Saving on-disk cache to object", class = "sticky", 
+      amount = 0)
+    row.names(x = cache) <- NULL
+    #Tool(object = object) <- cache
+    object@tools$SaveSeuratRds <- cache
+  }
+  saveRDS(object = object, file = file, ...)
+  return(invisible(x = file))
+}
+####################################################################################
+####################################################################################
+
 #' Saves Seurat object and - if available and requested - associated on-disk layers. Extension of Seurat's SaveSeuratRds.
 #' 
 #' @param sc A Seurat sc object.
@@ -1494,32 +1595,33 @@ ParsePlateInformation = function(cell_names, pattern='_(\\d+)_([A-Z])(\\d+)$') {
 #' @param on_disk_layers If TRUE also copy existing on-disk layers into this directory.
 #' @param clean If there are already files/directories in outdir, remove them.
 #' @param relative Make paths to on-disk layers relative.
-SaveSeuratRds_Custom = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, relative=FALSE) {
-  library(SeuratObject)
-  
+SaveSeuratRdsWrapper = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, relative=FALSE) {
   # If output directory does not exist, create it
   if (!dir.exists(outdir)) dir.create(outdir, recursive=TRUE)
-    
-  # If output directory is not empty, remove all files/directories if clean is set
-  if (clean) {
-    files = list.files(path=outdir, full.names=TRUE)
-    if (length(files) > 0) unlink(files, recursive=TRUE)
-  }
+  
+  # Make sure output directory is empty
+  files = list.files(outdir)
+  assertthat::assert_that(length(files) == 0,
+                          msg=FormatString("Target directory for Seurat object and associated matrix directories at {outdir} must be empty but is not. Please delete all files and directories in this directory."))
   
   # Save Seurat object and on-disk data using the SeuratObject function SaveSeuratRds
-  SaveSeuratRds(sc, file=file.path(outdir, "sc.rds"), move=on_disk_layers)
+  SeuratObject::SaveSeuratRds(sc, file=file.path(outdir, "sc.rds"), move=on_disk_layers)
   
   # Then make sure that the paths pointing to the layers are correct
   if (on_disk_layers) {
     sc = readRDS(file.path(outdir, "sc.rds"))
-    paths = basename(sc@tools$SaveSeuratRds$path)
-    if (!relative) paths = file.path(outdir, paths)
+    paths = sc@tools$SaveSeuratRds$path
+    paths = lapply(paths, function(p) {
+      p = unlist(strsplit(p, ","))
+      p = basename(p)
+      if (!relative) p = file.path(outdir, p)
+      return(paste(p, collapse=","))
+    })
+    paths = unlist(paths)
     sc@tools$SaveSeuratRds$path = paths
-    
     saveRDS(sc, file=file.path(outdir, "sc.rds"))
   }
 }
-
 
 #' Copies on-disk layers of a Seurat object to a new directory.
 #' 
@@ -1528,6 +1630,11 @@ SaveSeuratRds_Custom = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, re
 #' @param assays For which assays should on-disk layers be copied. If NULL, copy all.
 #' @param layer For which layers should on-disk layers be copied. If NULL, copy all. Can also be a pattern.
 UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL) {
+  sc=sc
+  dir=on_disk_path
+  assays=NULL
+  layer=NULL
+  
   # New directory for on-disk matrices
   dir = normalizePath(path=dir, winslash="/", mustWork=FALSE)
   if (is.null(assays)) assays = SeuratObject::Assays(sc)
@@ -1560,7 +1667,15 @@ UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL) {
       
       # Move on-disk matrix directory to new path
       progr(message = paste("Moving layer", layers[i], "to", dir), class="sticky", amount=0)
-      new_path = as.character(SeuratObject::.FileMove(path=path, new_path=dir))
+      
+      path = unlist(strsplit(path, ","))
+      new_path = lapply(path, function(p) {
+        np = file.path(dir, basename(p))
+        assertthat::assert_that(!file.exists(np) & !dir.exists(np),
+                                msg=FormatString("Cannot copy matrix directory to already existing path {np}. Please delete this path first."))
+        return(as.character(.FileMove(path=p, new_path=dir)))
+      })
+      new_path = as.character(paste(unlist(new_path), collapse=","))
       
       # Reload matrix directory with new path into Seurat object
       fnx = SeuratObject::.DiskLoad(data)

@@ -11,7 +11,7 @@ params:
   prev_module_dir: null
   
   # Default assay. If null, will be set to the default assay of the input Seurat object.
-  default_assay: "RNA"
+  default_assay: null
   
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. Computations will access only the relevant parts of the data. Once done, matrix directories will be saved together with the Seurat object in the module directory.
   on_disk_counts: true
@@ -23,8 +23,8 @@ params:
   # lognorm (Seurat), scran or SCT
   normalisation_method: "lognorm"
   
-  # Which dimensionality reduction to use: only pca supported
-  dimensionality_reduction_method: "pca"
+  # Which dimensionality reduction to use: only PCA supported
+  dimensionality_reduction_method: "PCA"
   
   # Number of dimensions (e.g. principal components) to compute
   dim_n_compute: 50
@@ -41,7 +41,6 @@ params:
   - "RPCAIntegration"
   - "FastMNNIntegration"
   - "CCAIntegration"
-  - "FastMNNIntegration"
 
   # Parameters for CCAIntegration
   CCAIntegration: null
@@ -69,23 +68,12 @@ execute:
 
 # Dimensionality reduction
 
-- rna.pca
-- rna.pca.full
-- rna.cca
-- rna.rpca
-- rna.harmony
-- rna.mnn
-- rna.scvi
-- rna.umap
-
 ```{r}
 #| label: setup
-#| message: false
-#| warning: false
 
 # If running code interactively in rstudio, set profile here
 # When rendering with quarto, profile is already set and should not be overwritten
-if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "default")}
+if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "scrnaseq")}
 
 # Load libraries
 library(knitr)
@@ -161,10 +149,8 @@ if (on_disk_counts & on_disk_use_tmp) {
 
 # Set default assay standard
 default_assay = param("default_assay")
-normalisation_method = param("normalisation_method")
-Seurat::DefaultAssay(sc) = ifelse(normalisation_method=="SCT", 
-                         paste(default_assay, "SCT", sep="_"), 
-                         default_assay)
+if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
+Seurat::DefaultAssay(sc) = default_assay
 
 # If sketching should be used, check for the sketch assay and then set as default
 use_sketching = param("use_sketching")
@@ -179,19 +165,19 @@ if (use_sketching) {
 
 ```
 
-A single-cell dataset of 20,000 genes and 5,000 cells has 20,000 dimensions. At this point of the analysis, we have already reduced the dimensionality of the dataset to 3,000 variable genes. The biological manifold however can be described by far fewer dimensions than the number of (variable) genes, since expression profiles of different genes are correlated if they are involved in the same biological process. Dimension reduction methods aim to find these dimensions. There are two general purposes for dimension reduction methods: to __summarize__ a dataset, and to __visualize__ a dataset. 
+A single-cell dataset of 20,000 genes and 5,000 cells has 20,000 dimensions. At this point of the analysis, we have already reduced the dimensionality of the dataset to 3,000 variable genes. The biological manifold however can be described by far fewer dimensions than the number of (variable) genes, since expression profiles of different genes are correlated if they are involved in the same biological process. Dimension reduction methods aim to find these dimensions. There are two general purposes for dimension reduction methods: to **summarize** a dataset, and to **visualize** a dataset.
 
 ## PCA
 
-We use Principal Component Analysis (PCA) to __summarize__ a dataset, overcoming noise and reducing the data to its essential components. Later, we use Uniform Manifold Approximation and Projection (UMAP) to __visualize__ the dataset, placing similar cells together in 2D space, see below. 
+We use Principal Component Analysis (PCA) to **summarize** a dataset, overcoming noise and reducing the data to its essential components. Later, we use Uniform Manifold Approximation and Projection (UMAP) to **visualize** the dataset, placing similar cells together in 2D space, see below.
 
-<details class="details_box">
-  <summary class="details_summary">PCA in a nutshell</summary>
+::: {.callout-tip title="PCA in a nutshell" collapse="true"}
 
 Principal Component Analysis is a way to summarize a dataset and to reduce noise by averaging similar gene expression profiles. The information for correlated genes is compressed into single dimensions called principal components (PCs) and the analysis identifies those dimensions that capture the largest amount of variation. This process gives a more precise representation of the patterns inherent to complex and large datasets.
 
-In a PCA, the first PC captures the greatest variance across the whole dataset. The next PC captures the greatest remaining amount of variance, and so on. This way, the top PCs are likely to represent the biological signal where multiple genes are affected by the same biological processes in a coordinated way. In contrast, random technical or biological noise that affects each gene independently are contained in later PCs. Downstream analyses can be restricted to the top PCs to focus on the most relevant biological signal and to reduce noise and unnecessary computational overhead. 
-</details>
+In a PCA, the first PC captures the greatest variance across the whole dataset. The next PC captures the greatest remaining amount of variance, and so on. This way, the top PCs are likely to represent the biological signal where multiple genes are affected by the same biological processes in a coordinated way. In contrast, random technical or biological noise that affects each gene independently are contained in later PCs. Downstream analyses can be restricted to the top PCs to focus on the most relevant biological signal and to reduce noise and unnecessary computational overhead.
+
+:::
 
 To decide how many PCs to include in downstream analyses, we visualize the cells and genes that define the PCA.
 
@@ -207,18 +193,20 @@ sc = RunDimRedWrapper(sc,
                       dim_n=dim_n_compute, 
                       verbose=verbose)
 
+# Save original reduction
+original_reduct = DefaultReduct(sc)
+
 if (use_sketching) {
   # Project to full dataset if sketching was used
-  original_assay = ifelse(normalisation_method=="SCT", 
-                         paste(default_assay, "SCT", sep="_"), 
-                         default_assay)
+  full_reduct = paste(original_reduct, "full", sep=".")
   sc = Seurat::ProjectData(sc, 
-                           assay=original_assay,
+                           assay=default_assay,
                            sketched.assay=Seurat::DefaultAssay(sc),
-                           sketched.reduction=dimensionality_reduction_method,
-                           full.reduction=paste(dimensionality_reduction_method, "full", sep="."),
-                           normalization.method	 = ifelse(normalisation_method=="SCT", "SCT", "LogNormalize"),
+                           sketched.reduction=original_reduct,
+                           full.reduction=full_reduct,
+                           normalization.method	= ifelse(normalisation_method=="SCT", "SCT", "LogNormalize"),
                            dims=1:50)
+  DefaultReduct(sc, assay=default_assay) = full_reduct
 }
 ```
 
@@ -229,7 +217,7 @@ if (use_sketching) {
 # When sketching is used, not available for the full dataset
 
 # Plot loadings for first and second dimension
-plist = Seurat::VizDimLoadings(sc, reduction=dimensionality_reduction_method, dims=1:2, combine=FALSE, balanced=TRUE)
+plist = Seurat::VizDimLoadings(sc, reduction=DefaultReduct(sc), dims=1:2, combine=FALSE, balanced=TRUE)
 for (i in seq(plist)) {
   plist[[i]] = plist[[i]] + 
     AddPlotStyle()
@@ -244,7 +232,7 @@ plist[[1]] + plist[[2]]
 
 # Plot the first two dimensions of the computed dimensionality reduction
 p = Seurat::DimPlot(sc, 
-                    reduction=dimensionality_reduction_method, 
+                    reduction=DefaultReduct(sc), 
                     cols=ScColours(sc, "orig.ident")) +
   AddPlotStyle()
 p
@@ -259,7 +247,7 @@ p
 # Only when sketching is used: plot the first two dimensions projected to the full dataset
 if (use_sketching) {
   p = Seurat::DimPlot(sc, 
-                      reduction=paste(dimensionality_reduction_method, "full", sep="."), 
+                      reduction=DefaultReduct(sc, assay=default_assay), 
                       cols=ScColours(sc, "orig.ident")) +
     AddPlotStyle()
   print(p)
@@ -272,7 +260,7 @@ if (use_sketching) {
 #| fig-subcap: ""
 #| echo: false
 #| layout-ncol: 3
-#| fig-height: 4
+#| fig-height: 3
 #| fig-width: 2.6
 
 # When sketching is used, not available for the full dataset
@@ -281,7 +269,7 @@ dim_n_compute = param("dim_n_compute")
 
 # Plot loading for the top 20 dimensions
 plist = Seurat::DimHeatmap(sc, 
-                           reduction=dimensionality_reduction_method,
+                           reduction=DefaultReduct(sc),
                            dims=1:min(min(20, dim_n_compute), ncol(sc)), 
                            cells=min(500, ncol(sc)),
                            balanced=TRUE, 
@@ -304,11 +292,11 @@ for (i in seq(plist)) {
 
 We next need to decide how many PCs we want to use for our analyses. PCs include biological signal as well as noise, and we need to determine the number of PCs with which we include as much biological signal as possible and as little noise as possible. The following "Elbow plot" is designed to help us make an informed decision. It shows PCs ranked based on the percentage of variance they explain.
 
-<details class="details_box">
-  <summary class="details_box">How do we determine the number of PCs for downstream analysis?</summary>
+::: {.callout-tip title="How do we determine the number of PCs for downstream analysis?" collapse="true"}
 
-The top PC captures the greatest variance across cells and each subsequent PC represents decreasing levels of variance. By visual inspection of the Elbow plot, we try to find the point at which we can explain most of the variance across cells. Commonly, the top 10 PCs are chosen. It may be helpful to repeat downstream analyses with a different number of PCs, although the results often do not differ dramatically. Note that it is recommended to rather choose too many than too few PCs. 
-</details>
+The top PC captures the greatest variance across cells and each subsequent PC represents decreasing levels of variance. By visual inspection of the Elbow plot, we try to find the point at which we can explain most of the variance across cells. Commonly, the top 10 PCs are chosen. It may be helpful to repeat downstream analyses with a different number of PCs, although the results often do not differ dramatically. Note that it is recommended to rather choose too many than too few PCs.
+
+:::
 
 ```{r}
 #| label: dimensionality_reduction_rna_elbow_plot
@@ -322,28 +310,27 @@ dim_n = param("dim_n")
 
 
 # Plot the variance explained for the computed components
-p = Seurat::ElbowPlot(sc, reduction=dimensionality_reduction_method, ndims=min(dim_n_compute, ncol(sc))) + 
+p = Seurat::ElbowPlot(sc, reduction=DefaultReduct(sc), ndims=min(dim_n_compute, ncol(sc))) + 
   geom_vline(xintercept=dim_n + .5, col="firebrick", lty=2) + 
   AddPlotStyle() 
 p
-
-# Print a message
-CalloutBox("For the current dataset, {dim_n} dimensions were chosen.", print=FALSE, type="note") %>% knitr::asis_output()
 ```
+
+::: callout-note
+For the current dataset, `r param("dim_n")` dimensions were chosen.
+:::
 
 ## Integration
 
 Integration of multiple samples is a crucial step in single-cell RNA-seq analysis. It is necessary to remove batch effects and to enable the comparison of cells across different samples. We can use a number of methods for integration:
 
-- Canonical Correlation Analysis (CCA)
-- Reciprocal PCA (RPCA)
-- Harmony
-- Fast MNN
-- scVI (not working)
+-   Canonical Correlation Analysis (CCA)
+-   Reciprocal PCA (RPCA)
+-   Harmony
+-   Fast MNN
+-   scVI
 
-Methods might perform differently depending on the dataset and the biological question. We can use multiple methods and compare the results. 
-
-see https://www.nature.com/articles/s41592-021-01336-8
+Methods might perform differently depending on the dataset and the biological question. We can use multiple methods and compare the results. Please also see: https://www.nature.com/articles/s41592-021-01336-8.
 
 ```{r}
 #| label: integration_rna_run_integration
@@ -366,9 +353,9 @@ integration_methods_params = purrr::map(integration_methods, function(method) {
 })
 names(integration_methods_params) = integration_methods
 
-#
 normalisation_method = param("normalisation_method")
 num_datasets = length(SeuratObject::Layers(sc, assay=default_assay, search="^counts"))
+first_reduct = NULL
 
 if (length(integration_methods) > 0 & num_datasets > 0) {
   # Integration requested and necessary
@@ -381,46 +368,41 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
 
   # Integrate
   for(method in integration_methods) {
-    # New reduction name
-    new_reduct = dplyr::case_match(method,
-                                   "CCAIntegration" ~ "cca",
-                                   "RPCAIntegration" ~ "rpca",
-                                   "HarmonyIntegration" ~ "harmony",
-                                   "FastMNNIntegration" ~ "mnn",
-                                   "scVIIntegration" ~ "scvii")
-
-    # Additional method-specific arguments passed by config
-    additional_args = integration_methods_params[[method]]
-    
     # Call wrapper
     sc = IntegrateLayersWrapper(sc=sc,
                                 integration_method=method,
-                            orig_reduct=dimensionality_reduction_method,
-                                new_reduct=new_reduct,
-                                additional_args=additional_args,
+                                orig_reduct=DefaultReduct(sc),
+                                additional_args=integration_methods_params[[method]],
                                 verbose=verbose)
     
     # If sketching was used, project integrated dimensionality reduction of sketch to full dataset
     if (use_sketching) {
-      original_assay = ifelse(normalisation_method=="SCT", 
-                         paste(default_assay, "SCT", sep="_"), 
-                         default_assay)
+      reduct = DefaultReduct(sc)
+      full_reduct = paste(reduct, "full", sep=".")
       sc = Seurat::ProjectIntegration(sc,
                                       sketched.assay=SeuratObject::DefaultAssay(sc), 
-                                      assay=original_assay,
-                                      reduction=new_reduct,
-                                      reduction.name=paste(new_reduct, "full", sep="."),
-                                      reduction.key=paste0(new_reduct, "full", "_") %>% 
+                                      assay=default_assay,
+                                      reduction=reduct,
+                                      reduction.name=full_reduct,
+                                      reduction.key=full_reduct %>% 
                                         gsub(pattern="\\.", replacement="", x=.) %>%
                                         tolower(),
                                       seed=getOption("random_seed"),
                                       verbose=verbose)
+      DefaultReduct(sc, assay=default_assay) = full_reduct
     }
-  }
-  
-  # Reset default assay if sketching was used
-  if (use_sketching) {
-    SeuratObject::DefaultAssay(sc) = default_assay
+    
+    # We need to make sure that the default reduction is set to the first integrated dimensionality reduction method
+    if (is.null(first_reduct)) {
+      # First method: keep
+      first_reduct = DefaultReduct(sc)
+    } else {
+      # Other methods: reset
+      DefaultReduct(sc) = first_reduct
+      if (use_sketching) {
+        DefaultReduct(sc, assay=default_assay) = paste(first_reduct, "full", sep=".")
+      }  
+    }
   }
   
   # Join layers
@@ -443,35 +425,91 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
 ```
 
 ```{r}
-
-#| label: integration_rna_run_integration_plots
+#| label: integration_rna_integration_plots
 #| results: asis
 #| eval: !expr length(integration_methods) > 0 & num_datasets > 0
 #| include: !expr length(integration_methods) > 0 & num_datasets > 0
+#| echo: false
 
-dimensionality_reduction_method = param("dimensionality_reduction_method")
-integration_methods = param("integration_methods")
 
 # Plot different integration methods
+reductions = dplyr::case_match(integration_methods,
+                                   "CCAIntegration" ~ "cca",
+                                   "RPCAIntegration" ~ "rpca",
+                                   "HarmonyIntegration" ~ "harmony",
+                                   "FastMNNIntegration" ~ "mnn",
+                                   "scVIIntegration" ~ "scvii")
+
+plist = purrr::map(reductions, function(method) {
+  title = SeuratObject::Misc(sc[[method]], slot="title")
+
+  # Plot
+  p = Seurat::DimPlot(sc, 
+                      reduction=method, 
+                      cols=ScColours(sc, "orig.ident")) +
+    AddPlotStyle(legend_position="none")
+  return(p)
+})
+
+# Add merge case (no integration)
+p = Seurat::DimPlot(sc, 
+                    reduction=original_reduct, 
+                    cols=ScColours(sc, "orig.ident")) +
+  AddPlotStyle(legend_position="none")
+plist = c(list(p), plist)
+names(plist) = c("merge", reductions)
+captions = c("No integration", paste('Integrated with method', integration_methods))
 
 
+# Generate chunks
+chunk_template = "
+\`\`\`{r}
+#| label: fig-integration_rna_integration_{{type}}
+#| fig-cap: '{{caption}}'
+#| fig-width: 4
+#| fig-height: 4
+#| echo: false
+#| warning: false
+
+plist[[{{i}}]]
+\`\`\`
+"
+
+cat("Here are the resulting dimensionality reductions after integration:\n\n")
+
+cat("::: {layout-ncol=2}\n")
+
+for (i in seq(plist)) {
+  chunk_filled =  knitr::knit_expand(text=chunk_template, type=names(plist)[i], i=i, caption=captions[i])
+  if(interactive()) {
+    print(EvalKnitrChunk(chunk_filled))
+  } else {
+    chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+    cat(chunk_filled, sep='\n')
+  }
+}
+cat(":::\n")
 
 ```
-
 
 ## Save Seurat object
 
 ```{r}
 #| label: integration_rna_save_seurat
 
+# If sketching was used, revert back to non-sketched assay
+if (use_sketching) {
+  SeuratObject::DefaultAssay(sc) = default_assay
+}
+
 # This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
 assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
 
 # Save Seurat object and layer data
 with_progress({
-  SaveSeuratRds_Custom(sc,
-              outdir=file.path(module_dir, "sc"),
-              on_disk_layers=on_disk_counts)
+  SaveSeuratRdsWrapper(sc,
+                       on_disk_layers=on_disk_counts,
+                       outdir=file.path(module_dir, "sc"))
 }, enable=verbose)
 
 ```
