@@ -30,7 +30,7 @@ params:
   #                                   b) Specify 'ENSEMBL' to fetch gene information from Ensembl (gene features only), c) Leave empty or specify 'NO' to not rename features.
   #                                   If a dataset contains multiple assays, this option can be specified multiple times (comma-separated). 
   # - barcode_suffix (can be empty): Suffix to add to the barcodes. If left empty, numeric suffixes will be added ('-1', '-2', etc). If set to 'NO', no suffixes are added.
-  datasets_file: "datasets/10x_1M_neurons.xlsx"
+  datasets_file: "datasets/10x_pbmc_datasets.xlsx"
   
   # Default assay. All cells must have this assay.
   default_assay: RNA
