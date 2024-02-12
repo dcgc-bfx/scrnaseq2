@@ -30,7 +30,7 @@ params:
   #                                   b) Specify 'ENSEMBL' to fetch gene information from Ensembl (gene features only), c) Leave empty or specify 'NO' to not rename features.
   #                                   If a dataset contains multiple assays, this option can be specified multiple times (comma-separated). 
   # - barcode_suffix (can be empty): Suffix to add to the barcodes. If left empty, numeric suffixes will be added ('-1', '-2', etc). If set to 'NO', no suffixes are added.
-  datasets_file: "datasets/10x_pbmc_datasets.xlsx"
+  datasets_file: "datasets/10x_1M_neurons.xlsx"
   
   # Default assay. All cells must have this assay.
   default_assay: RNA
@@ -162,21 +162,6 @@ The following datasets are defined in the table:
 
 datasets_file = param("datasets_file")
 datasets = ReadDatasetsTable(datasets_file)
-
-datasets = datasets[1:2,]
-datasets$technology[1] = "parse"
-datasets$assays[1] = "RNA"
-datasets$path[1] = "/projects/seq-work/analysis/annee/bfx2302/splitpipe/gex_combined/BC001/DGE_filtered/"
-datasets$metrics_file[1] = "/projects/seq-work/analysis/annee/bfx2302/splitpipe/gex_combined/BC001/report/analysis_summary.csv"
-datasets$barcode_metadata_files[1] = NA
-datasets$rename_features[1] = "ENSEMBL"
-
-datasets$technology[2] = "parse"
-datasets$assays[2] = "RNA"
-datasets$path[2] = "/projects/seq-work/analysis/annee/bfx2302/splitpipe/gex_combined/BC005/DGE_filtered/"
-datasets$metrics_file[2] = "/projects/seq-work/analysis/annee/bfx2302/splitpipe/gex_combined/BC005/report/analysis_summary.csv"
-datasets$barcode_metadata_files[2] = NA
-datasets$rename_features[2] = "ENSEMBL"
 
 for (i in 1:nrow(datasets)) {
   # Required columns

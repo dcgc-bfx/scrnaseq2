@@ -12,7 +12,7 @@ book:
   chapters:
   - "index.qmd"
   - "modules/1_read_data/read_data.qmd"
-  - "modules/2_qc_filtering/rna/qc_filtering.qmd"
+  #- "modules/2_qc_filtering/rna/qc_filtering.qmd"
   #- "modules/3_normalization/rna/normalization.qmd"
   #- "modules/4_dimensionality_reduction/rna/dimensionality_reduction.qmd"
   #- "modules/5_clustering_umap/clustering_umap.qmd"
@@ -43,7 +43,7 @@ params:
     project_id: "pbmc"
     
     # Species
-    species: "homo_sapiens"
+    species: "mus_musculus"
     
     # Ensembl version
     ensembl: 98

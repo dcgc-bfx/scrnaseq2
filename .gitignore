@@ -20,6 +20,7 @@ scrnaseq2.Rproj
 !/datasets/10x_visium_human_brain_cancer.xlsx
 !/datasets/10x_xenium_mouse_brain.xlsx
 !/datasets/10x_SmartSeq2_pbmc_datasets.xlsx
+!/datasets/10x_1M_neurons.xlsx
 
 # Ignore files and directories produced in workflow directories (except qmd files)
 # To add new modules, comment these lines, create directory and quarto file

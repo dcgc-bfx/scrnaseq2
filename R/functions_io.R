@@ -229,8 +229,9 @@ ReadDatasetsTable = function(file) {
 #' 
 #' @param csv_file Path to a character-separated counts file. First column contains the feature id (barcode id if transpose is set), all other columns contain the barcode (feature) counts.
 #' @param transpose If TRUE then rows are barcodes and columns are features (default: FALSE)
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL) 
 #' @return Sparse counts matrix (dgCMatrix format).
-ReadCounts_csv = function(csv_file, transpose=FALSE) {
+ReadCounts_csv = function(csv_file, transpose=FALSE, strip_suffix=NULL) {
   library(magrittr)
   
   # Checks
@@ -248,6 +249,14 @@ ReadCounts_csv = function(csv_file, transpose=FALSE) {
   
   assertthat::assert_that(sum(duplicated(row_ids)) == 0,
                           msg=FormatString("Dataset {csv_file} contains at least two features with the same name.")) 
+  
+  # Strip suffix from barcodes if requested
+  if (!is.null(strip_suffix)) {
+    col_ids = trimws(col_ids, which="right", whitespace=strip_suffix)
+  }
+  
+  assertthat::assert_that(sum(duplicated(col_ids)) == 0,
+                          msg=FormatString("Dataset {csv_file} contains at least two barcodes with the same name after removing the suffix {strip_suffix}."))
   
   # Check that all columns are numeric
   is_numeric = sapply(counts_data, is.numeric)
@@ -366,6 +375,7 @@ ReadCounts_mtx = function(mtx_directory, mtx_file_name="matrix.mtx.gz", transpos
 #' Does not discriminate between feature types.
 #' 
 #' @param h5ad_file Path to an anndata object in hdf5 format.
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL) 
 #' @return Sparse counts matrix (IterableMatrix format). Additional information on barcodes and features is attached as attributes barcode_metadata and feature_metadata.
 ReadCounts_h5ad = function(h5ad_file) {
   library(magrittr)
@@ -522,8 +532,11 @@ ReadCounts_10x_mtx = function(mtx_directory) {
 #' retrieve values directly from file (random access). It is recommend to convert this object into a BPcells on-disk storage object.
 #' 
 #' @param h5_file Path to a 10x h5 counts file.
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: -1). Can be set to NULL and barcodes will not be modified. 
 #' @return One sparse counts matrix per feature type (IterableMatrix format). Additional information on barcodes and features is attached as attributes. barcode_metadata and feature_metadata.
-ReadCounts_10x_h5 = function(h5_file) {
+ReadCounts_10x_h5 = function(h5_file, strip_suffix="-1") {
+  h5_file = "datasets/10x_1M_neurons/filtered_feature_bc_matrix.h5"
+  strip_suffix = NULL
   # Checks
   assertthat::is.readable(h5_file)
   
@@ -531,18 +544,33 @@ ReadCounts_10x_h5 = function(h5_file) {
   hdf5_fh = hdf5r::H5File$new(h5_file, mode = "r+")
   
   # No barcodes data, just a vector of the barcodes
-  barcodes = hdf5_fh[["matrix/barcodes"]][]
-  barcodes_data = data.frame(row.names=trimws(barcodes, which="right", whitespace="-1"), orig_barcode=barcodes)
+  h5_group = names(hdf5_fh)[1]
+  h5_group = hdf5_fh[[h5_group]]
+  barcodes = h5_group[["barcodes"]][]
+  if (!is.null(strip_suffix)) {
+    barcodes_data = data.frame(row.names=trimws(barcodes, which="right", whitespace=strip_suffix), orig_barcode=barcodes)
+  } else {
+    barcodes_data = data.frame(row.names=barcodes, orig_barcode=barcodes)
+  }
   
   # Read feature data
-  hdf5_features = hdf5_fh[["matrix/features"]]
-  non_standard_features = hdf5_features[["_all_tag_keys"]][]
-  features_data = data.frame(
-    feature_id=hdf5_features[["id"]][],
-    feature_name=hdf5_features[["name"]][],
+  if ("features" %in% names(h5_group)) {
+    hdf5_features = h5_group[["features"]]
+    feature_id=hdf5_features[["id"]][]
+    feature_name=hdf5_features[["name"]][]
     feature_type=hdf5_features[["feature_type"]][]
+  } else if ("genes" %in% names(h5_group)) {
+    hdf5_features = h5_group[["genes"]]
+    feature_id=h5_group[["genes"]][]
+    feature_name=h5_group[["gene_names"]][]
+    feature_type="Gene Expression"
+  }
+  
+  features_data = data.frame(
+    feature_id, feature_name, feature_type
   )
   
+  non_standard_features = hdf5_features[["_all_tag_keys"]][]
   if (length(non_standard_features) > 0) {
     non_standard_features_data = purrr::map(non_standard_features, function(f) {
       return(hdf5_features[[f]][])
@@ -591,8 +619,16 @@ ReadCounts_10x_h5 = function(h5_file) {
   feature_types = unique(features_data$feature_type)
   counts_lst = purrr::map(feature_types, function(f) {
     # Subset counts
-    cts = BPCells::open_matrix_10x_hdf5(h5_file, feature_type=f)
-    colnames(cts) = trimws(colnames(cts), which="right", whitespace="-1")
+    if (length(feature_types) > 1) {
+      cts = BPCells::open_matrix_10x_hdf5(h5_file, feature_type=f)
+    } else {
+      cts = BPCells::open_matrix_10x_hdf5(h5_file)
+    }
+    
+    # Strip barcode suffix
+    if (!is.null(strip_suffix)) {
+      colnames(cts) = trimws(colnames(cts), which="right", whitespace=strip_suffix)
+    }
     
     # Add barcode metadata
     bc_meta = barcodes_data[colnames(cts), , drop=FALSE]
@@ -897,7 +933,7 @@ ReadCounts_ScaleBio = function(path, assays) {
 #' @param assays If there are multiple assays in the dataset, which assay to read. Multiple assays can be specified. If there is only one assay, this simply sets the assay type.
 #' @param barcode_metadata Table with additional barcode metadata. Can also be a list specifying metadata for each assay. First column must contain the barcode. Missing barcodes will be filled with NA.
 #' @param feature_metadata Table with additional feature metadata. Can also be a list specifying metadata for each assay. First column must contain the feature id. Missing features will be filled with NA.
-#' @param barcode_suffix Suffix to add to the barcodes (default: NULL). When barcodes are renamed, will be applied afterwards.
+#' @param barcode_suffix Suffix to add to the barcodes (default: NULL).
 #' @return  One sparse counts matrix per assay. Format can be dgCMatrix (general) or IterableMatrix (when reading an anndata.h5ad or h5 file). Additional information on barcodes and features is attached as attributes.
 ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_metadata=NULL, barcode_suffix=NULL) {
   library(magrittr)
