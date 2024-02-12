@@ -465,8 +465,9 @@ ReadCounts_SmartSeq = function(path, assays, version, transpose=FALSE) {
 #' Reads 10x counts that are in market exchange format.
 #' 
 #' @param mtx_directory Path to 10x counts directory in market exchange format.
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
 #' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes and features is attached as attributes barcode_metadata and feature_metadata.
-ReadCounts_10x_mtx = function(mtx_directory) {
+ReadCounts_10x_mtx = function(mtx_directory, strip_suffix=NULL) {
   # Determine the name of the matrix file
   mtx_file_name = dplyr::case_when(file.exists(file.path(mtx_directory, "matrix.mtx.gz")) ~ "matrix.mtx.gz",
                                    file.exists(file.path(mtx_directory, "matrix.mtx")) ~ "matrix.mtx")
@@ -519,8 +520,8 @@ ReadCounts_10x_mtx = function(mtx_directory) {
     features_file_name=features_file_name,
     features_column_names=features_column_names,
     feature_type_column=3,
-    delim = "\t",
-    strip_suffix = "-1"
+    delim="\t",
+    strip_suffix=strip_suffix
   )
   
   return(counts_lst)
@@ -532,11 +533,9 @@ ReadCounts_10x_mtx = function(mtx_directory) {
 #' retrieve values directly from file (random access). It is recommend to convert this object into a BPcells on-disk storage object.
 #' 
 #' @param h5_file Path to a 10x h5 counts file.
-#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: -1). Can be set to NULL and barcodes will not be modified. 
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
 #' @return One sparse counts matrix per feature type (IterableMatrix format). Additional information on barcodes and features is attached as attributes. barcode_metadata and feature_metadata.
-ReadCounts_10x_h5 = function(h5_file, strip_suffix="-1") {
-  h5_file = "datasets/10x_1M_neurons/filtered_feature_bc_matrix.h5"
-  strip_suffix = NULL
+ReadCounts_10x_h5 = function(h5_file, strip_suffix=NULL) {
   # Checks
   assertthat::is.readable(h5_file)
   
@@ -651,9 +650,10 @@ ReadCounts_10x_h5 = function(h5_file, strip_suffix="-1") {
 #' Reads counts data produced by 10x (non-spatial datasets).
 #' 
 #' @param path Path to 10x counts data. Can be a 10x hdf5 file (recommended for big datasets) or a 10x matrix exchange format directory.
-#' @param assays Which assays to read. If NULL, read all assays.
+#' @param assays Which assays to read. Default NULL is to read all assays.
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
 #' @return One sparse counts matrix per assay. Format is either IterableMatrix (when reading a h5 file) or dgCMatrix (when reading from a matrix exchange format directory). Additional information on barcodes and features is attached as attributes.
-ReadCounts_10x = function(path, assays=NULL, transpose=FALSE) {
+ReadCounts_10x = function(path, assays=NULL, strip_suffix=NULL) {
   # Checks
   assertthat::is.readable(path)
   
@@ -671,10 +671,10 @@ ReadCounts_10x = function(path, assays=NULL, transpose=FALSE) {
   # Read counts
   if (dir.exists(path)) {
     # 10x market exchange format
-    counts_lst = ReadCounts_10x_mtx(mtx_directory=path)
+    counts_lst = ReadCounts_10x_mtx(mtx_directory=path, strip_suffix=strip_suffix)
   } else {
     # 10x h5 file
-    counts_lst = ReadCounts_10x_h5(h5_file=path)
+    counts_lst = ReadCounts_10x_h5(h5_file=path, strip_suffix=strip_suffix)
   }
   
   # 10x Xenium hack: the assay BlankCodeword can be feature type "Unassigned Codeword" (old) and "Blank Codeword" (new)
@@ -716,13 +716,14 @@ ReadCounts_10x = function(path, assays=NULL, transpose=FALSE) {
 #' 
 #' @param path Path to 10x counts data for 10x Visium. Can be a 10x hdf5 file (recommended for big datasets) or a 10x matrix exchange format directory.
 #' @param assays Which assays to read. If NULL, read all assays.
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
 #' @return One sparse counts matrix per assay. Format is either IterableMatrix (when reading a h5 file) or dgCMatrix (when reading from a matrix exchange format directory). Additional information on barcodes and features is attached as attributes. Path to a directory with image information is attached as attribute.
-ReadCounts_10xVisium = function(path, assays=NULL, transpose=FALSE) {
+ReadCounts_10xVisium = function(path, assays=NULL, strip_suffix=NULL) {
   # Checks
   assertthat::is.readable(path)
   
   # Read counts
-  counts_lst = ReadCounts_10x(path, assays=assays)
+  counts_lst = ReadCounts_10x(path, assays=assays, strip_suffix=strip_suffix)
   
   # Update technology
   for (i in seq_along(counts_lst)) {
@@ -736,13 +737,14 @@ ReadCounts_10xVisium = function(path, assays=NULL, transpose=FALSE) {
 #' 
 #' @param path Path to 10x counts data for 10x Xenium. Can be a 10x hdf5 file (recommended for big datasets) or a 10x matrix exchange format directory.
 #' @param assays Which assays to read. If NULL, read all assays.
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
 #' @return One sparse counts matrix per assay. Format is either IterableMatrix (when reading a h5 file) or dgCMatrix (when reading from a matrix exchange format directory). Additional information on barcodes and features is attached as attributes.
-ReadCounts_10xXenium = function(path, assays=NULL, transpose=FALSE) {
+ReadCounts_10xXenium = function(path, assays=NULL, strip_suffix=NULL) {
   # Checks
   assertthat::is.readable(path)
 
   # Read counts
-  counts_lst = ReadCounts_10x(path, assays=assays)
+  counts_lst = ReadCounts_10x(path, assays=assays, strip_suffix=strip_suffix)
   
   # Update technology
   for (i in seq_along(counts_lst)) {
@@ -755,8 +757,9 @@ ReadCounts_10xXenium = function(path, assays=NULL, transpose=FALSE) {
 #' Reads Parse Biosciences counts that are in market exchange format.
 #' 
 #' @param mtx_directory Path to Parse Biosciences counts directory in market exchange format. Typically contains the files count_matrix.mtx, cell_metadata.csv and all_genes.csv.
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
 #' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes and features is attached as attributes barcode_metadata and feature_metadata.
-ReadCounts_ParseBio_mtx = function(mtx_directory) {
+ReadCounts_ParseBio_mtx = function(mtx_directory, strip_suffix=NULL) {
   # Determine the name of the matrix file
   mtx_file_name = "count_matrix.mtx"
   
@@ -776,7 +779,8 @@ ReadCounts_ParseBio_mtx = function(mtx_directory) {
     features_file_name=features_file_name,
     features_column_names=TRUE,
     feature_type_column=NULL,
-    delim = ","
+    delim = ",",
+    strip_suffix=strip_suffix
   )
   
   return(counts_lst)
@@ -790,17 +794,19 @@ ReadCounts_ParseBio_mtx = function(mtx_directory) {
 #' Does not discriminate between feature types.
 #' 
 #' @param h5ad_file Path to an anndata object in hdf5 format.
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
 #' @return Sparse counts matrix (IterableMatrix format). Additional information on barcodes and features is attached as attributes barcode_metadata and feature_metadata.
-ReadCounts_ParseBio_h5ad = function(h5ad_file) {
-  return(ReadCounts_h5ad(h5ad_file))
+ReadCounts_ParseBio_h5ad = function(h5ad_file, strip_suffix=NULL) {
+  return(ReadCounts_h5ad(h5ad_file, strip_suffix=strip_suffix))
 }
 
 #' Reads counts data produced by Parse Biosciences.
 #' 
 #' @param path Path to Parse Biosciences counts data. Can be a Parse Biosciences anndata.h5ad file (recommended for big datasets) or a Parse Biosciences matrix exchange format directory.
 #' @param assays This simply sets the assay. Parse Bioscience currently does not support multi-assay datasets.
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
 #' @return One sparse counts matrix. Format is either IterableMatrix (when reading an anndata.h5ad file) or dgCMatrix (when reading from a matrix exchange format directory). Additional information on barcodes, features, technology and assays is attached as attributes.
-ReadCounts_ParseBio = function(path, assays, transpose=FALSE) {
+ReadCounts_ParseBio = function(path, assays, strip_suffix=NULL) {
   # Checks
   assertthat::is.readable(path)
   
@@ -813,10 +819,10 @@ ReadCounts_ParseBio = function(path, assays, transpose=FALSE) {
   # Read counts
   if (dir.exists(path)) {
     # Parse Bio market exchange format
-    counts_lst = ReadCounts_ParseBio_mtx(mtx_directory=path)
+    counts_lst = ReadCounts_ParseBio_mtx(mtx_directory=path, strip_suffix=strip_suffix)
   } else {
     # Parse Bio anndata h5 file
-    counts_lst = ReadCounts_ParseBio_h5ad(h5ad_file=path)
+    counts_lst = ReadCounts_ParseBio_h5ad(h5ad_file=path, strip_suffix=strip_suffix)
   }
   
   # No multi-assay datasets but keep for now
@@ -851,8 +857,9 @@ ReadCounts_ParseBio = function(path, assays, transpose=FALSE) {
 #' Reads Scale Bio counts that are in market exchange format.
 #' 
 #' @param mtx_directory Path to Scale Bio counts directory in market exchange format. Typically contains the files matrix.mtx.gz, barcodes.tsv.gz and features.tsv.gz.
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
 #' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes and features is attached as attributes.
-ReadCounts_ScaleBio_mtx = function(mtx_directory) {
+ReadCounts_ScaleBio_mtx = function(mtx_directory, strip_suffix=NULL) {
   # Determine the name of the matrix file
   mtx_file_name = "matrix.mtx"
   
@@ -872,7 +879,8 @@ ReadCounts_ScaleBio_mtx = function(mtx_directory) {
     features_file_name=features_file_name,
     features_column_names=c("feature_id", "feature_name", "feature_type"),
     feature_type_column=3,
-    delim = "\t"
+    delim = "\t",
+    strip_suffix=strip_suffix
   )
   
   return(counts_lst)
@@ -882,8 +890,9 @@ ReadCounts_ScaleBio_mtx = function(mtx_directory) {
 #' 
 #' @param path Path to Scale Bio counts data. Must be a Scale Bio matrix exchange format directory.
 #' @param assays Which assays to read. If NULL, read all assays.
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
 #' @return  One sparse counts matrix per assay (dgCMatrix format). Additional information on barcodes, features, technology and assay is attached as attributes.
-ReadCounts_ScaleBio = function(path, assays) {
+ReadCounts_ScaleBio = function(path, assays, strip_suffix=NULL) {
   # Checks
   assertthat::is.readable(path)
   
@@ -899,7 +908,7 @@ ReadCounts_ScaleBio = function(path, assays) {
   }
 
   # Read counts
-  counts_lst = ReadCounts_ScaleBio_mtx(mtx_directory=path)
+  counts_lst = ReadCounts_ScaleBio_mtx(mtx_directory=path, strip_suffix=strip_suffix)
   
   # Subset feature types (which correspond to assays)
   if (!is.null(assays)) {
@@ -961,15 +970,15 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
   } else if (technology == "smartseq3") {
     counts_lst = ReadCounts_SmartSeq(path=path, assays=assays[1], version="3")
   } else if(technology == "10x") {
-    counts_lst = ReadCounts_10x(path=path, assays=assays)
+    counts_lst = ReadCounts_10x(path=path, assays=assays, strip_suffix=ifelse(is.null(barcode_suffix), NULL, "-1"))
   } else if(technology == "10x_visium") {
-    counts_lst = ReadCounts_10xVisium(path=path, assays=assays)
+    counts_lst = ReadCounts_10xVisium(path=path, assays=assays, strip_suffix=ifelse(is.null(barcode_suffix), NULL, "-1"))
   } else if(technology == "10x_xenium") {
-    counts_lst = ReadCounts_10xXenium(path=path, assays=assays)
+    counts_lst = ReadCounts_10xXenium(path=path, assays=assays, strip_suffix=ifelse(is.null(barcode_suffix), NULL, "-1"))
   } else if(technology == "parse") {
-    counts_lst = ReadCounts_ParseBio(path=path, assays=assays)
+    counts_lst = ReadCounts_ParseBio(path=path, assays=assays, strip_suffix=ifelse(is.null(barcode_suffix), NULL, "__s1"))
   } else if(technology == "scale") {
-    counts_lst = ReadCounts_ScaleBio(path=path, assays=assays)
+    counts_lst = ReadCounts_ScaleBio(path=path, assays=assays, strip_suffix=ifelse(is.null(barcode_suffix), NULL, "-1"))
   }
   
   assertthat::assert_that(assertthat::not_empty(counts_lst),
