@@ -519,11 +519,11 @@ ScColours = function(sc, categories, colours_slot="colour_lists") {
 #' 
 #' @param sc A Seurat sc object.
 #' @param assay The assay for which to pull the name of the dimensionality reduction. If NULL, will be the default assay.
-#' @return The name of the active (default) dimensionality reduction for the assay.
+#' @return The name of the default dimensionality reduction for the assay.
 DefaultReduct = function(sc, assay=NULL) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
-  return(SeuratObject::Misc(sc[[assay]], slot="active.dimred"))
+  return(SeuratObject::Misc(sc[[assay]], slot="default.dimred"))
 }
 
 #' Sets the name of the default dimensionality reduction for an assay.
@@ -534,7 +534,30 @@ DefaultReduct = function(sc, assay=NULL) {
 "DefaultReduct<-" <- function(sc, assay=NULL, value) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
-  suppressWarnings({SeuratObject::Misc(sc[[assay]], slot="active.dimred") = value})
+  suppressWarnings({SeuratObject::Misc(sc[[assay]], slot="default.dimred") = value})
+  return(sc)
+}
+
+#' Gets the name of the default visualization method for an assay.
+#' 
+#' @param sc A Seurat sc object.
+#' @param assay The assay for which to pull the name of the default visualization method. If NULL, will be the default assay.
+#' @return The name of the default visualization method for the assay.
+DefaultVisualization = function(sc, assay=NULL) {
+  if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
+  
+  return(SeuratObject::Misc(sc[[assay]], slot="default.visualization"))
+}
+
+#' Sets the name of the default visualization method for an assay.
+#' 
+#' @param sc A Seurat sc object.
+#' @param assay The assay for which to set the name of the visualization method. If NULL, will be the default assay.
+#' @return A Seurat sc object with updated default visualization method for the assay.
+"DefaultVisualization<-" <- function(sc, assay=NULL, value) {
+  if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
+  
+  suppressWarnings({SeuratObject::Misc(sc[[assay]], slot="default.visualization") = value})
   return(sc)
 }
 
