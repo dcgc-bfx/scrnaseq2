@@ -160,18 +160,19 @@ if (use_sketching) {
 
 Seurat's clustering method first constructs a graph structure, where nodes are cells and edges are drawn between cells with similar gene expression patterns. Technically speaking, Seurat first constructs a K-nearest neighbor (KNN) graph based on Euclidean distance in PCA space, and refines edge weights between cells based on the shared overlap in their local neighborhoods (Jaccard similarity). To partition the graph into highly interconnected parts, cells are iteratively grouped together using the Leiden algorithm @Traag_2019. 
 
-<details class="details_box">
-  <summary class="details_box">Further explanation on clustering</summary>
+::: {.callout-tip title="Further explanation on clustering" collapse="true"}
 
 At this point, we would like to define subpopulations of cells with similar gene expression profiles using unsupervised clustering. Clusters ultimately serve as approximations for biological objects like cell types or cell states.
 
 During the first step of clustering, a K-nearest neighbor (KNN) graph is constructed. In simplified terms this means that cells are connected to their K nearest neighbors based on cell-to-cell expression similarity using the PCs chosen in the previous step. The higher the similarity is, the higher the edge weight becomes. During the second step, the graph is partitioned into highly interconnected communities, whereby each community represents a cluster of cells with similar expression profiles. The separation of the graph into clusters is dependent on the chosen resolution. For scRNA-seq datasets of around 3000 cells, it is recommended to use a resolution value between 0.4 and 1.2. This value can be set even higher for larger datasets. Note that the choice of PCs and cluster resolution is an arbitrary one. Therefore, it is highly recommended to evaluate clusters and re-run the workflow with adapted parameters if needed. 
-</details>
 
-To get a first idea about how different cluster resolution values influence the clustering, we run and visualize the clustering multiple times, see below. For this report, you chose the resolution value `r param("cluster_resolution")` as the final value for further analyses. 
+:::
+
+To get a first idea about how different cluster resolution values influence the clustering, we run and visualize the clustering multiple times, see below. 
 
 ```{r}
 #| label: clustering
+#| results: asis
 
 dimensionality_reduction_methods = param("dimensionality_reduction_method")
 if (is.null(dimensionality_reduction_methods)) dimensionality_reduction_methods = DefaultReduct(sc)
@@ -211,6 +212,8 @@ for (method in dimensionality_reduction_methods) {
 # Set default clustering
 default_name = paste0(DefaultAssay(sc), "_", dimensionality_reduction_methods[1], "_", "snn", cluster_resolutions[1])
 sc$seurat_clusters = sc[[]][, default_name]
+
+CalloutBox("The resolution parameter {{cluster_resolution}} was used.", type="note")
 
 # Set up colors for default clustering
 sc = ScAddColours(sc, colours=list(seurat_clusters=ScColours(sc, default_name)))
@@ -290,13 +293,13 @@ for (method in dimensionality_reduction_methods) {
 cat(":::\n")
 ```
 
-# Visualisation with UMAP
+# Visualization with UMAP
 
-We use a UMAP to visualise and explore a dataset. The goal is to place similar cells together in 2D space, and learn about the biology underlying the data. Cells are color-coded according to the graph-based clustering, and clusters typcially co-localise on the UMAP.
+We use a UMAP to visualize and explore a dataset. The goal is to place similar cells together in 2D space, and learn about the biology underlying the data. Cells are color-coded according to the graph-based clustering, and clusters typcially co-localise on the UMAP.
 
 Take care not to mis-read a UMAP:
   
-  * Parameters influence the plot (we use defaults here)
+* Parameters influence the plot (we use defaults here)
 * Cluster sizes relative to each other mean nothing, since the method has a local notion of distance
 * Distances between clusters might not mean anything
 * You may need more than one plot

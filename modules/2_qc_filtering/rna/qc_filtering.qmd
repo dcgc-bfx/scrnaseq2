@@ -70,10 +70,6 @@ execute:
 
 # QC and filtering
 
-DISCUSS terminology:
-- barcodes: cells, nuclei, spots
-- features: genes, peaks, proteins
-
 ```{r}
 #| label: setup
 
@@ -155,11 +151,11 @@ Seurat::DefaultAssay(sc) = default_assay
 
 The steps below represent a standard pre-processing workflow for single-cell RNA-seq data, including quality control, the respective filtering of cells and genes, data normalization and scaling, and the detection of highly variable genes.
 
-<details class="details_box">
-  <summary class="details_box">Why is pre-processing so important?</summary>
+::: {.callout-tip title="Why is pre-processing so important?" collapse="true"}
 
-Cells may have been damaged during sample preparation and might be only partially captured in the sequencing. In addition, free-floating mRNA from damaged cells can be encapsulated, adding to the background noise. The low-quality cells and free-floating mRNA interfere with downstream analyses. Therefore, cells and genes are filtered based on defined quality metrics. Data normalization eliminates cell-specific biases such as the absolute number of reads per cell, allowing us to systematically compare cells afterwards. Subsequent scaling corrects for the fact that genes have different lengths, allowing us to compare genes afterwards. Lastly, highly variable genes are determined, reducing computational overhead and noise from genes that are not interesting. 
-</details>
+Cells may have been damaged during sample preparation and might be only partially captured in the sequencing. In addition, free-floating mRNA from damaged cells can be encapsulated, adding to the background noise. The low-quality cells and free-floating mRNA interfere with downstream analyses. Therefore, cells and genes are filtered based on defined quality metrics. Data normalization eliminates cell-specific biases such as the absolute number of reads per cell, allowing us to systematically compare cells afterwards. Subsequent scaling corrects for the fact that genes have different lengths, allowing us to compare genes afterwards. Lastly, highly variable genes are determined, reducing computational overhead and noise from genes that are not interesting.
+
+:::
 
 ## Quality control
 
@@ -224,17 +220,17 @@ for (l in SeuratObject::Layers(sc, "^counts")) {
 
 We start the analysis by removing unwanted cells from the dataset(s). Three commonly used QC metrics include the number of unique genes detected in each cell ("nFeature_RNA"), the total number of molecules detected in each cell ("nCount_RNA"), and the percentage of counts that map to the mitochrondrial genome ("percent_mt"). If ERCC spike-in controls were used, the percentage of counts mapping to them is also shown ("percent_ercc").
 
-<details class="details_box">
-  <summary class="details_box">Which cells can be considered to be of low quality?</summary>
+::: {.callout-tip title="Which cells can be considered to be of low quality?" collapse="true"}
 
-On the one hand, low-quality cells such as dying, degraded and damaged cells, and empty droplets will often have very few genes ("nFeature_RNA") and low total counts ("nCount_RNA"). On the other hand, cell doublets may show an aberrantly high number of genes. Since the total number of reads detected within a cell typically strongly correlates with the number of unique genes, we can focus on the number of unique genes for filtering. In addition, damaged cells often exhibit high mitochondrial ("percent_mt") or spike-in ("percent_ercc") content. As mitochondria have their own membranes, their RNA is often the last to degrade in damaged cells and can thus be found in high numbers. However, it is important to keep in mind that different cell types and cells isolated from various species may differ in their number of expressed genes and metabolism. For example, stem cells may express a higher number of unique genes, and metabolically active cells may express a higher number of mitochondrial genes. 
-</details>
+On the one hand, low-quality cells such as dying, degraded and damaged cells, and empty droplets will often have very few genes ("nFeature_RNA") and low total counts ("nCount_RNA"). On the other hand, cell doublets may show an aberrantly high number of genes. Since the total number of reads detected within a cell typically strongly correlates with the number of unique genes, we can focus on the number of unique genes for filtering. In addition, damaged cells often exhibit high mitochondrial ("percent_mt") or spike-in ("percent_ercc") content. As mitochondria have their own membranes, their RNA is often the last to degrade in damaged cells and can thus be found in high numbers. However, it is important to keep in mind that different cell types and cells isolated from various species may differ in their number of expressed genes and metabolism. For example, stem cells may express a higher number of unique genes, and metabolically active cells may express a higher number of mitochondrial genes.
 
-<details class="details_box">
-  <summary class="details_box">Impact of low-quality cells on downstream analyses</summary>
+:::
 
-First of all, low-quality cells of different cell types might cluster together due to similarities in their damage-induced gene expression profiles. This leads to artificial intermediate states or trajectories between subpopulations that would otherwise be distinct. Second, low-quality cells might mask relevant gene expression changes. The main differences captured by the first principal components will likely be based on cell quality rather than the underlying biology, reducing the power of dimensionality reduction. Likewise, highly variable genes might just be genes that differ between low- and high-quality cells. Lastly and equally important, the low number of total counts in low-quality cells might lead to artificial upregulation of genes due to wrong scaling effects during the normalisation process. 
-</details>
+::: {.callout-tip title="Impact of low-quality cells on downstream analyses" collapse="true"}
+
+First of all, low-quality cells of different cell types might cluster together due to similarities in their damage-induced gene expression profiles. This leads to artificial intermediate states or trajectories between subpopulations that would otherwise be distinct. Second, low-quality cells might mask relevant gene expression changes. The main differences captured by the first principal components will likely be based on cell quality rather than the underlying biology, reducing the power of dimensionality reduction. Likewise, highly variable genes might just be genes that differ between low- and high-quality cells. Lastly and equally important, the low number of total counts in low-quality cells might lead to artificial upregulation of genes due to wrong scaling effects during the normalisation process.
+
+:::
 
 ```{r}
 #| label: qc_filtering_rna_qc_plots
@@ -295,7 +291,6 @@ plist[[{{i}}]]
 }
 ```
 
-
 ```{r}
 #| label: qc_filtering_rna_qc_cor_plots
 #| results: asis
@@ -313,7 +308,7 @@ missing_barcode_qc = purrr::map(barcode_qc_cor, function(b) {
   f = b %in% colnames(barcode_metadata)
   return(barcode_qc[!f])
 }) %>% unlist %>% unique()
-if (length(missing_barcode_qc) > 0) CalloutBox(x="Cannot find QC {missing_barcode_qc*} in barcode metadata.", , type="warning")
+if (length(missing_barcode_qc) > 0) CalloutBox(x="Cannot find QC {missing_barcode_qc*} in barcode metadata.", type="warning")
 
 f = purrr::map_lgl(barcode_qc_cor, function(b) return(all(!b %in% missing_barcode_qc)))
 barcode_qc_cor = barcode_qc_cor[f]
@@ -361,7 +356,7 @@ plist[[{{i}}]]
 
 ## Genes with highest expression
 
-We next investigate whether there are individual genes that are represented by an unusually high number of counts. For each cell, we first calculate the percentage of counts per gene. Subsequently, for each gene, we calculate the median value of these percentages in all cells. Genes with the highest median percentage of counts are plotted below. 
+We next investigate whether there are individual genes that are represented by an unusually high number of counts. For each cell, we first calculate the percentage of counts per gene. Subsequently, for each gene, we calculate the median value of these percentages in all cells. Genes with the highest median percentage of counts are plotted below.
 
 ```{r}
 #| label: qc_filtering_rna_highest_genes
@@ -504,7 +499,7 @@ cat(":::", sep="\n")
 
 ## Sample sex
 
-When working with human or animal samples, you should ideally constrain you experiments to a single sex to avoid including sex bias in the conclusions. However this may not always be possible. By looking at reads from chromosome Y (males) and XIST (X-inactive specific transcript) expression (mainly female) it is quite easy to determine per sample which sex it is. It can also bee a good way to detect if there has been any sample mixups, if the sample metadata sex does not agree with the computational predictions. (COPIED)
+When working with human or animal samples, you should ideally constrain your experiments to a single sex to avoid bias. However this may not always be possible. By looking at reads from chromosome Y (males) and XIST (X-inactive specific transcript) expression (mainly female) it is possible to determine sample sex. 
 
 ```{r}
 #| label: fig-qc_filtering_rna_sample_sex
@@ -537,7 +532,7 @@ plist[[1]] + plist[[2]]
 
 ## Filtering
 
-Cells and genes are filtered based on the following thresholds: 
+Cells and genes are filtered based on the following thresholds:
 
 ```{r}
 #| label: qc_filtering_rna_filters
@@ -601,8 +596,7 @@ if (length(feature_filter) == 0) {
 }
 ```
 
-::: {layout-ncol=2}
-
+::: {layout-ncol="2"}
 ```{r}
 #| label: tbl-qc_filtering_rna_feature_print_barcode_filters
 #| echo: false
@@ -624,10 +618,9 @@ gt(barcode_filter_tbl)
 # Print feature filters (genes, peaks, proteins)
 gt(feature_filter_tbl)
 ```
-
 :::
 
-The number of excluded cells and features is as follows: 
+The number of excluded cells and features is as follows.
 
 ```{r}
 #| label: tbl-qc_filtering_rna_filter_barcodes
@@ -757,7 +750,7 @@ sc[[default_assay]]@meta.data = feature_metadata[features_to_keep, ]
 gt(features_to_exclude_tbl, rownames_to_stub=TRUE)
 ```
 
-After filtering, the size of the Seurat object is: 
+After filtering, the size of the Seurat object is:
 
 ```{r qc_filtering_rna_filter_size}
 sc
@@ -827,7 +820,6 @@ plist[[{{i}}]]
 }
 ```
 
-
 ```{r}
 #| label: qc_filtering_rna_postqc_cor_plots
 #| results: asis
@@ -893,6 +885,10 @@ plist[[{{i}}]]
 ```
 
 ## Cell Cycle
+
+How much do gene expression profiles in the dataset reflect the cell cycle phases the single cells were in? After a preliminary normalisation, we determined the effects of cell cycle heterogeneity by calculating a score for each cell based on its expression of G2M and S phase markers. 
+
+The following QC plots are meant to help deciding whether or not to regress out cell cycle scores during proper normalization. Later on, during @sec-clusterqc-cc we again look at cell cycle effects in more detail. 
 
 ```{r}
 #| label: qc_filtering_rna_cell_cycle
@@ -1024,18 +1020,6 @@ gt(cell_cycle_summary_tbl, rowname_col="orig.ident")
 ```
 
 ```{r}
-#| label: fig-qc_filtering_rna_cell_cycle_S_G2M
-#| fig-cap: !expr GeneratePlotCaptions(c("S.Score__G2M.Score"), split="__")
-#| eval: !expr sc$Phase %>% is.na() %>% all() %>% not()
-#| include: !expr sc$Phase %>% is.na() %>% all() %>% not()
-
-# Plot S.Score vs G2.Score
-
-plist = PlotBarcodeQCCor(sc, qc=list(c("S.Score", "G2M.Score")))
-plist[[1]]
-```
-
-```{r}
 #| label: fig-qc_filtering_rna_cell_cycle_S
 #| fig-cap: !expr paste(GeneratePlotCaptions(c("S.Score", "G2M.Score")), collapse=" and ")
 #| eval: !expr sc$Phase %>% is.na() %>% all() %>% not()
@@ -1050,8 +1034,6 @@ plist[[1]] + plist[[2]]
 ```
 
 ## Save Seurat object
-
-Finally, we save the Seurat object and the layer data. The layer data is saved in a matrix directory, which is a directory with a matrix market file for each sample. This allows to analyse big datasets without loading all data into memory.
 
 ```{r}
 #| label: qc_filtering_rna_save_seurat
@@ -1079,4 +1061,3 @@ with_progress({
 # Stop multisession workers
 plan(sequential)
 ```
-

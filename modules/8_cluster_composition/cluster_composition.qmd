@@ -204,18 +204,18 @@ gt(tbl, rownames_to_stub=TRUE)
 
 ## Save Seurat object
 
-NOTE: object is not saved yet, as there was a problem with the merged `scale.data` path in the sc object. 
-
 ```{r}
 #| label: cluster_composition_save_seurat
 
-# Save Seurat object and layer data
-#with_progress({
-#  SaveSeuratRds_Custom(sc,
-#                       on_disk_layers=on_disk_counts,
-#                       outdir=file.path(module_dir, "sc"))
-#}, enable=TRUE)
+# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
 
+# Save Seurat object and layer data
+with_progress({
+  SaveSeuratRdsWrapper(sc,
+                       on_disk_layers=on_disk_counts,
+                       outdir=file.path(module_dir, "sc"))
+}, enable=verbose)
 ```
 
 ```{r}

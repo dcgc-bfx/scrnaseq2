@@ -7,7 +7,9 @@ project:
   output-dir: "book_scrnaseq"
 
 book:
-  title: "Single-cell analysis results"
+  title: |
+    | scrnaseq2
+    | Single-cell analysis results
   subtitle: "bfx1234"
   chapters:
   - "index.qmd"
@@ -27,8 +29,8 @@ book:
 execute: 
   freeze: "auto"
   echo: true
-  message: true
-  warning: true
+  message: false
+  warning: false
 
 ##########
 # Params #
