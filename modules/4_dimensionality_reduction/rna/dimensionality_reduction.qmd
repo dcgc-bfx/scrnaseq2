@@ -90,8 +90,7 @@ module_name = params$module_name
 module_dir = params$module_dir
 
 # Parallisation plan for all functions that support future
-plan(multisession, workers=4, gc=TRUE)
-#plan(sequential)
+plan(multisession, workers=8)
 ```
 
 ```{r}

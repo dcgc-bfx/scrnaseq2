@@ -377,7 +377,7 @@ ReadCounts_mtx = function(mtx_directory, mtx_file_name="matrix.mtx.gz", transpos
 #' @param h5ad_file Path to an anndata object in hdf5 format.
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL) 
 #' @return Sparse counts matrix (IterableMatrix format). Additional information on barcodes and features is attached as attributes barcode_metadata and feature_metadata.
-ReadCounts_h5ad = function(h5ad_file) {
+ReadCounts_h5ad = function(h5ad_file, strip_suffix=NULL) {
   library(magrittr)
   
   # Checks
@@ -388,7 +388,12 @@ ReadCounts_h5ad = function(h5ad_file) {
   barcodes_col_nms = colnames(barcodes_data)
   barcodes_col_nms[1] = "orig_barcode"
   colnames(barcodes_data) = barcodes_col_nms
-  rownames(barcodes_data) = barcodes_data[, 1, drop=TRUE]
+  if (!is.null(strip_suffix)) {
+    rownames(barcodes_data) = trimws(barcodes_data[, 1, drop=TRUE], which="right", whitespace=strip_suffix)
+  } else {
+    rownames(barcodes_data) = barcodes_data[, 1, drop=TRUE]
+  }
+  
   
   features_data = ReadMetadata_h5ad(h5ad_file=h5ad_file, type='var')
   features_data = features_data %>% dplyr::select(feature_id=gene_id,
@@ -401,6 +406,7 @@ ReadCounts_h5ad = function(h5ad_file) {
   # Read counts and attach barcodes/features data
   counts_data=BPCells::open_matrix_anndata_hdf5(h5ad_file)
   rownames(counts_data) = rownames(features_data)
+  colnames(counts_data) = rownames(barcodes_data)
   attr(counts_data, "barcode_metadata") = barcodes_data
   attr(counts_data, "feature_metadata") = features_data
   
@@ -965,20 +971,26 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
                           msg=FormatString("Technology is {technology} but must be one of: {valid_technologies*}."))
   
   # Read counts
+  strip_suffix = NULL
   if (technology == "smartseq2") {
     counts_lst = ReadCounts_SmartSeq(path=path, assays=assays[1], version="2")
   } else if (technology == "smartseq3") {
     counts_lst = ReadCounts_SmartSeq(path=path, assays=assays[1], version="3")
   } else if(technology == "10x") {
-    counts_lst = ReadCounts_10x(path=path, assays=assays, strip_suffix=ifelse(is.null(barcode_suffix), NULL, "-1"))
+    if(!is.null(barcode_suffix)) strip_suffix = "-1"
+    counts_lst = ReadCounts_10x(path=path, assays=assays, strip_suffix=strip_suffix)
   } else if(technology == "10x_visium") {
-    counts_lst = ReadCounts_10xVisium(path=path, assays=assays, strip_suffix=ifelse(is.null(barcode_suffix), NULL, "-1"))
+    if(!is.null(barcode_suffix)) strip_suffix = "-1"
+    counts_lst = ReadCounts_10xVisium(path=path, assays=assays, strip_suffix=strip_suffix)
   } else if(technology == "10x_xenium") {
-    counts_lst = ReadCounts_10xXenium(path=path, assays=assays, strip_suffix=ifelse(is.null(barcode_suffix), NULL, "-1"))
+    if(!is.null(barcode_suffix)) strip_suffix = "-1"
+    counts_lst = ReadCounts_10xXenium(path=path, assays=assays, strip_suffix=strip_suffix)
   } else if(technology == "parse") {
-    counts_lst = ReadCounts_ParseBio(path=path, assays=assays, strip_suffix=ifelse(is.null(barcode_suffix), NULL, "__s1"))
+    strip_suffix = NULL
+    counts_lst = ReadCounts_ParseBio(path=path, assays=assays, strip_suffix=strip_suffix)
   } else if(technology == "scale") {
-    counts_lst = ReadCounts_ScaleBio(path=path, assays=assays, strip_suffix=ifelse(is.null(barcode_suffix), NULL, "-1"))
+    if(!is.null(barcode_suffix)) strip_suffix = "-1"
+    counts_lst = ReadCounts_ScaleBio(path=path, assays=assays, strip_suffix=strip_suffix)
   }
   
   assertthat::assert_that(assertthat::not_empty(counts_lst),
@@ -1587,7 +1599,11 @@ SaveSeuratRds_Fixed <- function (object, file = NULL, move = TRUE, destdir = dep
         p(message = paste("Moving layer", sQuote(x = df$layer[i]),
                           "to", sQuote(x = destdir)), class = "sticky",
           amount = 0)
-        new_pth <- lapply(pth, function(p) return(as.character(.FileMove(path = p, new_path = destdir))))
+        new_pth <- lapply(pth, function(p) {
+          np <- as.character(.FileMove(path = p, new_path = destdir))
+          if (p == np) np <- file.path(destdir, basename(p))
+          return(np)
+        })
         new_pth <- paste(unlist(new_pth), collapse=",")
         df[i, "path"] <- new_pth
       }
@@ -1653,19 +1669,19 @@ SaveSeuratRdsWrapper = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, re
   SeuratObject::SaveSeuratRds(sc, file=file.path(outdir, "sc.rds"), move=on_disk_layers)
   
   # Then make sure that the paths pointing to the layers are correct
-  if (on_disk_layers) {
-    sc = readRDS(file.path(outdir, "sc.rds"))
-    paths = sc@tools$SaveSeuratRds$path
-    paths = lapply(paths, function(p) {
-      p = unlist(strsplit(p, ","))
-      p = basename(p)
-      if (!relative) p = file.path(outdir, p)
-      return(paste(p, collapse=","))
-    })
-    paths = unlist(paths)
-    sc@tools$SaveSeuratRds$path = paths
-    saveRDS(sc, file=file.path(outdir, "sc.rds"))
-  }
+  #if (on_disk_layers) {
+  #  sc = readRDS(file.path(outdir, "sc.rds"))
+  #  paths = sc@tools$SaveSeuratRds$path
+  #  paths = lapply(paths, function(p) {
+  #    p = unlist(strsplit(p, ","))
+  #    p = basename(p)
+  #    if (!relative) p = file.path(outdir, p)
+  #    return(paste(p, collapse=","))
+  #  })
+  #  paths = unlist(paths)
+  #  sc@tools$SaveSeuratRds$path = paths
+  #  saveRDS(sc, file=file.path(outdir, "sc.rds"))
+  #}
 }
 
 #' Copies on-disk layers of a Seurat object to a new directory.
