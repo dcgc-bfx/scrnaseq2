@@ -10,12 +10,11 @@ params:
 
   # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
   # NOTE: Change to null if all modules are implemented and sc objects are written
-  prev_module_dir: "modules/3_normalization/rna"
+  prev_module_dir: null
   
-  # Default assay and normalization
+  # Default assay
   default_assay: "RNA"
-  normalization_method: "RNA"
-  
+
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. 
   # Computations will access only the relevant parts of the data. 
   # Once done, matrix directories will be saved together with the Seurat object in the module directory.
@@ -63,13 +62,11 @@ module_name = params$module_name
 module_dir = params$module_dir
 
 # Parallelisation plan for all functions that support future
-plan(multisession, workers=4, gc=TRUE)
+plan(multisession, workers=4)
 ```
 
 ```{r}
 #| label: cluster_composition_preparation
-#| message: false
-#| warning: false
 
 # CODE
 # Working directory is automatically back to scrnaseq2 at this point
@@ -121,23 +118,10 @@ if (on_disk_counts & on_disk_use_tmp) {
   on_disk_path = file.path(module_dir, "sc")
 }
 
-# Set default assay
-default_assay = ifelse (param("normalization_method") == "sct", 
-                        paste(param("default_assay"), "SCT", sep="_"), 
-                        param("default_assay"))
-```
-
-NOTE: temporary until chapter 5 is written: 
-
-```{r}
-#| label: cluster_composition_temporary
-#| warning: false
-#| message: false
-sc <- suppressMessages(ScaleData(sc))
-sc <- suppressMessages(RunPCA(sc))
-sc <- suppressMessages(FindNeighbors(sc, dims = 1:10))
-sc <- suppressMessages(FindClusters(sc, resolution = 0.5))
-sc <- suppressMessages(RunUMAP(sc, dims = 1:10))
+# Set default assay standard
+default_assay = param("default_assay")
+if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
+Seurat::DefaultAssay(sc) = default_assay
 ```
 
 ## Samples per cluster
@@ -167,7 +151,7 @@ tbl = tbl[order(rownames(tbl)),, drop=FALSE]
 
 ```{r}
 #| label: fig-cluster_composition_samples_per_cluster
-#| fig-cap: Percentage cells per sample and cluster
+#| fig-cap: "Percentage cells per sample and cluster"
 
 # Plot percentages
 tbl_bar = tbl[paste0(cell_samples, "_perc"), , drop=FALSE] %>% 

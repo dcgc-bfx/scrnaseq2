@@ -19,7 +19,7 @@ book:
   - "modules/4_dimensionality_reduction/rna/dimensionality_reduction.qmd"
   - "modules/5_clustering_umap/clustering_umap.qmd"
   - "modules/6_clusterqc/clusterqc.qmd"
-  #- "modules/8_cluster_composition/cluster_composition.qmd"
+  - "modules/8_cluster_composition/cluster_composition.qmd"
   - "references.qmd"
 
 ####################

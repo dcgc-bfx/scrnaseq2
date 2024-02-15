@@ -61,7 +61,7 @@ format:
     toc-depth: 2
     toc-location: left
     fig-format: "png"
-    keep-md: true
+    keep-md: false
     #execute:
     #  echo: false
     #  message: false
