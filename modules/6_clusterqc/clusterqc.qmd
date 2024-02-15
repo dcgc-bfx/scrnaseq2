@@ -10,12 +10,11 @@ params:
 
   # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
   # NOTE: Change to null if all modules are implemented and sc objects are written
-  prev_module_dir: "modules/3_normalization/rna"
+  prev_module_dir: null
   
   # Default assay and normalization
-  default_assay: "RNA"
-  normalization_method: "RNA"
-  
+  default_assay: null
+
   # QC measures to look at 
   qc_features:
   - "nCount_RNA"
@@ -38,6 +37,9 @@ params:
   # Once done, matrix directories will be copied back to the module directory. 
   # The temporary directory will be deleted once the R session exists.
   on_disk_use_tmp: true
+  
+  # Number of cores to use for computations
+  cores: 4
   
 # Module execution
 execute:
@@ -73,15 +75,10 @@ library(patchwork)
 # Get module name and directory (needed to access files within the module directory)
 module_name = params$module_name
 module_dir = params$module_dir
-
-# Parallelisation plan for all functions that support future
-plan(multisession, workers=4, gc=TRUE)
 ```
 
 ```{r}
 #| label: clusterqc_preparation
-#| message: false
-#| warning: false
 
 # CODE
 # Working directory is automatically back to scrnaseq2 at this point
@@ -94,7 +91,11 @@ source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
 
+# Be verbose or not
 verbose = param("verbose")
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=param("cores"))
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
@@ -133,22 +134,10 @@ if (on_disk_counts & on_disk_use_tmp) {
   on_disk_path = file.path(module_dir, "sc")
 }
 
-# Set default assay
+# Set default assay standard
 default_assay = param("default_assay")
+if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
 Seurat::DefaultAssay(sc) = default_assay
-```
-
-NOTE: temporary until chapter 5 is written: 
-
-```{r}
-#| label: clusterqc_temporary
-#| warning: false
-#| message: false
-sc <- suppressMessages(ScaleData(sc))
-sc <- suppressMessages(RunPCA(sc))
-sc <- suppressMessages(FindNeighbors(sc, dims = 1:10))
-sc <- suppressMessages(FindClusters(sc, resolution = 0.5))
-sc <- suppressMessages(RunUMAP(sc, dims = 1:10))
 ```
 
 ## Quality Control 
@@ -158,8 +147,6 @@ Do cells in individual clusters have particularly high counts, detected genes or
 ```{r}
 #| label: clusterqc
 #| results: asis
-#| warning: false
-#| message: false
 
 # QC features to plot
 qc_features = param("qc_features")
@@ -215,7 +202,7 @@ plist[['{{type}}']]
   for (x in qc_features) {
     chunk_filled =  knitr::knit_expand(text=chunk_template, type=x, caption=captions[x])
     if(interactive()) {
-      EvalKnitrChunk(chunk_filled)
+      print(EvalKnitrChunk(chunk_filled))
     } else {
       chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
       cat(chunk_filled, sep='\n')
@@ -272,8 +259,6 @@ p
 ```{r}
 #| label: clusterqc_cellcycle_umap
 #| results: asis
-#| warning: false
-#| message: false
 
 # Phases on UMAP
 plist = list()
@@ -307,7 +292,7 @@ cat("::: panel-tabset", sep="\n")
 for (i in names(plist)) {
   chunk_filled = knitr::knit_expand(text=chunk_template, type=i, caption=captions[i])
   if(interactive()) {
-    EvalKnitrChunk(chunk_filled)
+    print(EvalKnitrChunk(chunk_filled))
   } else {
     chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
     cat(chunk_filled, sep='\n')

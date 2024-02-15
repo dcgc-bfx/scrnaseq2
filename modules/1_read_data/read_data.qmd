@@ -65,6 +65,8 @@ params:
     - "centroids"
     - "segmentations"
   
+  # Number of cores to use for computations
+  cores: 4
   
 # Module execution
 execute:
@@ -98,9 +100,6 @@ library(future)
 # Get module directory (needed to access files within the module directory)
 module_name = params$module_name
 module_dir = params$module_dir
-
-# Parallelisation plan for all functions that support future
-plan(multisession, workers=4, gc=TRUE)
 ```
 
 ```{r}
@@ -117,7 +116,11 @@ source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
 
+# Be verbose or not
 verbose = param("verbose")
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=param("cores"))
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
@@ -693,31 +696,6 @@ has_assay = purrr::map(counts_lst, purrr::pluck_exists, default_assay) %>% purrr
 assay_counts_lst = purrr::map(counts_lst[has_assay], purrr::pluck, default_assay)
 names(assay_counts_lst) = purrr::map(assay_counts_lst, attr, "orig.ident") %>% unlist()
 
-# Create Seurat default assay object
-assay_obj = SeuratObject::CreateAssay5Object(counts=assay_counts_lst)
-#if (length(assay_counts_lst) == 1) {
-#  n = names(assay_counts_lst)
-#  assay_obj = split(assay_obj, rep(n, ncol(assay_obj)))
-#}
-rownames(assay_obj@meta.data) = rownames(assay_obj)
-
-# Collect feature metadata for default assay datasets
-feature_metadata = purrr::map(seq_along(assay_counts_lst), function(i) {
-  metadata = attr(assay_counts_lst[[i]], "feature_metadata") %>% tibble::rownames_to_column()
-  return(metadata)
-}) %>% dplyr::bind_rows()
-
-# Group by feature name and make unique values
-feature_metadata = feature_metadata %>% 
-  dplyr::group_by(rowname) %>%
-  dplyr::summarise_all(dplyr::first, na_rm=TRUE) %>% 
-  as.data.frame()
-rownames(feature_metadata) = feature_metadata$rowname
-feature_metadata = feature_metadata %>% dplyr::select(-rowname)
-
-# Add to Seurat default assay object
-assay_obj = SeuratObject::AddMetaData(assay_obj, metadata=feature_metadata)
-
 # Collect barcode metadata (from all assays/datasets)
 barcode_metadata = purrr::map_dfr(seq_along(counts_lst), function(i) {
   metadata = data.frame(rowname=colnames(assay_counts_lst[[i]]))
@@ -739,6 +717,33 @@ barcode_metadata = purrr::map_dfr(seq_along(counts_lst), function(i) {
 barcode_metadata$orig.ident = factor(barcode_metadata$orig.ident, levels=unique(barcode_metadata$orig.ident))
 barcode_metadata$sample = factor(barcode_metadata$sample, levels=unique(barcode_metadata$sample))
 barcode_metadata$technology = factor(barcode_metadata$technology, levels=unique(barcode_metadata$technology))
+
+# Collect feature metadata for default assay datasets
+# Group by feature name and make unique values
+feature_metadata = purrr::map(seq_along(assay_counts_lst), function(i) {
+  metadata = attr(assay_counts_lst[[i]], "feature_metadata") %>% tibble::rownames_to_column()
+  return(metadata)
+}) %>% dplyr::bind_rows()
+
+feature_metadata = feature_metadata %>% 
+  dplyr::group_by(rowname) %>%
+  dplyr::summarise_all(dplyr::first, na_rm=TRUE) %>% 
+  as.data.frame()
+rownames(feature_metadata) = feature_metadata$rowname
+feature_metadata = feature_metadata %>% dplyr::select(-rowname)
+
+# Remove since we do not need these attributes
+for(i in seq_along(assay_counts_lst)) {
+  attr(assay_counts_lst[[i]], "barcode_metadata") = NULL
+  attr(assay_counts_lst[[i]], "feature_metadata") = NULL
+}
+
+# Create Seurat default assay object
+assay_obj = SeuratObject::CreateAssay5Object(counts=assay_counts_lst)
+rownames(assay_obj@meta.data) = rownames(assay_obj)
+
+# Add to Seurat default assay object
+assay_obj = SeuratObject::AddMetaData(assay_obj, metadata=feature_metadata)
 
 # Create Seurat object
 sc = Seurat::CreateSeuratObject(counts=assay_obj, meta.data=barcode_metadata, assay=default_assay, names.delim=NULL, names.field=NULL)
@@ -762,28 +767,30 @@ for(a in setdiff(all_assays, default_assay)) {
   has_assay = purrr::map(counts_lst, purrr::pluck_exists, a) %>% purrr::flatten_lgl()
   assay_counts_lst = purrr::map(counts_lst[has_assay], purrr::pluck, a)
   names(assay_counts_lst) = purrr::map(assay_counts_lst, attr, "orig.ident") %>% unlist()
-
-  # Create Seurat default assay object
-  assay_obj = SeuratObject::CreateAssay5Object(counts=assay_counts_lst)
-  #if (length(assay_counts_lst) == 1) {
-  #  n = names(assay_counts_lst)
-  #  assay_obj = split(assay_obj, rep(n, ncol(assay_obj)))
-  #}
-  rownames(assay_obj@meta.data) = rownames(assay_obj)
-
+  
   # Collect feature metadata for default assay datasets
+  # Group by feature name and make unique values
   feature_metadata = purrr::map(seq_along(assay_counts_lst), function(i) {
     metadata = attr(assay_counts_lst[[i]], "feature_metadata") %>% tibble::rownames_to_column()
     return(metadata)
   }) %>% dplyr::bind_rows()
 
-  # Group by feature name and make unique values
   feature_metadata = feature_metadata %>% 
     dplyr::group_by(rowname) %>%
     dplyr::summarise_all(dplyr::first, na_rm=TRUE) %>% 
     as.data.frame()
   rownames(feature_metadata) = feature_metadata$rowname
   feature_metadata = feature_metadata %>% dplyr::select(-rowname)
+
+  # Remove since we do not need these attributes
+  for(i in seq_along(assay_counts_lst)) {
+    attr(assay_counts_lst[[i]], "barcode_metadata") = NULL
+    attr(assay_counts_lst[[i]], "feature_metadata") = NULL
+  }
+  
+  # Create Seurat default assay object
+  assay_obj = SeuratObject::CreateAssay5Object(counts=assay_counts_lst)
+  rownames(assay_obj@meta.data) = rownames(assay_obj)
 
   # Add to Seurat default assay object
   assay_obj = SeuratObject::AddMetaData(assay_obj, metadata=feature_metadata)
@@ -924,20 +931,22 @@ Finally, we calculate some first basic statistics such as the precentage of coun
 ############
 # Calculate for each assay
 for (a in Seurat::Assays(sc)) {
+
   # Add percentage of counts in top 50 features
   m = paste("pCountsTop50", a, sep="_")
   sc[[m]] = 0
 
   # And each layer (dataset)
   for (l in SeuratObject::Layers(sc[[a]], "^counts")) {
+
     # Get data for layer (sample)
     counts = sc[[a]][l]
     bcs = counts %>% colnames()
     total_counts = sc[[]][bcs, paste0("nCount_", a), drop=TRUE]
-
+    
     # Get counts of the top 50 features per barcode
     with_progress({
-      top50_counts = SumTopN(counts, n=50, margin=2, chunk_size=5000)
+      top50_counts = SumTopN(counts, n=50, margin=2, chunk_size=10000)
     }, enable=verbose)
     
     # Zero counts barcodes will not be in top50_counts - add them here
@@ -971,7 +980,7 @@ for (a in Seurat::Assays(sc)) {
 
     # Calculate median percentage of counts per feature
     with_progress({
-      counts_median = CalculateMedians(counts_perc, margin=1, chunk_size=1000)
+      counts_median = CalculateMedians(counts_perc, margin=1, chunk_size=2000)
     }, enable=verbose)
     
     # Add to metadata

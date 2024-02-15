@@ -10,8 +10,8 @@ params:
   # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
   prev_module_dir: null
   
-  # Default assay.
-  default_assay: "RNA"
+  # Default assay. If null, will be set to the default assay of the input Seurat object.
+  default_assay: null
   
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. Computations will access only the relevant parts of the data. Once done, matrix directories will be saved together with the Seurat object in the module directory.
   on_disk_counts: true
@@ -28,7 +28,7 @@ params:
 
   # Should all cell cycle effects be removed, or only the difference between profilerating cells (G2M and S phase)?
   # Read https://satijalab.org/seurat/v3.1/cell_cycle_vignette.html, for an explanation
-  cellcycle_remove_all: false
+  cellcycle_remove_all: true
    
   # Whether or not to re-score cell cycle effects after data
   #   from different samples have been merged/integrated
@@ -51,7 +51,10 @@ params:
   use_sketching: false
   
   # Number of barcodes in sketch
-  num_barcodes_for_sketching: 5000
+  num_barcodes_for_sketching: 50000
+  
+  # Number of cores to use for computations
+  cores: 4
   
 # Module execution
 execute:
@@ -82,9 +85,6 @@ library(future)
 # Get module name and directory (needed to access files within the module directory)
 module_name = params$module_name
 module_dir = params$module_dir
-
-# Parallelisation plan for all functions that support future
-plan(multisession, workers=4, gc=TRUE)
 ```
 
 ```{r}
@@ -100,7 +100,11 @@ source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
 
+# Be verbose or not
 verbose = param("verbose")
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=param("cores"))
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
@@ -139,8 +143,9 @@ if (on_disk_counts & on_disk_use_tmp) {
   on_disk_path = file.path(module_dir, "sc")
 }
 
-# Set default assay
+# Set default assay standard
 default_assay = param("default_assay")
+if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
 Seurat::DefaultAssay(sc) = default_assay
 
 # CHECKS
@@ -259,7 +264,7 @@ if (normalization_method == "lognorm") {
   CalloutBox("SCTransform normalization was applied.", type="note")
 }
 
-# Convert queued operations into real data and write normalized data to disk
+# Convert queued operations into real data and write to disk
 if (on_disk_counts) {
   
   if (normalization_method != "SCT") {
@@ -422,26 +427,52 @@ After normalization, gene expression data can be compared between cells. However
 #| label: normalization_rna_scale_data
 #| results: asis
 
-# Scale data
-
-normalization_method = param("normalization_method")
-
-# SCTransform already scaled data
-if(normalization_method != "SCT") {
-
   # Scale data for variable features
-  sc = Seurat::ScaleData(sc, verbose=verbose, vars.to.regress=vars_to_regress)
+
+use_sketching = param("use_sketching")
+normalization_method = param("normalization_method")
+barcode_metadata = sc[[]]
+
+# Not needed if:
+# a) SCTransform since it already scaled data
+# b) when applying sketching since we only scale the data of the sketch
+if(normalization_method != "SCT" & !use_sketching) {
   
-  # When on-disk matrices are in use, then scaling is merely some operations on the combined matrices
-  # However, storing this properly is still bugged
-  # Therefore, we convert scaled data into an in-memory matrix
-  x = SeuratObject::LayerData(sc, layer="scale.data")
-  feature_names = rownames(x)
-  barcode_names = colnames(x)
-  x = as(x, "matrix")
-  rownames(x) = feature_names
-  colnames(x) = barcode_names
-  SeuratObject::LayerData(sc, assay=Seurat::DefaultAssay(sc), layer="scale.data") = x
+  # Unfortunately ScaleData has limited support for on-disk counts: regress out does not work. 
+  # Therefore we load the normalized data into memory, run ScaleData and 
+  # then extract the scale.data layer.
+  if (on_disk_counts) {
+    # Keep layers with normalized data but convert to sparse matrix
+    var_features = VariableFeatures(sc, assay=default_assay)
+    normalized_layers = SeuratObject::Layers(sc, assay=default_assay, search="data")
+    normalized_data = purrr::map(normalized_layers, function(n) {
+      ldat = SeuratObject::LayerData(sc, layer=n, assay=default_assay, features=var_features)
+      ldat = as(ldat, "dgCMatrix")
+      return(ldat)
+    })
+    names(normalized_data) = normalized_layers
+
+    # Create Seurat v5 assay object
+    normalized_data = SeuratObject::CreateAssay5Object(data=normalized_data)
+    
+    # Get data for vars_to_regress
+    if (any(vars_to_regress %in% colnames(barcode_metadata))) {
+      keep = vars_to_regress %in% colnames(barcode_metadata)
+      latent_data = barcode_metadata[vars_to_regress[keep]]
+    } else {
+      latent_data = NULL
+    }
+    
+    # Run ScaleData
+    normalized_data = Seurat::ScaleData(normalized_data, verbose=verbose, vars.to.regress=vars_to_regress, latent.data=latent_data)
+    
+    # Add scale.data layer to Seurat object
+    SeuratObject::LayerData(sc, assay=default_assay, layer="scale.data") = SeuratObject::LayerData(normalized_data, layer="scale.data")
+    rm(normalized_data)
+  } else {
+    # Run ScaleData
+    sc = Seurat::ScaleData(sc, verbose=verbose, vars.to.regress=vars_to_regress)
+  }
 }
 
 # Print a message

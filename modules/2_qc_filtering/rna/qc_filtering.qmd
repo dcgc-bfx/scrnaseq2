@@ -10,8 +10,8 @@ params:
   # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
   prev_module_dir: null
   
-  # Default assay.
-  default_assay: "RNA"
+  # Default assay. If null, will be set to the default assay of the input Seurat object.
+  default_assay: null
   
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. Computations will access only the relevant parts of the data. Once done, matrix directories will be saved together with the Seurat object in the module directory.
   on_disk_counts: true
@@ -42,7 +42,8 @@ params:
   # Filter for barcodes. Set to 'null' to deactivate.
   barcode_filter: !expr list(
     nCount_RNA = c(1000, NA),
-    nFeature_RNA = c(400, 4000))
+    nFeature_RNA = c(300, 10000),
+    pMito_RNA = c(NA, 25))
 
   # Filter for features. Set to 'null' to deactivate.
   feature_filter: !expr list(
@@ -57,6 +58,9 @@ params:
 
   # Drop samples with too few cells
   samples_min_cells: 10
+  
+  # Number of cores to use for computations
+  cores: 4
   
 # Module execution
 execute:
@@ -87,9 +91,6 @@ library(future)
 # Get module name and directory (needed to access files within the module directory)
 module_name = params$module_name
 module_dir = params$module_dir
-
-# Parallelisation plan for all functions that support future
-plan(multisession, workers=4, gc=TRUE)
 ```
 
 ```{r}
@@ -105,7 +106,11 @@ source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
 
+# Be verbose or not
 verbose = param("verbose")
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=param("cores"))
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
@@ -142,8 +147,9 @@ if (on_disk_counts & on_disk_use_tmp) {
   }, enable=verbose)
 }
 
-# Set default assay
+# Set default assay standard
 default_assay = param("default_assay")
+if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
 Seurat::DefaultAssay(sc) = default_assay
 ```
 
@@ -844,7 +850,7 @@ barcode_qc_cor = barcode_qc_cor[f]
 if (length(barcode_qc_cor) > 0) {
 
   # Make plots
-  plist = PlotBarcodeQCCor(sc, qc=barcode_qc_cor, filter=barcode_filter, raster=ncol(sc)>=getOption("raster.threshold"))
+  plist = PlotBarcodeQCCor(sc, qc=barcode_qc_cor, filter=barcode_filter)
   
   # Prepare captions
   captions = GeneratePlotCaptions(names(plist), remove=paste0("_", default_assay), split="__")
