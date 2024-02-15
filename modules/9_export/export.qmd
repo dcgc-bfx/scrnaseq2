@@ -3,10 +3,10 @@
 # Defaults
 params:
   # Name of the module used in configurations
-  module: "cluster_composition"
+  module: "export"
     
   # Relative path to the module directory (which contains the qmd file)
-  module_dir: "modules/8_cluster_composition"
+  module_dir: "modules/9_export"
 
   # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
   # NOTE: Change to null if all modules are implemented and sc objects are written
@@ -38,7 +38,7 @@ execute:
   freeze: auto
 ---
 
-# Cluster Composition
+# Export data
 
 ```{r}
 #| label: setup
@@ -62,7 +62,7 @@ module_dir = params$module_dir
 ```
 
 ```{r}
-#| label: cluster_composition_preparation
+#| label: export_preparation
 
 # CODE
 # Working directory is automatically back to scrnaseq2 at this point

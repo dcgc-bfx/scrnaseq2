@@ -54,10 +54,6 @@ execute:
 
 ```{r}
 #| label: setup
-#| message: false
-#| warning: false
-
-# Note: Setup chunk changes working directory automatically to the folder of this qmd file
 
 # If running code interactively in rstudio, set profile here
 # When rendering with quarto, profile is already set and should not be overwritten

@@ -26,7 +26,7 @@ scrnaseq2.Rproj
 # To add new modules, comment these lines, create directory and quarto file
 # Then run 'git add' and uncomment these lines again
 /modules/**
-/modules/*/
+!/modules/*/
 !/modules/**/*.qmd
 
 # Ignore files and directories produced in docs directory (except qmd files)
