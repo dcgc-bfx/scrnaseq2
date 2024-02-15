@@ -426,13 +426,13 @@ After normalization, gene expression data can be compared between cells. However
   # Scale data for variable features
 
 use_sketching = param("use_sketching")
-normalisation_method = param("normalisation_method")
+normalization_method = param("normalization_method")
 barcode_metadata = sc[[]]
 
 # Not needed if:
 # a) SCTransform since it already scaled data
 # b) when applying sketching since we only scale the data of the sketch
-if(normalisation_method != "SCT" & !use_sketching) {
+if(normalization_method != "SCT" & !use_sketching) {
   
   # Unfortunately ScaleData has limited support for on-disk counts: regress out does not work. 
   # Therefore we load the normalized data into memory, run ScaleData and 

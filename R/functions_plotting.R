@@ -186,7 +186,7 @@ PlotBarcodeQC = function(sc, qc, filter=NULL) {
   names(qc_thresholds_other) = qc[!is_numeric]
   
   # Plot numeric QC
-  plist_numeric = Seurat::VlnPlot(sc, features=qc[is_numeric], combine=FALSE, pt.size=0, raster=FALSE, layer="counts")
+  plist_numeric = Seurat::VlnPlot(sc, features=qc[is_numeric], combine=FALSE, pt.size=0, layer="counts")
   names(plist_numeric) = qc[is_numeric]
   
   plist_numeric = purrr::map(names(plist_numeric), function(n) {
@@ -247,9 +247,8 @@ PlotBarcodeQC = function(sc, qc, filter=NULL) {
 #' @param filter A nested list where the first level is the barcode metadata column and the second levels 
 #' contains filters per dataset. Filters for numeric columns must numeric vectors with min and max. Filter
 #' for character/factor columns must be character vectors with the values that should be kept.
-#' @param raster Whether to raster the points.
 #' @return A list of ggplot2 objects.
-PlotBarcodeQCCor = function(sc, qc, filter=NULL, raster=FALSE) {
+PlotBarcodeQCCor = function(sc, qc, filter=NULL) {
   barcode_metadata = sc[[]]
   
   # Check QC type (only numeric allowed)
@@ -286,7 +285,7 @@ PlotBarcodeQCCor = function(sc, qc, filter=NULL, raster=FALSE) {
     f2 = c[2]
     
     # Plot QC feature f1 vs f2
-    p = Seurat::FeatureScatter(sc, feature1=f1, feature2=f2, shuffle=TRUE, seed=getOption("random_seed"), raster=raster)
+    p = Seurat::FeatureScatter(sc, feature1=f1, feature2=f2, shuffle=TRUE, seed=getOption("random_seed"))
     p = p + AddPlotStyle(col=ScColours(sc, "orig.ident"))
     
     # Add filter thresholds for f1

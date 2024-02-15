@@ -21,7 +21,7 @@ params:
   
   # Which normalization should be used for analysis? Can we read from seurat object
   # lognorm (Seurat), scran or SCT
-  normalisation_method: "lognorm"
+  normalization_method: "lognorm"
   
   # Which dimensionality reduction to use: only PCA supported
   dimensionality_reduction_method: "PCA"
@@ -36,10 +36,8 @@ params:
   use_sketching: false
   
   # One or more integration method(s) to use. 
-  # The following methods are available: null (just merge), CCAIntegration, RPCAIntegration, HarmonyIntegration, FastMNNIntegration, scVIIntegration.
+  # The following methods are available: null (just merge), CCAIntegration, RPCAIntegration, HarmonyIntegration , FastMNNIntegration, scVIIntegration.
   integration_methods:
-  - "RPCAIntegration"
-  - "FastMNNIntegration"
   - "CCAIntegration"
 
   # Parameters for CCAIntegration
@@ -160,8 +158,6 @@ if (use_sketching) {
   }
   SeuratObject::DefaultAssay(sc) = sketched_assay_name
 }
-
-
 ```
 
 A single-cell dataset of 20,000 genes and 5,000 cells has 20,000 dimensions. At this point of the analysis, we have already reduced the dimensionality of the dataset to 3,000 variable genes. The biological manifold however can be described by far fewer dimensions than the number of (variable) genes, since expression profiles of different genes are correlated if they are involved in the same biological process. Dimension reduction methods aim to find these dimensions. There are two general purposes for dimension reduction methods: to **summarize** a dataset, and to **visualize** a dataset.
@@ -183,6 +179,7 @@ To decide how many PCs to include in downstream analyses, we visualize the cells
 ```{r}
 #| label: dimensionality_reduction_rna_run
 
+normalization_method = param("normalization_method")
 dimensionality_reduction_method = param("dimensionality_reduction_method")
 dim_n_compute = param("dim_n_compute")
 
@@ -197,14 +194,15 @@ original_reduct = DefaultReduct(sc)
 
 if (use_sketching) {
   # Project to full dataset if sketching was used
-  full_reduct = paste(original_reduct, "full", sep=".")
+  full_reduct = paste(original_reduct, "full", sep="_")
   sc = Seurat::ProjectData(sc, 
                            assay=default_assay,
                            sketched.assay=Seurat::DefaultAssay(sc),
                            sketched.reduction=original_reduct,
                            full.reduction=full_reduct,
-                           normalization.method	= ifelse(normalisation_method=="SCT", "SCT", "LogNormalize"),
-                           dims=1:50)
+                           normalization.method	= ifelse(normalization_method=="SCT", "SCT", "LogNormalize"),
+                           dims=1:dim_n_compute)
+  SeuratObject::Key(sc[[full_reduct]]) = paste0(stringr::str_to_title(original_reduct), "Full_")
   DefaultReduct(sc, assay=default_assay) = full_reduct
 }
 ```
@@ -352,7 +350,7 @@ integration_methods_params = purrr::map(integration_methods, function(method) {
 })
 names(integration_methods_params) = integration_methods
 
-normalisation_method = param("normalisation_method")
+normalization_method = param("normalization_method")
 num_datasets = length(SeuratObject::Layers(sc, assay=default_assay, search="^counts"))
 first_reduct = NULL
 
@@ -377,15 +375,13 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
     # If sketching was used, project integrated dimensionality reduction of sketch to full dataset
     if (use_sketching) {
       reduct = DefaultReduct(sc)
-      full_reduct = paste(reduct, "full", sep=".")
+      full_reduct = paste(reduct, "full", sep="_")
       sc = Seurat::ProjectIntegration(sc,
                                       sketched.assay=SeuratObject::DefaultAssay(sc), 
                                       assay=default_assay,
                                       reduction=reduct,
                                       reduction.name=full_reduct,
-                                      reduction.key=full_reduct %>% 
-                                        gsub(pattern="\\.", replacement="", x=.) %>%
-                                        tolower(),
+                                      reduction.key=paste0(stringr::str_to_title(reduct), "Full_"),
                                       seed=getOption("random_seed"),
                                       verbose=verbose)
       DefaultReduct(sc, assay=default_assay) = full_reduct
@@ -399,7 +395,7 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
       # Other methods: reset
       DefaultReduct(sc) = first_reduct
       if (use_sketching) {
-        DefaultReduct(sc, assay=default_assay) = paste(first_reduct, "full", sep=".")
+        DefaultReduct(sc, assay=default_assay) = paste("full", first_reduct, sep="_")
       }  
     }
   }

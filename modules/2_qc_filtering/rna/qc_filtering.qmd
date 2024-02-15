@@ -846,7 +846,7 @@ barcode_qc_cor = barcode_qc_cor[f]
 if (length(barcode_qc_cor) > 0) {
 
   # Make plots
-  plist = PlotBarcodeQCCor(sc, qc=barcode_qc_cor, filter=barcode_filter, raster=ncol(sc)>=getOption("raster.threshold"))
+  plist = PlotBarcodeQCCor(sc, qc=barcode_qc_cor, filter=barcode_filter)
   
   # Prepare captions
   captions = GeneratePlotCaptions(names(plist), remove=paste0("_", default_assay), split="__")

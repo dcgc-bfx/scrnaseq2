@@ -567,7 +567,7 @@ RunDimRedWrapper = function(sc, method="PCA", assay=NULL, dim_n=50, verbose=TRUE
                         npcs=min(dim_n, ncol(sc)), 
                         seed.use=getOption("random_seed"),
                         reduction.name="pca",
-                        reduction.key="pca_")
+                        reduction.key="Pca_")
     SeuratObject::Misc(sc[["pca"]], slot="title") = "PCA"
     
     # Set as active dimensionality reduction
@@ -588,7 +588,7 @@ RunDimRedWrapper = function(sc, method="PCA", assay=NULL, dim_n=50, verbose=TRUE
 #' @param additional_args List of additional arguments to be passed to the integration method.
 #' @param verbose Be verbose.
 #' @return Seurat v5 object with a new (integrated) reduction.
-IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduct='pca', new_reduct=NULL, new_reduct_suffix=NULL, additional_args=NULL, verbose=FALSE) {
+IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduct='pca', new_reduct=NULL, new_reduct_suffix=NULL, additional_args=NULL, verbose=TRUE) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   if (is.null(orig_reduct)) orig_reduct = SeuratObject::DefaultDimReduc(sc)
 
@@ -654,6 +654,9 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   
   # Set as active dimensionality reduction
   DefaultReduct(sc, assay=assay) = new_reduct
+  
+  # Fix key
+  SeuratObject::Key(sc[[new_reduct]]) = stringr::str_to_title(SeuratObject::Key(sc[[new_reduct]]))
 
   # Post-process
   if (integration_method == "CCAIntegration") {
@@ -710,12 +713,12 @@ RPCAIntegration_Fixed <- function (object = NULL, assay = NULL, layers = NULL, o
     } else {
         object.list <- list()
         for (i in seq_along(along.with = layers)) {
-            object.list[[i]] <- suppressMessages(suppressWarnings(
-                CreateSeuratObject(counts = NULL, data = object[layers[i]][features,])
-            ))
+            object.list[[i]] <- CreateSeuratObject(
+              SeuratObject::CreateAssay5Object(data=object[layers[i]][features,])
+            )
             VariableFeatures(object =  object.list[[i]]) <- features
-            object.list[[i]] <- suppressWarnings(ScaleData(object = object.list[[i]], verbose = FALSE))
-            object.list[[i]] <- RunPCA(object = object.list[[i]], verbose = FALSE, npcs=max(dims))
+            object.list[[i]] <- ScaleData(object = object.list[[i]], verbose = TRUE)
+            object.list[[i]] <- RunPCA(object = object.list[[i]], verbose = TRUE, npcs=max(dims))
             suppressWarnings(object.list[[i]][['RNA']]$counts <- NULL)
         }
     }
