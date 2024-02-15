@@ -48,6 +48,9 @@ params:
   # Use sketch-based methods for further analyses
   use_sketching: false
   
+  # Number of cores to use for computations
+  cores: 4
+  
 # Module execution
 execute:
   # Should this module be frozen and never re-rendered?
@@ -80,9 +83,6 @@ library(patchwork)
 # Get module name and directory (needed to access files within the module directory)
 module_name = params$module_name
 module_dir = params$module_dir
-
-# Parallelisation plan for all functions that support future
-plan(multisession, workers=4)
 ```
 
 ```{r}
@@ -98,8 +98,11 @@ source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
 
-# Be verbose
-verbose=param("verbose")
+# Be verbose or not
+verbose = param("verbose")
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=param("cores"))
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project

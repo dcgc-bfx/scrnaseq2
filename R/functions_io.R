@@ -1667,21 +1667,6 @@ SaveSeuratRdsWrapper = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, re
   
   # Save Seurat object and on-disk data using the SeuratObject function SaveSeuratRds
   SeuratObject::SaveSeuratRds(sc, file=file.path(outdir, "sc.rds"), move=on_disk_layers)
-  
-  # Then make sure that the paths pointing to the layers are correct
-  #if (on_disk_layers) {
-  #  sc = readRDS(file.path(outdir, "sc.rds"))
-  #  paths = sc@tools$SaveSeuratRds$path
-  #  paths = lapply(paths, function(p) {
-  #    p = unlist(strsplit(p, ","))
-  #    p = basename(p)
-  #    if (!relative) p = file.path(outdir, p)
-  #    return(paste(p, collapse=","))
-  #  })
-  #  paths = unlist(paths)
-  #  sc@tools$SaveSeuratRds$path = paths
-  #  saveRDS(sc, file=file.path(outdir, "sc.rds"))
-  #}
 }
 
 #' Copies on-disk layers of a Seurat object to a new directory.
@@ -1691,11 +1676,6 @@ SaveSeuratRdsWrapper = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, re
 #' @param assays For which assays should on-disk layers be copied. If NULL, copy all.
 #' @param layer For which layers should on-disk layers be copied. If NULL, copy all. Can also be a pattern.
 UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL) {
-  sc=sc
-  dir=on_disk_path
-  assays=NULL
-  layer=NULL
-  
   # New directory for on-disk matrices
   dir = normalizePath(path=dir, winslash="/", mustWork=FALSE)
   if (is.null(assays)) assays = SeuratObject::Assays(sc)

@@ -41,8 +41,8 @@ params:
 
   # Filter for barcodes. Set to 'null' to deactivate.
   barcode_filter: !expr list(
-    nCount_RNA = c(100, NA),
-    nFeature_RNA = c(400, 10000),
+    nCount_RNA = c(1000, NA),
+    nFeature_RNA = c(300, 10000),
     pMito_RNA = c(NA, 25))
 
   # Filter for features. Set to 'null' to deactivate.
@@ -58,6 +58,9 @@ params:
 
   # Drop samples with too few cells
   samples_min_cells: 10
+  
+  # Number of cores to use for computations
+  cores: 4
   
 # Module execution
 execute:
@@ -88,9 +91,6 @@ library(future)
 # Get module name and directory (needed to access files within the module directory)
 module_name = params$module_name
 module_dir = params$module_dir
-
-# Parallelisation plan for all functions that support future
-plan(multisession, workers=8)
 ```
 
 ```{r}
@@ -106,7 +106,11 @@ source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
 
+# Be verbose or not
 verbose = param("verbose")
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=param("cores"))
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project

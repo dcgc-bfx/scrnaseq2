@@ -65,6 +65,8 @@ params:
     - "centroids"
     - "segmentations"
   
+  # Number of cores to use for computations
+  cores: 4
   
 # Module execution
 execute:
@@ -98,9 +100,6 @@ library(future)
 # Get module directory (needed to access files within the module directory)
 module_name = params$module_name
 module_dir = params$module_dir
-
-# Parallelisation plan for all functions that support future
-plan(multisession, workers=8, gc=TRUE)
 ```
 
 ```{r}
@@ -117,7 +116,11 @@ source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
 
+# Be verbose or not
 verbose = param("verbose")
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=param("cores"))
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
@@ -737,10 +740,6 @@ for(i in seq_along(assay_counts_lst)) {
 
 # Create Seurat default assay object
 assay_obj = SeuratObject::CreateAssay5Object(counts=assay_counts_lst)
-#if (length(assay_counts_lst) == 1) {
-#  n = names(assay_counts_lst)
-#  assay_obj = split(assay_obj, rep(n, ncol(assay_obj)))
-#}
 rownames(assay_obj@meta.data) = rownames(assay_obj)
 
 # Add to Seurat default assay object
@@ -791,10 +790,6 @@ for(a in setdiff(all_assays, default_assay)) {
   
   # Create Seurat default assay object
   assay_obj = SeuratObject::CreateAssay5Object(counts=assay_counts_lst)
-  #if (length(assay_counts_lst) == 1) {
-  #  n = names(assay_counts_lst)
-  #  assay_obj = split(assay_obj, rep(n, ncol(assay_obj)))
-  #}
   rownames(assay_obj@meta.data) = rownames(assay_obj)
 
   # Add to Seurat default assay object
@@ -949,8 +944,6 @@ for (a in Seurat::Assays(sc)) {
     bcs = counts %>% colnames()
     total_counts = sc[[]][bcs, paste0("nCount_", a), drop=TRUE]
     
-    plan(multisession, workers=8)
-
     # Get counts of the top 50 features per barcode
     with_progress({
       top50_counts = SumTopN(counts, n=50, margin=2, chunk_size=10000)

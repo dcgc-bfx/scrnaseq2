@@ -13,9 +13,8 @@ params:
   prev_module_dir: null
   
   # Default assay and normalization
-  default_assay: "RNA"
-  normalization_method: "RNA"
-  
+  default_assay: null
+
   # QC measures to look at 
   qc_features:
   - "nCount_RNA"
@@ -38,6 +37,9 @@ params:
   # Once done, matrix directories will be copied back to the module directory. 
   # The temporary directory will be deleted once the R session exists.
   on_disk_use_tmp: true
+  
+  # Number of cores to use for computations
+  cores: 4
   
 # Module execution
 execute:
@@ -73,9 +75,6 @@ library(patchwork)
 # Get module name and directory (needed to access files within the module directory)
 module_name = params$module_name
 module_dir = params$module_dir
-
-# Parallelisation plan for all functions that support future
-plan(multisession, workers=4)
 ```
 
 ```{r}
@@ -92,7 +91,11 @@ source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
 
+# Be verbose or not
 verbose = param("verbose")
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=param("cores"))
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project

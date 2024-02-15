@@ -21,7 +21,7 @@ params:
   
   # Which normalization should be used for analysis? Can we read from seurat object
   # lognorm (Seurat), scran or SCT
-  normalization_method: "lognorm"
+  normalization_method: "SCT"
   
   # Which dimensionality reduction to use: only PCA supported
   dimensionality_reduction_method: "PCA"
@@ -54,6 +54,9 @@ params:
   
   # Parameters for scVIIntegration.
   scVIIntegration: null
+  
+  # Number of cores to use for computations
+  cores: 4
     
 # Module execution
 execute:
@@ -86,9 +89,6 @@ library(patchwork)
 # Get module name and directory (needed to access files within the module directory)
 module_name = params$module_name
 module_dir = params$module_dir
-
-# Parallisation plan for all functions that support future
-plan(multisession, workers=8)
 ```
 
 ```{r}
@@ -104,8 +104,11 @@ source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
 
-# Be verbose
-verbose=param("verbose")
+# Be verbose or not
+verbose = param("verbose")
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=param("cores"))
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
@@ -319,15 +322,15 @@ For the current dataset, `r param("dim_n")` dimensions were chosen.
 
 ## Integration
 
-Integration of multiple samples is a crucial step in single-cell RNA-seq analysis. It is necessary to remove batch effects and to enable the comparison of cells across different samples. We can use a number of methods for integration:
+Integration of multiple samples is an optional step in single-cell RNA-seq analysis. It may be necessary to remove batch effects and to enable the comparison of cells across different samples. We can use a number of methods for integration:
 
 -   Canonical Correlation Analysis (CCA)
 -   Reciprocal PCA (RPCA)
 -   Harmony
--   Fast MNN
+-   FastMNN
 -   scVI
 
-Methods might perform differently depending on the dataset and the biological question. We can use multiple methods and compare the results. Please also see: https://www.nature.com/articles/s41592-021-01336-8.
+Methods might perform differently depending on the dataset and the biological question. We can use multiple methods and compare the results. For an overview of integration methods, please see [here](https://www.nature.com/articles/s41592-021-01336-8).
 
 ```{r}
 #| label: integration_rna_run_integration
