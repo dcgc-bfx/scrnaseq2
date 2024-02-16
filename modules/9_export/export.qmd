@@ -26,6 +26,18 @@ params:
   # The temporary directory will be deleted once the R session exists.
   on_disk_use_tmp: true
   
+  # Export results into Loupe Cell Browser format. Only the default assay will be used.
+  export_loupe: true
+  
+  # Export results into h5ad format for cellxgene. Only the default assay will be used.
+  export_cellxgene: true
+  
+  # Export Seurat object.
+  export_sc: true
+  
+  # When exporting the Seurat object, convert on-disk layers to in-memory layers.
+  export_sc_on_disk: true
+  
   # Number of cores to use for computations
   cores: 4
   
@@ -122,85 +134,151 @@ if (on_disk_counts & on_disk_use_tmp) {
 default_assay = param("default_assay")
 if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
 Seurat::DefaultAssay(sc) = default_assay
+
+# What do we export
+export_loupe = param("export_loupe")
+export_cellxgene = param("export_cellxgene")
+export_sc = param("export_sc")
+sc_convert_on_disk = param("sc_convert_on_disk")
 ```
 
-## Samples per cluster
+### Loupe Cell Browser
+
+The Loupe Cell Browser is a powerful tool to explore single cell data. It allows you to visualize the data in a variety of ways. For download, please visit the [10x Genomics website](https://support.10xgenomics.com/single-cell-gene-expression/software/visualization/latest/what-is-loupe-cell-browser). There are also several tutorials available on the website.
+
+Results of the analysis are exported into a format that can be read by the Loupe Cell Browser. This includes the raw counts, categorial data per cell and vizualisations like UMAP. 
 
 ```{r}
-#| label: cluster_composition_samples_per_cluster
+#| label: export_loupe
+#| eval: !expr export_loupe
+#| include: !expr export_loupe
+#| results: asis
 
-# Count cells per cluster and sample 
-cell_samples = sc[[]] %>% dplyr::pull(orig.ident) %>% levels()
-cell_clusters = sc[[]] %>% dplyr::pull(seurat_clusters) %>% levels()
+# Create a cloupe file for the Loupe Cell Browser
 
-tbl = dplyr::count(sc[[c("orig.ident", "seurat_clusters")]], orig.ident, seurat_clusters) %>% tidyr::pivot_wider(names_from="seurat_clusters", names_prefix="Cl_", values_from=n, values_fill=0) %>% as.data.frame()
-rownames(tbl) = paste0(tbl[,"orig.ident"],"_n")
-tbl[,"orig.ident"] = NULL
-
-# Add percentages
-tbl_perc = round(t(tbl) / colSums(tbl) * 100, 2) %>% t()
-rownames(tbl_perc) = gsub(rownames(tbl_perc), pattern="_n$", replacement="_perc", perl=TRUE)
-tbl = rbind(tbl, tbl_perc)
-
-# Add enrichment
-if (length(cell_samples) > 1 & length(cell_clusters) > 1) tbl = rbind(tbl, CellsFisher(sc))
-
-# Sort
-tbl = tbl[order(rownames(tbl)),, drop=FALSE]
+if (export_loupe) {
+  # Setup eula and download executable for loupeR.
+  # Needs to be done only once but cannot be done automatically.
+  louper_status = loupeR:::needs_setup()
+  if (!louper_status$success) stop(louper_status$msg)
+  
+  # Get counts and convert to sparse matrix if necessary
+  counts = SeuratObject::GetAssayData(sc, assay=default_assay, layer="counts")
+  counts = as(counts, "dgCMatrix")
+  
+  # Get clusters and other categories
+  categorial_data = list(active_cluster = Seurat::Idents(sc))
+  categories_to_export = setdiff(colnames(sc[[]]), "orig.barcode")
+  for (name in categories_to_export) {
+    data = sc[[]][,name]
+    if (is.factor(data)) {
+      categorial_data[[name]] = data
+    } else if (is.character(data)) {
+      categorial_data[[name]] = factor(data)
+    }
+  }
+  
+  # Get embeddings
+  embeddings = list()
+  name = DefaultVisualization(sc, assay=default_assay)
+  embeddings[[name]] = sc[[name]]@cell.embeddings
+  
+  # Seurat object version
+  seurat_obj_version = NULL
+  if (!is.null(sc@version)) seurat_obj_version = as.character(sc@version)
+  
+  # Create loupe
+  success = loupeR::create_loupe(counts, 
+                         clusters=categorial_data,
+                         projections=embeddings,
+                         output_dir=file.path(module_dir, "results"),
+                         output_name="scrnaseq2",
+                         force=TRUE,
+                         seurat_obj_version=seurat_obj_version)
+  
+  CalloutBox("The loupe file is: 'scrnaseq2.cloupe'.", type="note")
+  
+} else {
+  CalloutBox("The loupe file was not produced.", type="note")
+}
 ```
+
+### Cellxgene
+
+Cellxgene is a web-based tool to explore single cell data. For download, please visit the [cellxgene website](https://cellxgene.cziscience.com/docs/01__CellxGene).
+
+Results of the analysis are exported into a format that can be read by cellxgene. This includes the normalized counts, categorial data per cell and vizualisations.
 
 ```{r}
-#| label: fig-cluster_composition_samples_per_cluster
-#| fig-cap: "Percentage cells per sample and cluster"
+#| label: export_cellxgene
+#| eval: !expr export_loupe
+#| include: !expr export_loupe
+#| results: asis
 
-# Plot percentages
-tbl_bar = tbl[paste0(cell_samples, "_perc"), , drop=FALSE] %>% 
-  tibble::rownames_to_column(var="Sample") %>%
-  tidyr::pivot_longer(tidyr::starts_with("Cl"), names_to="Cluster", values_to="Percentage")
-tbl_bar$Cluster = tbl_bar$Cluster %>% gsub(pattern="^Cl_", replacement="", perl=TRUE) %>% factor(levels=sc$seurat_clusters %>% levels())
-tbl_bar$Sample = tbl_bar$Sample %>% gsub(pattern="_perc$", replacement="", perl=TRUE) %>% as.factor()
-tbl_bar$Percentage = as.numeric(tbl_bar$Percentage)
-p = ggplot(tbl_bar, aes(x=Cluster, y=Percentage, fill=Sample)) + 
-  geom_bar(stat="identity" ) +
-  AddPlotStyle(fill=ScColours(sc, "orig.ident"),
-               legend_title="Sample",
-               legend_position="bottom")
-p
+# Create an adata.h5ad file for cellxgene
+if (export_cellxgene) {
+  
+  # Use only default assay, drop all other
+  adata = sc
+  assays_to_drop = setdiff(SeuratObject::Assays(adata), default_assay)
+  for(a in assays_to_drop) adata[[a]] = NULL
+  
+  # Convert back to old Seurat assay format
+  adata[["tmp"]] = as(object = adata[[default_assay]], Class = "Assay")
+  SeuratObject::DefaultAssay(adata) = "tmp"
+  adata[[default_assay]] = NULL
+  adata = SeuratObject::RenameAssays(adata, tmp=default_assay)
+  adata$orig_barcode = NULL
+  
+  # Convert Seurat single cell object to python anndata object which will be accessible via reticulate here
+  adata = sceasy::convertFormat(adata, from="seurat", to="anndata", outFile=NULL, assay=default_assay)
+  
+  # Set up correct colours (see https://chanzuckerberg.github.io/cellxgene/posts/prepare) so that colours match
+  colour_lists = SeuratObject::Misc(sc, "colour_lists")
+  colour_lists = purrr::map(colour_lists, function(l) {
+    l = reticulate::np_array(unname(l), dtype="<U7")
+    return(l)
+  })
+  names(colour_lists) = paste0(names(colour_lists), "_colors")
+  adata$uns = reticulate::dict(colour_lists)
+  
+  # Write to h5ad file
+  adata$write(file.path(module_dir, "results", "cellxgene.h5ad"), compression="gzip")
+
+  CalloutBox("The cellxgene file is: 'cellxgene.h5ad'.", type="note")
+  
+} else {
+  CalloutBox("The cellxgene file was not produced.", type="note")
+}
 ```
 
-The following table shows the number of cells per sample and cluster:   
+### Seurat object
 
-* n: Number of cells per sample and cluster   
-* perc: Percentage of cells per sample and cluster compared to all other cells of that cluster   
-
-In case the dataset contains 2 or more samples, we also calculate whether or not the number of cells of a sample in a cluster is significantly higher or lower than expected:      
-
-* oddsRatio: Odds ratio calculated for cluster c1 and sample s1 as (# cells s1 in c1 / # cells not s1 in c1) / (# cells s1 not in c1 / # cells not s1 not in c1)    
-* p: P-value calculated with a Fisher test to test whether "n" is higher or lower than expected  
+To facilitate further analysis, the Seurat object is exported. When counts are stored on disk, they will be exported as well. Alternatively, they can also be included in the Seurat object.
 
 ```{r}
-#| label: tbl-cluster_composition_samples_per_cluster
-#| tbl-cap: Number of cells per sample and cluster
+#| label: export_sc
 
-# Print table
-gt(tbl, rownames_to_stub=TRUE)
+# Export Seurat object
+if (export_sc) {
+  # This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+  assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
+
+  # Save Seurat object and layer data
+  dir.create(file.path(module_dir, "results", "sc"), showWarnings=FALSE)
+  with_progress({
+    SaveSeuratRdsWrapper(sc,
+                         on_disk_layers=on_disk_counts,
+                         outdir=file.path(module_dir, "results", "sc"),
+                         relative=TRUE)
+  }, enable=verbose)
+  
+    CalloutBox("The Seurat object was exported to: 'sc/sc.rds' (there might be on-disk directories as well).", type="note")
+} else {
+  CalloutBox("The Seurat object was not exported.", type="note")
+}
 ```
 
-## Save Seurat object
-
-```{r}
-#| label: cluster_composition_save_seurat
-
-# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
-
-# Save Seurat object and layer data
-with_progress({
-  SaveSeuratRdsWrapper(sc,
-                       on_disk_layers=on_disk_counts,
-                       outdir=file.path(module_dir, "sc"))
-}, enable=verbose)
-```
 
 ```{r}
 #| label: cluster_composition_finish

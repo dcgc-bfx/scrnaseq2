@@ -20,6 +20,7 @@ book:
   - "modules/5_clustering_umap/clustering_umap.qmd"
   - "modules/6_clusterqc/clusterqc.qmd"
   - "modules/8_cluster_composition/cluster_composition.qmd"
+  - "modules/9_export/export.qmd"
   - "references.qmd"
 
 ####################

@@ -53,8 +53,7 @@ if (nchar(quarto_output_files) > 0 & nchar(quarto_project_output_dir) > 0) {
     module_results_dir = file.path(results_dir, module)
     
     if (length(module_results_files) > 0) {
-      dir.create(module_results_dir)
-      file.copy(module_results_files, module_results_dir, recursive=TRUE)
+      file.copy(module_results_files, results_dir, recursive=TRUE)
     }
   }
   

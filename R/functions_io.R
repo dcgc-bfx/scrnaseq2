@@ -1612,8 +1612,12 @@ SaveSeuratRds_Fixed <- function (object, file = NULL, move = TRUE, destdir = dep
       p(message = paste("Adjusting paths to be relative to",
                         sQuote(x = dirname(path = file), q = FALSE)),
         class = "sticky", amount = 0)
-      df$path <- as.character(x = fs::path_rel(path = df$path, 
-                                               start = dirname(path = file)))
+      
+      for (i in seq_len(length.out = nrow(x = df))) {
+        pth <- unlist(strsplit(df$path[i], ","))
+        new_pth <- lapply(pth, function(p) return(fs::path_rel(path = p, start = dirname(path = file))))
+        df$path[i] <- paste(unlist(new_pth), collapse=",")
+      }
     }
     df$assay <- assay
     cache[[assay]] <- df
@@ -1666,7 +1670,7 @@ SaveSeuratRdsWrapper = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, re
                           msg=FormatString("Target directory for Seurat object and associated matrix directories at {outdir} must be empty but is not. Please delete all files and directories in this directory."))
   
   # Save Seurat object and on-disk data using the SeuratObject function SaveSeuratRds
-  SeuratObject::SaveSeuratRds(sc, file=file.path(outdir, "sc.rds"), move=on_disk_layers)
+  SeuratObject::SaveSeuratRds(sc, file=file.path(outdir, "sc.rds"), move=on_disk_layers, relative=relative)
 }
 
 #' Copies on-disk layers of a Seurat object to a new directory.
