@@ -79,24 +79,26 @@ DegsUpDisplayTop = function(degs, n=5, column_1="p_val_adj_score", column_2="pct
 #' @param genes Gene list for which average data are to be extracted.
 #' @return A table with average RNA counts and data per identity class for each gene.
 DegsAvgDataPerIdentity = function(sc, genes, assay="RNA") { 
-  # The standard average log FC is derived from assay and slot="data"
+  # The standard average log FC is derived from assay and layer="data"
   # Add average scaled data per cluster for default assay
   avg_set = list()
   avg_set[[assay]] = "counts"
   avg_set[[DefaultAssay(sc)]] = c(avg_set[[DefaultAssay(sc)]], "data")
   avg_data = matrix(NA+0, nrow=length(genes), ncol=0)
-  
+  genes_unique = unique(genes)
   identities = levels(Idents(sc))
   for (as in names(avg_set)) { 
     for (sl in avg_set[[as]]) {
       if (length(genes) > 0) {
         avg_per_id = mapply(function(id) { 
           id_cells = WhichCells(sc, idents=id)
+          tmp_subset = LayerData(sc, assay=as, layer=sl, cells=id_cells , features=genes_unique)
+          tmp_subset_matrix = as(tmp_subset, "dgCMatrix")
           if (sl=="data") {
             # This calculation is in accordance with what Seurat is doing
-            id_avg = log2(Matrix::rowMeans(exp(Seurat::GetAssayData(sc[, id_cells], assay=as, slot=sl)[genes, ])) + 1)
+            id_avg = log2(Matrix::rowMeans(exp(tmp_subset_matrix)) + 1)[genes]
           } else if (sl=="counts") {
-            id_avg = Matrix::rowMeans(Seurat::GetAssayData(sc[, id_cells], assay=as, slot=sl)[genes, ])
+            id_avg = Matrix::rowMeans(tmp_subset_matrix)[genes]
           }
           return(id_avg)
         }, identities)
@@ -110,6 +112,42 @@ DegsAvgDataPerIdentity = function(sc, genes, assay="RNA") {
   return(avg_data)
 }
 
+
+#' #' Compute average gene expression data per identity class for a set of genes. (ORIGINAL)
+#' #' 
+#' #' @param sc Seurat object.
+#' #' @param genes Gene list for which average data are to be extracted.
+#' #' @return A table with average RNA counts and data per identity class for each gene.
+#'   # The standard average log FC is derived from assay and slot="data"
+#'   # Add average scaled data per cluster for default assay
+#'   avg_set = list()
+#'   avg_set[[assay]] = "counts"
+#'   avg_set[[DefaultAssay(sc)]] = c(avg_set[[DefaultAssay(sc)]], "data")
+#'   avg_data = matrix(NA+0, nrow=length(genes), ncol=0)
+#'   
+#'   identities = levels(Idents(sc))
+#'   for (as in names(avg_set)) { 
+#'     for (sl in avg_set[[as]]) {
+#'       if (length(genes) > 0) {
+#'         avg_per_id = mapply(function(id) { 
+#'           id_cells = WhichCells(sc, idents=id)
+#'           if (sl=="data") {
+#'             # This calculation is in accordance with what Seurat is doing
+#'             id_avg = log2(Matrix::rowMeans(exp(Seurat::GetAssayData(sc[, id_cells], assay=as, slot=sl)[genes, ])) + 1)
+#'           } else if (sl=="counts") {
+#'             id_avg = Matrix::rowMeans(Seurat::GetAssayData(sc[, id_cells], assay=as, slot=sl)[genes, ])
+#'           }
+#'           return(id_avg)
+#'         }, identities)
+#'       } else {
+#'         avg_per_id = matrix(NA, nrow=0, ncol=length(identities)) %>% as.data.frame()
+#'       }
+#'       colnames(avg_per_id) = paste0("avg_", as, "_", sl, "_id", identities)
+#'       avg_data = cbind(avg_data, avg_per_id)
+#'     }
+#'   }
+#'   return(avg_data)
+#' }
 
 #' Compute average gene expression data for a set of cells and a set of genes.
 #' 
@@ -195,7 +233,7 @@ DegsWriteToFile = function(degs, annot_ensembl, gene_to_ensembl, file, additiona
   
   degs_lst = c(list("README"=readme_table), degs_lst)
   
-  # Fix names that are more 31bp (which is too long for Excel)
+  # Fix names that are more than 31bp (which is too long for Excel)
   names(degs_lst) = strtrim(names(degs_lst), 31)
   
   # Output in Excel sheet
