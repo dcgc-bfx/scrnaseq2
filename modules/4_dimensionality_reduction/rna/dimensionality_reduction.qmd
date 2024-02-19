@@ -333,7 +333,7 @@ Integration of multiple samples is an optional step in single-cell RNA-seq analy
 Methods might perform differently depending on the dataset and the biological question. We can use multiple methods and compare the results. For an overview of integration methods, please see [here](https://www.nature.com/articles/s41592-021-01336-8).
 
 ```{r}
-#| label: integration_rna_run_integration
+#| label: dimensionality_reduction_rna_run_integration
 #| results: asis
 
 # Get integration methods and their parameters
@@ -423,7 +423,7 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
 ```
 
 ```{r}
-#| label: integration_rna_integration_plots
+#| label: dimensionality_reduction_rna_integration_plots
 #| results: asis
 #| eval: !expr length(integration_methods) > 0 & num_datasets > 0
 #| include: !expr length(integration_methods) > 0 & num_datasets > 0
@@ -462,7 +462,7 @@ captions = c("No integration", paste('Integrated with method', integration_metho
 # Generate chunks
 chunk_template = "
 \`\`\`{r}
-#| label: fig-integration_rna_integration_{{type}}
+#| label: fig-dimensionality_reduction_rna_integration_{{type}}
 #| fig-cap: '{{caption}}'
 #| fig-width: 4
 #| fig-height: 4
@@ -490,10 +490,10 @@ cat(":::\n")
 
 ```
 
-## Save Seurat object
+## Output files
 
 ```{r}
-#| label: integration_rna_save_seurat
+#| label: dimensionality_reduction_rna_save_seurat
 
 # If sketching was used, revert back to non-sketched assay
 if (use_sketching) {
@@ -512,8 +512,34 @@ with_progress({
 
 ```
 
+### Dimensionality reduction
+
 ```{r}
-#| label: integration_rna_finish
+#| label: dimensionality_reduction_rna_save_reduction
+#| results: asis
+
+default_reduct = DefaultReduct(sc)
+reduct = sc[[default_reduct]]@cell.embeddings %>% as.data.frame()
+
+# Write default reduction for default assay
+outfile = paste0("reduction_", default_assay, "_", default_reduct , ".xlsx")
+openxlsx::write.xlsx(x=reduct, file=paste0(param("module_dir"), "/results/", outfile), row.names=TRUE)
+
+# Note
+CalloutBox("The default reduction {default_reduct} for the default assay {default_assay} is written to {outfile}.", type="note")
+```
+
+### Software
+
+```{r}
+#| label: dimensionality_reduction_rna_save_software
+
+sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
+gt(sessioninfo)
+```
+
+```{r}
+#| label: dimensionality_reduction_rna_finish
 
 # Stop multisession workers
 plan(sequential)

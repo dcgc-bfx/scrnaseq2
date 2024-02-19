@@ -569,8 +569,6 @@ if (use_sketching) {
 }
 ```
 
-## Save Seurat object
-
 ```{r}
 #| label: normalization_rna_save_seurat
 

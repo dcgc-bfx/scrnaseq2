@@ -1037,7 +1037,7 @@ plist = PlotBarcodeQC(sc, qc=c("S.Score", "G2M.Score"))
 plist[[1]] + plist[[2]]
 ```
 
-## Save Seurat object
+## Output files
 
 ```{r}
 #| label: qc_filtering_rna_save_seurat
@@ -1057,6 +1057,29 @@ with_progress({
                        on_disk_layers=on_disk_counts,
                        outdir=file.path(module_dir, "sc"))
 }, enable=verbose)
+```
+
+### QC Metadata
+
+```{r}
+#| label: qc_filtering_rna_save_qc
+#| results: asis
+
+# Write metadata
+outfile = "metadata_qc.xlsx"
+openxlsx::write.xlsx(x=sc[[]], file=paste0(param("module_dir"), "/results/", outfile), row.names=TRUE)
+
+# Note
+CalloutBox("Metadata are written to {outfile}.", type="note")
+```
+
+### Software
+
+```{r}
+#| label: qc_filtering_rna_save_software
+
+sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
+gt(sessioninfo)
 ```
 
 ```{r}

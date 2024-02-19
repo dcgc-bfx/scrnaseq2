@@ -598,7 +598,7 @@ ScrnaseqSessionInfo = function(path_to_git=".") {
   
   # Git
   repo = GitRepositoryVersion(path_to_git)
-  out = rbind(out, c("ktrns/scrnaseq", repo))
+  out = rbind(out, c("dcgc-bfx/scrnaseq2", repo))
   
   # Container (if available)
   out = rbind(out, c("Container", ContainerVersion()))
