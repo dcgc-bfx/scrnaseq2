@@ -157,7 +157,7 @@ if (use_sketching) {
 }
 ```
 
-# Clustering
+## Clustering
 
 Seurat's clustering method first constructs a graph structure, where nodes are cells and edges are drawn between cells with similar gene expression patterns. Technically speaking, Seurat first constructs a K-nearest neighbor (KNN) graph based on Euclidean distance in PCA space, and refines edge weights between cells based on the shared overlap in their local neighborhoods (Jaccard similarity). To partition the graph into highly interconnected parts, cells are iteratively grouped together using the Leiden algorithm @Traag_2019. 
 
@@ -367,7 +367,7 @@ cat(":::\n")
 CalloutBox("Default clustering is set to the dimensionality reduction {dimensionality_reduction_methods[1]} with the resolution parameter {cluster_resolutions[1]}.", type="note")
 ```
 
-# Visualization with UMAP
+## Visualization with UMAP
 
 We use a UMAP to visualize and explore a dataset. The goal is to place similar cells together in 2D space, and learn about the biology underlying the data. Cells are color-coded according to the graph-based clustering, and clusters typcially co-localise on the UMAP.
 
@@ -465,7 +465,7 @@ for (i in names(plist)) {
 cat(":::\n")
 ```
 
-## Save Seurat object
+## Output file
 
 ```{r}
 #| label: clustering_save_seurat
@@ -476,7 +476,7 @@ if (use_sketching) {
 }
 
 # This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
+assignInNamespace("SaveSeuratRds", SaveSeuratRds_Fixed, ns="SeuratObject")
 
 # Save Seurat object and layer data
 with_progress({
@@ -484,6 +484,46 @@ with_progress({
                        on_disk_layers=on_disk_counts,
                        outdir=file.path(module_dir, "sc"))
 }, enable=verbose)
+```
+
+### Dimensionality reduction
+
+```{r}
+#| label: clustering_save_visualization
+#| results: asis
+
+default_vis = DefaultVisualization(sc)
+vis = sc[[default_vis]]@cell.embeddings %>% as.data.frame()
+
+# Write default visualization for default assay
+outfile = paste0("visualization_", default_assay, "_", default_vis , ".xlsx")
+openxlsx::write.xlsx(x=vis, file=file.path(module_dir, "results", outfile), row.names=TRUE)
+
+# Note
+CalloutBox("The default visualization {default_vis} for the default assay {default_assay} is written to {outfile}.", type="note")
+```
+
+### Clustering
+
+```{r}
+#| label: clustering_save_clustering
+#| results: asis
+
+# Write default clustering
+outfile = "seurat_clusters.xlsx"
+openxlsx::write.xlsx(x=sc[["seurat_clusters"]], file=file.path(module_dir, "results", outfile), row.names=TRUE)
+
+# Note
+CalloutBox("The default clustering is written to {outfile}.", type="note")
+```
+
+### Software
+
+```{r}
+#| label: clustering_save_software
+
+sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
+gt(sessioninfo)
 ```
 
 ```{r}

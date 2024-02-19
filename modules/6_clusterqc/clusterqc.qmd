@@ -302,8 +302,6 @@ for (i in names(plist)) {
 cat(":::", sep="\n")
 ```
 
-## Save Seurat object
-
 ```{r}
 #| label: clusterqc_save_seurat
 
