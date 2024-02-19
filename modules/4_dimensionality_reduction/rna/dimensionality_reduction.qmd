@@ -523,7 +523,7 @@ reduct = sc[[default_reduct]]@cell.embeddings %>% as.data.frame()
 
 # Write default reduction for default assay
 outfile = paste0("reduction_", default_assay, "_", default_reduct , ".xlsx")
-openxlsx::write.xlsx(x=reduct, file=paste0(param("module_dir"), "/results/", outfile), row.names=TRUE)
+openxlsx::write.xlsx(x=reduct, file=file.path(module_dir, "results", outfile), row.names=TRUE)
 
 # Note
 CalloutBox("The default reduction {default_reduct} for the default assay {default_assay} is written to {outfile}.", type="note")

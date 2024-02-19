@@ -1161,11 +1161,11 @@ with_progress({
 #| results: asis
 
 # Write annotation
-outfile_annot = paste0("annotation_", default_assay, ".xlsx")
-openxlsx::write.xlsx(x=sc[[default_assay]][[]], file=paste0(param("module_dir"), "/results/", outfile_annot), row.names=TRUE)
+outfile = paste0("annotation_", default_assay, ".xlsx")
+openxlsx::write.xlsx(x=sc[[default_assay]][[]], file=file.path(module_dir, "results", outfile), row.names=TRUE)
 
 # Note
-CalloutBox("Feature annotation for the default assay {default_assay} is written to {outfile_annot}.", type="note")
+CalloutBox("Feature annotation for the default assay {default_assay} is written to {outfile}.", type="note")
 ```
 
 ### Software

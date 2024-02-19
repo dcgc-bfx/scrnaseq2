@@ -1067,7 +1067,7 @@ with_progress({
 
 # Write metadata
 outfile = "metadata_qc.xlsx"
-openxlsx::write.xlsx(x=sc[[]], file=paste0(param("module_dir"), "/results/", outfile), row.names=TRUE)
+openxlsx::write.xlsx(x=sc[[]], file=file.path(module_dir, "results", outfile), row.names=TRUE)
 
 # Note
 CalloutBox("Metadata are written to {outfile}.", type="note")
