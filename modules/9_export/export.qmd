@@ -146,7 +146,7 @@ export_sc = param("export_sc")
 sc_convert_on_disk = param("sc_convert_on_disk")
 ```
 
-### Loupe Cell Browser
+## Loupe Cell Browser
 
 The Loupe Cell Browser is a powerful tool to explore single cell data. It allows you to visualize the data in a variety of ways. For download, please visit the [10x Genomics website](https://support.10xgenomics.com/single-cell-gene-expression/software/visualization/latest/what-is-loupe-cell-browser). There are also several tutorials available on the website.
 
@@ -207,7 +207,7 @@ if (export_loupe) {
 }
 ```
 
-### Cellxgene
+## Cellxgene
 
 Cellxgene is a web-based tool to explore single cell data. For download, please visit the [cellxgene website](https://cellxgene.cziscience.com/docs/01__CellxGene).
 
@@ -256,12 +256,13 @@ if (export_cellxgene) {
 }
 ```
 
-### Seurat object
+## Seurat object
 
 To facilitate further analysis, the Seurat object is exported. When counts are stored on disk, they will be exported as well. Alternatively, they can also be included in the Seurat object.
 
 ```{r}
 #| label: export_sc
+#| results: asis
 
 # Export Seurat object
 if (export_sc) {
@@ -283,9 +284,17 @@ if (export_sc) {
 }
 ```
 
+## Software
 
 ```{r}
-#| label: cluster_composition_finish
+#| label: export_save_software
+
+sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
+gt(sessioninfo)
+```
+
+```{r}
+#| label: export_finish
 
 # Stop multisession workers
 plan(sequential)

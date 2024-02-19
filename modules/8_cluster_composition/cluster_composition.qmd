@@ -186,6 +186,15 @@ In case the dataset contains 2 or more samples, we also calculate whether or not
 gt(tbl, rownames_to_stub=TRUE)
 ```
 
+## Software
+
+```{r}
+#| label: cluster_composition_save_software
+
+sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
+gt(sessioninfo)
+```
+
 ```{r}
 #| label: cluster_composition_save_seurat
 

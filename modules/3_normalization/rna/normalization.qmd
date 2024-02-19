@@ -569,6 +569,15 @@ if (use_sketching) {
 }
 ```
 
+## Software
+
+```{r}
+#| label: normalization_rna_save_software
+
+sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
+gt(sessioninfo)
+```
+
 ```{r}
 #| label: normalization_rna_save_seurat
 
