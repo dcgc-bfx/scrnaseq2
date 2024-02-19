@@ -211,7 +211,7 @@ if (use_sketching) {
 ```
 
 ```{r}
-#| label: dimensionality_reduction_rna_loadings
+#| label: fig-dimensionality_reduction_rna_loadings
 #| fig-cap: "Loadings of the dimensionality reduction"
 
 # When sketching is used, not available for the full dataset
@@ -227,7 +227,7 @@ plist[[1]] + plist[[2]]
 ```
 
 ```{r}
-#| label: dimensionality_reduction_rna_dim_dimensions
+#| label: fig-dimensionality_reduction_rna_dim_dimensions
 #| fig-cap: !expr paste("Barcodes arranged by the first two dimensions ", ifelse(use_sketching, "for the sketched dataset", ""))
 
 # Plot the first two dimensions of the computed dimensionality reduction
@@ -239,7 +239,7 @@ p
 ```
 
 ```{r}
-#| label: dimensionality_reduction_rna_dim_dimensions_full
+#| label: fig-dimensionality_reduction_rna_dim_dimensions_full
 #| fig-cap: "Barcodes arranged by the first two dimensions projected to the full dataset"
 #| eval: !expr use_sketching
 #| include: !expr use_sketching
@@ -255,7 +255,7 @@ if (use_sketching) {
 ```
 
 ```{r}
-#| label: dimensionality_reduction_rna_loadings_heatmaps
+#| label: fig-dimensionality_reduction_rna_loadings_heatmaps
 #| fig-cap: "Top gene loadings of the first dimensions"
 #| fig-subcap: ""
 #| echo: false
@@ -299,7 +299,7 @@ The top PC captures the greatest variance across cells and each subsequent PC re
 :::
 
 ```{r}
-#| label: dimensionality_reduction_rna_elbow_plot
+#| label: fig-dimensionality_reduction_rna_elbow_plot
 #| fig-cap: "Variance explained by computed dimensions"
 #| fig-cap-location: "top"
 

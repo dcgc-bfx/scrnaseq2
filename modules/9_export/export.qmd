@@ -29,6 +29,9 @@ params:
   # Export results into Loupe Cell Browser format. Only the default assay will be used.
   export_loupe: true
   
+  # When exporting into Loupe Cell Browser format, use normalized counts instead of raw counts.
+  export_loupe_normalized: false
+  
   # Export results into h5ad format for cellxgene. Only the default assay will be used.
   export_cellxgene: true
   
@@ -36,7 +39,7 @@ params:
   export_sc: true
   
   # When exporting the Seurat object, convert on-disk layers to in-memory layers.
-  export_sc_on_disk: true
+  export_sc_on_disk: false
   
   # Number of cores to use for computations
   cores: 4
@@ -137,6 +140,7 @@ Seurat::DefaultAssay(sc) = default_assay
 
 # What do we export
 export_loupe = param("export_loupe")
+export_loupe_normalized = param("export_loupe_normalized")
 export_cellxgene = param("export_cellxgene")
 export_sc = param("export_sc")
 sc_convert_on_disk = param("sc_convert_on_disk")
@@ -163,7 +167,7 @@ if (export_loupe) {
   if (!louper_status$success) stop(louper_status$msg)
   
   # Get counts and convert to sparse matrix if necessary
-  counts = SeuratObject::GetAssayData(sc, assay=default_assay, layer="counts")
+  counts = SeuratObject::GetAssayData(sc, assay=default_assay, layer=ifelse(export_loupe_normalized, "data", "counts"))
   counts = as(counts, "dgCMatrix")
   
   # Get clusters and other categories
