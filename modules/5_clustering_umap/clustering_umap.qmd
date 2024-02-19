@@ -157,7 +157,7 @@ if (use_sketching) {
 }
 ```
 
-# Clustering
+## Clustering
 
 Seurat's clustering method first constructs a graph structure, where nodes are cells and edges are drawn between cells with similar gene expression patterns. Technically speaking, Seurat first constructs a K-nearest neighbor (KNN) graph based on Euclidean distance in PCA space, and refines edge weights between cells based on the shared overlap in their local neighborhoods (Jaccard similarity). To partition the graph into highly interconnected parts, cells are iteratively grouped together using the Leiden algorithm @Traag_2019. 
 
@@ -367,7 +367,7 @@ cat(":::\n")
 CalloutBox("Default clustering is set to the dimensionality reduction {dimensionality_reduction_methods[1]} with the resolution parameter {cluster_resolutions[1]}.", type="note")
 ```
 
-# Visualization with UMAP
+## Visualization with UMAP
 
 We use a UMAP to visualize and explore a dataset. The goal is to place similar cells together in 2D space, and learn about the biology underlying the data. Cells are color-coded according to the graph-based clustering, and clusters typcially co-localise on the UMAP.
 
