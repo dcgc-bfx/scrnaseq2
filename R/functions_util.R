@@ -26,17 +26,39 @@ GlueTransformer_quote_collapse = function(sep=", ", quote=TRUE, ...) {
   }
 }
 
-#' Formats messages. 
+#' Formats strings
 #' 
 #' - Variables can be automatically inserted with '{variable}'.
-#'  - If quote=TRUE, quotes all variables.
+#' - If quote=TRUE, quotes all variables.
 #' - If a variable has multiple values, use {variable*} to include all values separated by sep. If quote=TRUE, they will be quoted as well.
 #' 
-#' @param sep When a variable contains multiple values and is marked with a '*', which separator to use to collapse the values
+#' @param x Character string
 #' @param quote Whether to quote variables
+#' @param sep When a variable contains multiple values and is marked with a '*', which separator to use to collapse the values
 #' @return The formatted message
-FormatMessage = function(msg, quote=TRUE, sep=", ") {
-  return(glue::glue(msg, .transformer=GlueTransformer_quote_collapse(), .envir=parent.frame()))
+FormatString = function(x, quote=TRUE, sep=", ") {
+  return(glue::glue(x, .transformer=GlueTransformer_quote_collapse(), .envir=parent.frame()))
+}
+
+#' Generates a callout box for showing notes, tips or warnings
+#' 
+#' @param x Character string that will be formatted by the FormatString function
+#' @param type Type of callout box. Can be: 'note', 'tip', 'important', 'caution' and 'warning'.
+#' @param print Whether to print (if TRUE) or to return (FALSE) the message box
+#' @return Character string to generate a message box
+CalloutBox = function(x, type, print=TRUE) {
+  valid_types = c("note", "tip", "important", "caution", "warning")
+  assertthat::assert_that(type %in% valid_types,
+                          msg=FormatString("Callout box typ {type} but must be one of: {valid_types*}."))
+  
+  
+  
+  x = paste0("\n\n::: callout-", type, "\n", FormatString(x), "\n:::\n\n")
+  if (print) {
+    cat(x)
+  } else {
+    return(x)
+  }
 }
 
 #' Returns the content of the profile yaml.
@@ -47,7 +69,7 @@ FormatMessage = function(msg, quote=TRUE, sep=", ") {
 GetProfileYaml = function() {
   profile = Sys.getenv("QUARTO_PROFILE")
   assertthat::assert_that(nchar(profile) > 0,
-                          msg=FormatMessage("Environment variable 'QUARTO_PROFILE' must be set to the current profile."))
+                          msg="Environment variable 'QUARTO_PROFILE' must be set to the current profile.")
   
   profile_yml = yaml::read_yaml(paste0("_quarto-", profile, ".yml"), eval.expr=TRUE)
   return(profile_yml)
@@ -64,16 +86,16 @@ PreviousModuleDir = function(current_module_dir) {
   # Get profile yaml parameter 'chapters' in section 'book'
   profile_yml = GetProfileYaml()
   assertthat::assert_that("book" %in% names(profile_yml),
-                          msg=FormatMessage("Profile yaml does not contain the parameter 'book'."))
+                          msg="Profile yaml does not contain the parameter 'book'.")
   assertthat::assert_that("chapters" %in% names(profile_yml$book),
-                          msg=FormatMessage("Profile yaml does not contain the parameter 'chapters' in the section 'book'."))
+                          msg="Profile yaml does not contain the parameter 'chapters' in the section 'book'.")
   chapters = dirname(profile_yml$book$chapters)
   
   # Find position
   idx = match(current_module_dir, chapters)
   idx = idx[1]
   assertthat::assert_that(!is.na(idx),
-                          msg=FormatMessage("Module is not part of parameter 'chapters' in the section 'book'."))
+                          msg="Module is not part of parameter 'chapters' in the section 'book'.")
   
   if (idx == 1) {
     return(NULL)
@@ -95,7 +117,7 @@ param = function(p=NULL) {
 
   # Read module parameter (document params yaml) and get module name
   assertthat::assert_that("module" %in% names(params),
-                          msg=FormatMessage("Module does not contain the document yaml parameter 'module' with the module name."))
+                          msg="Module does not contain the document yaml parameter 'module' with the module name.")
   module_name = params[["module"]]
   param_set = params
   
@@ -136,7 +158,7 @@ GetBiomaRt = function(species, ensembl_version) {
   ensembl_archives = biomaRt::listEnsemblArchives()
   assertthat::assert_that(
     ensembl_version %in% ensembl_archives$version,
-    msg = FormatMessage("Could not find or access Ensembl version {ensembl_version}.")
+    msg = FormatString("Could not find or access Ensembl version {ensembl_version}.")
   )
   
   # Get mart and check if the species is part of ensembl
@@ -153,7 +175,7 @@ GetBiomaRt = function(species, ensembl_version) {
   idx = which(ensembl_datasets$dataset == species_dataset_name)
   assertthat::assert_that(
     length(idx) == 1,
-    msg = FormatMessage(
+    msg = FormatString(
       "Could not find species {species} dataset (name: {species_dataset_name}) for Ensembl version {ensembl_annotation_version}."
     )
   )
@@ -180,8 +202,7 @@ EnsemblFetchGeneInfo = function(ids, symbols=FALSE, species, ensembl_version, ma
   # Check that we have Ensembl ids
   if (!symbols) {
     assertthat::assert_that(any(grepl("^ENS", ids)),
-                          msg = FormatMessage(
-                            "None of the ids in this dataset is Ensembl. Cannot fetch gene information with this method."))
+                          msg="None of the ids in this dataset is Ensembl. Cannot fetch gene information with this method.")
     id_column = "ensembl_gene_id"
   } else {
     id_column = "external_gene_name"
@@ -201,7 +222,7 @@ EnsemblFetchGeneInfo = function(ids, symbols=FALSE, species, ensembl_version, ma
     colnames(species_annotation) = names(mart_attributes)
   }
   assertthat::assert_that(nrow(species_annotation)>0,
-    msg = FormatMessage(
+    msg = FormatString(
       "Could not find fetch any gene information for this dataset. Is the species {species} correct?"))
   
   # Add rows for ids that were not found
@@ -233,8 +254,7 @@ EnsemblFetchOrthologues = function(ids, symbols=FALSE, species1, species2, ensem
   # Check that we have Ensembl ids
   if (!symbols) {
     assertthat::assert_that(any(grepl("^ENS", ids)),
-                            msg = FormatMessage(
-                              "None of the ids in this dataset is Ensembl. Cannot fetch gene information with this method."))
+                            msg = "None of the ids in this dataset is Ensembl. Cannot fetch gene information with this method.")
     id_column = "ensembl_gene_id"
   } else {
     id_column = "external_gene_name"
@@ -255,7 +275,7 @@ EnsemblFetchOrthologues = function(ids, symbols=FALSE, species1, species2, ensem
     colnames(ortholog_annotation) = c(names(mart_attributes1), names(mart_attributes2))
   }
   assertthat::assert_that(nrow(ortholog_annotation)>0,
-                          msg = FormatMessage(
+                          msg = FormatString(
                             "Could not find fetch any ortholog information for this dataset. Is the species {species1} correct?"))
 
   
@@ -294,8 +314,7 @@ AddFeatureMetadata = function(obj, assay=NULL, metadata) {
   # Checks
   valid_objs = c("Seurat", "Assay5", "Assay")
   assertthat::assert_that(class(obj) %in% valid_objs,
-                          msg = FormatMessage(
-                            "AddFeatureMetadata works only for 'Seurat v5' or 'Assay5' objects"))
+                          msg = "AddFeatureMetadata works only for 'Seurat v5' or 'Assay5' objects")
   
   # Prepare metadata tables for join
   metadata = metadata %>% tibble::rownames_to_column()
@@ -344,10 +363,8 @@ EvalKnitrChunk = function(x) {
 #' @param orig_idents The samples in the analysis
 #' @return A filter with entries for each sample
 PrepareBarcodeFilter = function(filter, orig_idents) {
-  if (is.null(filter)) {
-    filter = rep(list(NULL), length(orig_idents))
-    names(filter) = orig_idents
-    return(filter)
+  if (is.null(filter) | length(filter) == 0) {
+    return(NULL)
   }
   
   sample_specific_filter = filter[names(filter) %in% orig_idents]
@@ -372,10 +389,8 @@ PrepareBarcodeFilter = function(filter, orig_idents) {
 #' @param orig_idents The samples in the analysis
 #' @return A filter with entries for each sample
 PrepareFeatureFilter = function(filter, orig_idents) {
-  if (is.null(filter)) {
-    filter = list(min_counts=1, min_cells=1)
-    filter = rep(filter, length(orig_idents))
-    names(filter) = orig_idents
+  if (is.null(filter) | length(filter) == 0) {
+    return(NULL)
   }
   
   sample_specific_filter = filter[names(filter) %in% orig_idents]
@@ -437,9 +452,9 @@ ScAddLists = function(sc, lists, lists_slot='gene_lists', add_to_list=FALSE, mak
 ScLists = function(sc, lists, lists_slot=NULL) {
   stored_lists = Seurat::Misc(sc, slot=lists_slot)
   assertthat::assert_that(!is.null(stored_lists), 
-                          msg=FormatMessage("No lists found in misc slot of Seurat object (list slot: {{lists_slot}})."))
+                          msg=FormatString("No lists found in misc slot of Seurat object (list slot: {{lists_slot}})."))
   assertthat::assert_that(all(lists %in% names(stored_lists)), 
-                          msg=FormatMessage("List(s) {{lists}} not found in misc slot of Seurat object (list slot: {{lists_slot}})."))
+                          msg=FormatString("List(s) {{lists}} not found in misc slot of Seurat object (list slot: {{lists_slot}})."))
   
   if (length(lists) > 1) {
     return(stored_lists[lists])
@@ -468,6 +483,52 @@ ScAddColours = function(sc, colours, colours_slot='colour_lists', add_to_list=FA
 #' @return Colour lists for categories.
 ScColours = function(sc, categories, colours_slot="colour_lists") {
   return(ScLists(sc, categories, lists_slot=colours_slot))
+}
+
+#' Gets the name of the default dimensionality reduction for an assay.
+#' 
+#' @param sc A Seurat sc object.
+#' @param assay The assay for which to pull the name of the dimensionality reduction. If NULL, will be the default assay.
+#' @return The name of the default dimensionality reduction for the assay.
+DefaultReduct = function(sc, assay=NULL) {
+  if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
+  
+  return(SeuratObject::Misc(sc[[assay]], slot="default.dimred"))
+}
+
+#' Sets the name of the default dimensionality reduction for an assay.
+#' 
+#' @param sc A Seurat sc object.
+#' @param assay The assay for which to set the name of the dimensionality reduction. If NULL, will be the default assay.
+#' @return A Seurat sc object with updated default dimensionality reduction for the assay.
+"DefaultReduct<-" <- function(sc, assay=NULL, value) {
+  if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
+  
+  suppressWarnings({SeuratObject::Misc(sc[[assay]], slot="default.dimred") = value})
+  return(sc)
+}
+
+#' Gets the name of the default visualization method for an assay.
+#' 
+#' @param sc A Seurat sc object.
+#' @param assay The assay for which to pull the name of the default visualization method. If NULL, will be the default assay.
+#' @return The name of the default visualization method for the assay.
+DefaultVisualization = function(sc, assay=NULL) {
+  if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
+  
+  return(SeuratObject::Misc(sc[[assay]], slot="default.visualization"))
+}
+
+#' Sets the name of the default visualization method for an assay.
+#' 
+#' @param sc A Seurat sc object.
+#' @param assay The assay for which to set the name of the visualization method. If NULL, will be the default assay.
+#' @return A Seurat sc object with updated default visualization method for the assay.
+"DefaultVisualization<-" <- function(sc, assay=NULL, value) {
+  if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
+  
+  suppressWarnings({SeuratObject::Misc(sc[[assay]], slot="default.visualization") = value})
+  return(sc)
 }
 
 ######################
@@ -537,7 +598,7 @@ ScrnaseqSessionInfo = function(path_to_git=".") {
   
   # Git
   repo = GitRepositoryVersion(path_to_git)
-  out = rbind(out, c("ktrns/scrnaseq", repo))
+  out = rbind(out, c("dcgc-bfx/scrnaseq2", repo))
   
   # Container (if available)
   out = rbind(out, c("Container", ContainerVersion()))
@@ -633,88 +694,6 @@ GenerateColours = function(num_colours, names=NULL, palette="ggsci::pal_igv", al
   colours = colours[1:num_colours]
   if (!is.null(names)) colours = setNames(colours, names)
   return(colours)
-}
-
-#' Returns a message formatted for markdown. 
-#' See: https://www.w3schools.com/bootstrap/bootstrap_alerts.asp and https://bookdown.org/yihui/rmarkdown-cookbook/output-hooks.html
-#' 
-#' @param x The message.
-#' @param options Further options.
-#' @return The message formatted for markdown.
-format_message = function(x, options){
-  x = gsub('##', '<br/>', gsub('^## Message:','',x))
-  msg = paste(c('\n\n:::{class="alert alert-info alert-dismissible"}',
-                '<style> .alert-info { background-color: #abd9c6; color: black; word-wrap: break-word; } </style>', 
-                '<a href="#" class="close" data-dismiss="alert" aria-label="close">&times;</a>',
-                '<strong>(Message)</strong>',
-                x,
-                ':::\n\n'), collapse = '\n')
-  return(msg)
-}
-
-#' Prints a message so that it will be included in the markdown document.
-#' Note that cat is used since print will not work.
-#' 
-#' @param x The message.
-#' @param options Further options.
-#' @return No return value.
-Message = function(x, options){
-  # Function asis_output: prints something in mode results="asis"; normal_print: prints something in mode results="markup"
-  knitr::asis_output(format_message(x, options))
-}
-
-#' Returns a warning message formatted for markdown. 
-#' See: https://www.w3schools.com/bootstrap/bootstrap_alerts.asp and https://bookdown.org/yihui/rmarkdown-cookbook/output-hooks.html.
-#' @param x The message.
-#' @param options Further options.
-#' @return The message formatted for markdown.
-format_warning = function(x, options){
-  x = gsub('##', '<br/>', gsub('^## Warning:','',x))
-  warn = paste(c('\n\n:::{class="alert alert-warning alert-dismissible"}',
-                 '<style> .alert-warning { background-color: #fae39c; color: black; word-wrap: break-word; } </style>', 
-                 '<a href="#" class="close" data-dismiss="alert" aria-label="close">&times;</a>',
-                 '<strong>(Warning)</strong>',
-                 x,
-                 ':::\n\n'), collapse = '\n')
-  return(warn)
-}
-
-#' Prints a warning so that it will be included in the markdown document.
-#' Note that cat is used since print will not work. Will only work with chunk option results="asis".
-#' 
-#' @param x The message.
-#' @param options Further options.
-#' @return No return value.
-Warning = function(x, options){
-  # Function asis_output: prints something in mode results="asis"; normal_print: prints something in mode results="markup".
-  knitr::asis_output(format_warning(x, options))
-}
-
-#' Returns a error formatted for markdown.
-#' See: https://www.w3schools.com/bootstrap/bootstrap_alerts.asp and https://bookdown.org/yihui/rmarkdown-cookbook/output-hooks.html.
-#' @param x The message.
-#' @param options Further options.
-#' @return The message formatted for markdown.
-format_error = function(x, options){
-  x = gsub('^##','',x)
-  x = gsub("Error in eval(expr, envir, enclos):", "", x, fixed = TRUE)
-  err = paste(c('\n\n:::{class="alert alert-danger"}',
-                 '<style> .alert-danger { background-color: #ffb6c1; color: black; word-wrap: break-word; } </style>', 
-                 '<strong>(Error)</strong>',
-                 x,
-                 ':::\n\n'), collapse = '\n')
-  return(err)
-}
-
-#' Prints an error so that it will be included in the markdown document.
-#' 
-#' Note that cat is used since print will not work.
-#' @param x The message.
-#' @param options Further options.
-#' @return No return value.
-Error = function(x, options){
-  # asis_output: prints something in mode results="asis"; normal_print: prints something in mode results="markup"
-  knitr::asis_output(format_error(x, options))
 }
 
 #' Report parameters in a table.

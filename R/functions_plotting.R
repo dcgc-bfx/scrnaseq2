@@ -124,7 +124,7 @@ GeneratePlotCaptions = function(plot_names, remove=NULL, split=NULL, capitalize=
     }
     
     # Collapse
-    x = paste(x, collapse=" Vs ")
+    x = paste(x, collapse=" vs ")
     
     # If requested, make first letter upper-case
     if (capitalize) {
@@ -186,7 +186,7 @@ PlotBarcodeQC = function(sc, qc, filter=NULL) {
   names(qc_thresholds_other) = qc[!is_numeric]
   
   # Plot numeric QC
-  plist_numeric = Seurat::VlnPlot(sc, features=qc[is_numeric], combine=FALSE, pt.size=0, raster=FALSE, layer="counts")
+  plist_numeric = Seurat::VlnPlot(sc, features=qc[is_numeric], combine=FALSE, pt.size=0, layer="counts")
   names(plist_numeric) = qc[is_numeric]
   
   plist_numeric = purrr::map(names(plist_numeric), function(n) {
@@ -247,9 +247,8 @@ PlotBarcodeQC = function(sc, qc, filter=NULL) {
 #' @param filter A nested list where the first level is the barcode metadata column and the second levels 
 #' contains filters per dataset. Filters for numeric columns must numeric vectors with min and max. Filter
 #' for character/factor columns must be character vectors with the values that should be kept.
-#' @param raster Whether to raster the points.
 #' @return A list of ggplot2 objects.
-PlotBarcodeQCCor = function(sc, qc, filter=NULL, raster=FALSE) {
+PlotBarcodeQCCor = function(sc, qc, filter=NULL) {
   barcode_metadata = sc[[]]
   
   # Check QC type (only numeric allowed)
@@ -258,7 +257,7 @@ PlotBarcodeQCCor = function(sc, qc, filter=NULL, raster=FALSE) {
     unique()
   f = purrr::map_lgl(qc_cols, function(c) return(is.numeric(barcode_metadata[, c, drop=TRUE])))
   assertthat::assert_that(all(f),
-                          msg=FormatMessage("Barcode metadata columns {qc_cols[!f]*} are not numeric! Function PlotBarcodeQCCor can only plot numeric data."))
+                          msg=FormatString("Barcode metadata columns {qc_cols[!f]*} are not numeric! Function PlotBarcodeQCCor can only plot numeric data."))
   
   # Get filter thresholds per QC metrics (numeric)
   qc_thresholds = purrr::map(qc_cols, function(f) {
@@ -286,7 +285,7 @@ PlotBarcodeQCCor = function(sc, qc, filter=NULL, raster=FALSE) {
     f2 = c[2]
     
     # Plot QC feature f1 vs f2
-    p = Seurat::FeatureScatter(sc, feature1=f1, feature2=f2, shuffle=TRUE, seed=getOption("random_seed"), raster=raster)
+    p = Seurat::FeatureScatter(sc, feature1=f1, feature2=f2, shuffle=TRUE, seed=getOption("random_seed"))
     p = p + AddPlotStyle(col=ScColours(sc, "orig.ident"))
     
     # Add filter thresholds for f1
@@ -321,11 +320,11 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
   # Checks
   valid_methods = c("vst", "sct", "scran")
   assertthat::assert_that(method %in% valid_methods,
-                          msg=FormatMessage("Method is {method} but must be one of: {valid_methods*}."))
+                          msg=FormatString("Method is {method} but must be one of: {valid_methods*}."))
   
-  layers = SeuratObject::Layers(sc[[assay]], "^data")
+  layers = SeuratObject::Layers(sc[[assay]], "data")
   assertthat::assert_that(length(layers) > 0,
-                          msg=FormatMessage("Could not find normalized data for assay {assay}."))
+                          msg=FormatString("Could not find normalized data for assay {assay}."))
   
   # Make plots per layer (dataset)
   orig_idents =  levels(sc$orig.ident)
@@ -334,7 +333,7 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
     # Collect information about highly variable genes
     if (method == "sct") {
       assertthat::assert_that(.hasSlot(sc[[assay]], "SCTModel.list"),
-                              msg=FormatMessage("No variable feature information in slot SCTModel.list available for {assay}."))
+                              msg=FormatString("No variable feature information in slot SCTModel.list available for {assay}."))
       hvf_info = Seurat::SCTResults(sc[[assay]], slot="feature.attributes", model=n)
       hvf_info = hvf_info[, c("gmean", "variance", "residual_variance")]
       hvf_info$variable = rownames(hvf_info) %in% Seurat::VariableFeatures(sc[[assay]])
@@ -345,14 +344,14 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
                                        layer=paste("data", n, sep="."),
                                        status=TRUE)
       assertthat::assert_that(!is.null(hvf_info),
-                              msg=FormatMessage("No variable feature information available for {assay}."))
+                              msg=FormatString("No variable feature information available for {assay}."))
     } else if (method == "scran") {
       hvf_info = SeuratObject::HVFInfo(sc[[assay]],
                                        method="scran",
                                        layer=paste("data", n, sep="."),
                                        status=TRUE)
       assertthat::assert_that(!is.null(hvf_info),
-                              msg=FormatMessage("No variable feature information available for {assay}."))
+                              msg=FormatString("No variable feature information available for {assay}."))
       
     }
     
@@ -408,7 +407,7 @@ PlotRLE = function(sc, assay=NULL, layer="counts", nbarcodes=500, is_log=FALSE) 
   # Checks
   layers = SeuratObject::Layers(sc[[assay]], layer)
   assertthat::assert_that(length(layers) > 0,
-                          msg=FormatMessage("Could not find data for layer {{layer}} of assay {assay}."))
+                          msg=FormatString("Could not find data for layer {{layer}} of assay {assay}."))
   
   if (!is(sc[[assay]], "SCTAssay")) {
     # Standard assays

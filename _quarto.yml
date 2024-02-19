@@ -1,32 +1,36 @@
 ###########
+# Profile #
+###########
+
+profile: 
+  default: scrnaseq
+
+###########
 # Project #
 ###########
 
 project:
   type: "default"
-  output-dir: "_book"
+  output-dir: "book_default"
   execute-dir: "project"
   post-render: 
     - "R/collect_module_results.R"
+    
+book:
+  sidebar:
+    logo: "docs/scrnaseq2_cover.png"
 
 bibliography: "misc/references.bib"
 csl: "misc/nature.csl"
-
-###########
-# Profile #
-###########
-
-profile: 
-  default: "default"
 
 #################
 # Knitr options #
 #################
 knitr:
   opts_chunk:
-    fig-width: 6
-    dpi: 96
-    fig.retina: 2
+    dpi: 300
+    fig-width: 8
+    fig-height: 5
     results: "hold"
     timeit: null
     tidy: "styler"
@@ -39,6 +43,11 @@ knitr:
 
 format:
   html:
+    number-sections: false
+    grid:
+      sidebar-width: "300px"
+      margin-width: "0px"
+      body-width: "1000px"
     theme:
     - "sandstone"
     embed-resources: false
@@ -50,17 +59,21 @@ format:
     df-print: "kable"
     toc: true
     toc-depth: 2
+    toc-location: left
     fig-format: "png"
-    keep-md: true
+    keep-md: false
     #execute:
     #  echo: false
     #  message: false
     #  warning: false
     knitr:
-      opts_chunk: 
+      opts_chunk:
         dev:
-        - "ragg_png"
+        - "png"
         - "cairo_pdf"
+        dev.args:
+          png:
+            type: "cairo"
   # pdf:
   #   documentclass: "scrreprt"
   #   code-block-bg: true
@@ -76,10 +89,13 @@ format:
   #   #  message: false
   #   #  warning: false
   #   knitr:
-  #     opts_chunk: 
+  #     opts_chunk:
   #       dev:
   #       - "cairo_pdf"
-  #       - "ragg_png"
+  #       - "png"
+  #       dev.args:
+  #         png:
+  #           type: "cairo"
   #   include-in-header:
   #     text: |
   #       \usepackage{fvextra}
@@ -97,10 +113,13 @@ format:
   #   #  message: false
   #   #  warning: false
   #   knitr:
-  #     opts_chunk: 
+  #     opts_chunk:
   #       dev:
-  #       - "ragg_png"
+  #       - "png"
   #       - "cairo_pdf"
+  #       dev_args:
+  #         png:
+  #           type: "cairo"
 
 #########
 # Other #

@@ -45,7 +45,10 @@ options(raster.threshold=100000)
 
 # Default resolution and device when rasterising large plots
 options(ggrastr.default.dpi=300)
-options(ggrastr.default.dev="ragg_png")
+#options(ggrastr.default.dev="ragg_png") - deactivated because ragg seems to be broken
+
+# Use cairo library for pngs
+options(bitmapType='cairo')
 
 ###################
 # Colour palettes #

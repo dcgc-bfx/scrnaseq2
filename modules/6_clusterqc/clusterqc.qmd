@@ -1,0 +1,324 @@
+---
+# Module-specific parameters (that are not already in the profile yaml)
+# Defaults
+params:
+  # Name of the module used in configurations
+  module: "clusterqc"
+    
+  # Relative path to the module directory (which contains the qmd file)
+  module_dir: "modules/6_clusterqc"
+
+  # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
+  # NOTE: Change to null if all modules are implemented and sc objects are written
+  prev_module_dir: null
+  
+  # Default assay and normalization
+  default_assay: null
+
+  # QC measures to look at 
+  qc_features:
+  - "nCount_RNA"
+  - "nFeature_RNA"
+  - "pMito_RNA"
+  - "pRibosomal_RNA"
+  - "pGlobin_RNA"
+  - "pERCC_RNA"
+  - "pXIST_RNA"
+  - "pChrY_RNA"
+  - "DoubletScore_RNA"
+    
+  # For large datasets: Do not keep counts in memory but store on disk in matrix directories. 
+  # Computations will access only the relevant parts of the data. 
+  # Once done, matrix directories will be saved together with the Seurat object in the module directory.
+  on_disk_counts: true
+  
+  # For large datasets: Copy matrix directories to a temporary directory for computations. 
+  # This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). 
+  # Once done, matrix directories will be copied back to the module directory. 
+  # The temporary directory will be deleted once the R session exists.
+  on_disk_use_tmp: true
+  
+  # Number of cores to use for computations
+  cores: 4
+  
+# Module execution
+execute:
+  # Should this module be frozen and never re-rendered?
+  # - auto: if the code has not changed (default)
+  # - true/false: freeze/re-render
+  # Does not apply in interactive mode or when explicitly rendering this document via in rstudio
+  freeze: auto
+---
+
+# Cluster QC
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+# Note: Setup chunk changes working directory automatically to the folder of this qmd file
+
+# If running code interactively in rstudio, set profile here
+# When rendering with quarto, profile is already set and should not be overwritten
+if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "scrnaseq")}
+
+# Load libraries
+library(knitr)
+library(magrittr)
+library(gt)
+library(Seurat)
+library(ggplot2)
+library(future)
+library(patchwork)
+
+# Get module name and directory (needed to access files within the module directory)
+module_name = params$module_name
+module_dir = params$module_dir
+```
+
+```{r}
+#| label: clusterqc_preparation
+
+# CODE
+# Working directory is automatically back to scrnaseq2 at this point
+# Source general configurations (always)
+source("R/general_configuration.R")
+
+# Source required R functions
+source("R/functions_util.R")
+source("R/functions_io.R")
+source("R/functions_plotting.R")
+source("R/functions_analysis.R")
+
+# Be verbose or not
+verbose = param("verbose")
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=param("cores"))
+
+# DIRECTORIES
+# Module directory 'results' contains all output that should be provided together with the final report of the project
+dir.create(file.path(module_dir, "results"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "results"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+# Module directory 'sc' contains the final Seurat object
+dir.create(file.path(module_dir, "sc"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "sc"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+# SEURAT OBJECT
+# Read in seurat object
+if (!is.null(param("prev_module_dir"))) {
+  prev_module_dir = param("prev_module_dir")
+} else {
+  prev_module_dir = PreviousModuleDir(module_dir)
+}
+prev_sc_obj = file.path(prev_module_dir, "sc", "sc.rds")
+if(!file.exists(prev_sc_obj)) {
+  stop(FormatString("Could not find a sc.rds file in {{prev_module_dir}}. Was the respective module already run?"))
+}
+sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
+
+# Move on-disk layers to faster temp location if requested
+on_disk_counts = param("on_disk_counts")
+on_disk_use_tmp = param("on_disk_use_tmp")
+
+if (on_disk_counts & on_disk_use_tmp) {
+  on_disk_path = tempdir()
+  with_progress({
+    sc = UpdateMatrixDirs(sc, dir=on_disk_path)
+  }, enable=verbose)
+} else {
+  on_disk_path = file.path(module_dir, "sc")
+}
+
+# Set default assay standard
+default_assay = param("default_assay")
+if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
+Seurat::DefaultAssay(sc) = default_assay
+```
+
+## Quality Control 
+
+Do cells in individual clusters have particularly high counts, detected genes or mitochondrial content?
+
+```{r}
+#| label: clusterqc
+#| results: asis
+
+# QC features to plot
+qc_features = param("qc_features")
+f = qc_features %in% colnames(sc[[]])
+if (!all(f)) {
+  CalloutBox(x="Cannot find QC {qc_features[!f]*} in barcode metadata.", type="warning")
+  qc_features = qc_features[f]
+}
+
+# Don't plot QC if there aren't any features to plot
+if (length(qc_features) > 0) {
+
+  # Left: QC on UMAP
+  plist1 = Seurat::FeaturePlot(sc, features=qc_features, combine=FALSE)
+  for (i in seq(plist1)) {
+    plist1[[i]] = plist1[[i]] + AddPlotStyle(title="") + viridis::scale_color_viridis()
+  }
+  names(plist1) = qc_features
+  if (default_assay == "RNA") plist1[["nCount_RNA"]] = plist1[["nCount_RNA"]] + viridis::scale_color_viridis(trans="log10")
+  
+  # Right: QC as violin plots
+  plist2 = lapply(qc_features, function(x) {
+    p = ggplot(sc[[]], aes(x=seurat_clusters, y=!!sym(x), fill=seurat_clusters, group=seurat_clusters)) + 
+      geom_violin(scale="width") + 
+      AddPlotStyle(fill=ScColours(sc, "seurat_clusters"), xlab="Cluster", legend_position="none")
+    return(p)
+  })
+  names(plist2) = qc_features
+  
+  # Combine both plots with the patchwork library
+  plist = lapply(qc_features, function(x) {
+    p = plist1[[x]] + plist2[[x]]
+    return(p)
+  })
+  captions = GeneratePlotCaptions(qc_features, remove=paste0("_", default_assay), capitalize=TRUE)
+  names(plist) = names(captions) = qc_features
+  
+  # Set up layout and automatically generate chunks
+  chunk_template = "
+##### {{type}}
+
+\`\`\`{r}
+#| label: fig-clusterqc_{{type}}
+#| fig-cap: '{{caption}}'
+#| fig-height: 4
+
+plist[['{{type}}']]
+\`\`\`
+"
+  
+  cat("::: panel-tabset\n")
+  
+  for (x in qc_features) {
+    chunk_filled =  knitr::knit_expand(text=chunk_template, type=x, caption=captions[x])
+    if(interactive()) {
+      print(EvalKnitrChunk(chunk_filled))
+    } else {
+      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+      cat(chunk_filled, sep='\n')
+    }
+  }
+  
+  cat(":::\n")
+}
+```
+
+## Cell Cycle Effects {#sec-clusterqc-cc}
+
+How much do gene expression profiles in the dataset reflect the cell cycle phases the single cells were in? After initial normalisation, we determined the effects of cell cycle heterogeneity by calculating a score for each cell based on its expression of G2M and S phase markers. Scoring is based on the strategy described in @Tirosh_2016, and human gene symbols are translated to gene symbols of the species of interest using biomaRt. This section of the report visualizes the above calculated cell cycle scores. 
+
+```{r}
+#| label: fig-clusterqc_cellcycle
+#| fig-cap: Cell Cycle Effects
+#| fig-height: 4
+
+# Left: How strong are cell cycle effects?
+p1 = ggplot(sc[[]], aes(x=S.Score, y=G2M.Score, colour=Phase)) +
+  geom_point() + 
+  scale_x_continuous("S score") + 
+  scale_y_continuous("G2/M score") + 
+  AddPlotStyle(col=ScColours(sc, "Phase"), legend_position="bottom")
+
+# Middle: Phases per cluster
+p2 = ggplot(sc[[]] %>% 
+              dplyr::group_by(seurat_clusters, Phase) %>% 
+              dplyr::summarise(num_cells=length(Phase)), 
+            aes(x=seurat_clusters, y=num_cells, fill=Phase)) + 
+  geom_bar(stat="identity", position="fill") + 
+  scale_x_discrete("Seurat clusters") + 
+  scale_y_continuous("Fraction of cells") + 
+  AddPlotStyle(fill=ScColours(sc, "Phase"), legend_position="bottom") + 
+  theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1)) 
+
+# Right: Phases per sample
+p3 = ggplot(sc[[]] %>% 
+              dplyr::group_by(orig.ident, Phase) %>% 
+              dplyr::summarise(num_cells=length(Phase)), 
+            aes(x=orig.ident, y=num_cells, fill=Phase)) + 
+  geom_bar(stat="identity", position="fill") + 
+  scale_y_continuous("Fraction of cells") +
+  AddPlotStyle(fill=ScColours(sc, "Phase"), legend_position="bottom") + 
+  theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1)) + xlab("")
+
+# Combine plots with the patchwork library
+p = p1 + p2 + p3 & theme(legend.position="bottom")
+p = p + patchwork::plot_annotation(title="Cell cycle phases") + patchwork::plot_layout(guides="collect")
+p
+```
+
+```{r}
+#| label: clusterqc_cellcycle_umap
+#| results: asis
+
+# Phases on UMAP
+plist = list()
+plist[["Phase"]] = Seurat::DimPlot(sc, group.by="Phase", pt.size=1, cols=ScColours(sc, "Phase")) + 
+  AddPlotStyle(title="")
+
+for (i in c("S.Score", "G2M.Score", "CC.Difference")) {
+  plist[[i]] = FeaturePlot(sc, features=i, pt.size=1, min.cutoff="q1", max.cutoff="q99") +
+    AddPlotStyle(title="") + 
+    viridis::scale_color_viridis()
+  plist[[i]] = LabelClusters(plist[[i]], id="ident", box=TRUE, fill="white")
+}
+
+captions = paste("UMAP coloured by", names(plist))
+names(captions) = names(plist)
+
+# Set up layout and automatically generate chunks
+chunk_template = "
+##### {{type}}
+
+\`\`\`{r}
+#| label: fig-clusterqc_cellcycle_umap_{{type}}
+#| fig-cap: '{{caption}}'
+
+plist[['{{type}}']]
+\`\`\`
+"
+
+cat("::: panel-tabset", sep="\n")
+
+for (i in names(plist)) {
+  chunk_filled = knitr::knit_expand(text=chunk_template, type=i, caption=captions[i])
+  if(interactive()) {
+    print(EvalKnitrChunk(chunk_filled))
+  } else {
+    chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+    cat(chunk_filled, sep='\n')
+  }
+}
+
+cat(":::", sep="\n")
+```
+
+```{r}
+#| label: clusterqc_save_seurat
+
+# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
+
+# Save Seurat object and layer data
+with_progress({
+  SaveSeuratRdsWrapper(sc,
+                       on_disk_layers=on_disk_counts,
+                       outdir=file.path(module_dir, "sc"))
+}, enable=verbose)
+```
+
+```{r}
+#| label: clusterqc_finish
+
+# Stop multisession workers
+plan(sequential)
+```

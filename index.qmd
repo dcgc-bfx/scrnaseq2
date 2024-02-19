@@ -14,84 +14,50 @@ execute:
   freeze: false
 ---
 
-## Introduction {.unnumbered}
+# Introduction
 
 ```{r}
 #| label: setup
 
 # If running code interactively in rstudio, set profile here
 # When rendering with quarto, profile is already set and should not be overwritten
-if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "default")}
-
-# Source general configurations (always)
-source("R/general_configuration.R")
-
-# Source required R functions
-source("R/functions_util.R")
-source("R/functions_io.R")
+if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "scrnaseq")}
 
 # Load libraries
+library(knitr)
 library(magrittr)
-suppressMessages(library(Seurat))
+library(gt)
+library(Seurat)
+library(ggplot2)
+library(future)
 
 # Get module name and directory (needed to access files within the module directory)
-module_name = param("module")
-module_dir = file.path("modules", module_name)
+module_name = params$module_name
+module_dir = params$module_dir
 ```
 
-This main page ...
+## Scientific project
 
-**Important**: When starting a project, please fill out the details in the next section. Furthermore, use the section to track all tasks.
-Test
+For this tutorial, we analyzed two datasets of Peripheral Blood Mononuclear Cells (PBMC) freely available from 10X Genomics.
 
-## Scientific project {.unnumbered}
-
-#### Description {.unnumbered}
-
-For this tutorial, we will be analyzing two datasets of Peripheral Blood Mononuclear Cells (PBMC) freely available from 10X Genomics.
-
--   two datasets, 1k and 5k cells
-
+-   Two datasets, 1k and 5k cells
 -   10x 3' assay
+-   Blood cells
 
--   blood cells
-
-#### Questions {.unnumbered}
+Questions
 
 -   How many clusters do we find?
-
 -   What are the most abundant cell types?
-
 -   How many T-cells do we find?
 
-#### TODOs {.unnumbered}
+## Analysis
 
--   ~~Rerun clustering with relaxed parameter~~
+### About
 
--   Map clusters to common cell types
+This HTML report is generated with [scrnaseq2](https://github.com/dcgc-bfx/scrnaseq2). It is a bioinformatics workflow to analyze single-cell data, and it is written by the bioinformatics team of the DRESDEN-concept Genome Center. It follows best practices recommendations [@Luecken_2019; @Heumos_2023] and contains additional visualizations, tables and documentation for a better understanding. The workflow is written in R and is largely based on the [Seurat v5](https://satijalab.org/seurat/) R package.
 
--   Find DEGs
+For more information, visit our [GitHub page](https://github.com/dcgc-bfx/scrnaseq2). If you are happy with the analysis, you can help us by rewarding the workflow with a star on GitHub.
 
-## Content {.unnumbered}
+### How to cite
 
-## Common questions {.unnumbered}
-
--   Common question1
--   Common question2
--   Common question3
-
-## About the workflow {.unnumbered}
-
-[**scrnaseq**](https://github.com/ktrns/scrnaseq) contains bioinformatics workflows for the analysis for single-cell data. The workflows are written in R and largely based on the R package Seurat. They follow best practices recommendations [@Luecken_2019; @Heumos_2023] and contain additional visualisations, tables and documentation to better understand the analysis. They support single-cell data from one or more samples processed with 10X Genomics, SmartSeq, Parse Biosciences and Scale Bio.
-
-The workflow generates an extensive HTML report. Are you curious about what that looks like and if it would be useful for your own data? If so, you can download the GitHub repository and open scrnaseq.html. This report has been generated for test data as mentioned below.
-
-If you are a researcher, and you would like to start analysing your own data, the workflow can be your starting point. If you work in a bioinformatics core facility and frequently support other researchers with bioinformatics analyses, the workflow can be run in a standardised fashion both interactively in Rstudio and on command line. We typically first run the workflow with default parameters, and communicate with our collaborators. We then optimise the parameters in further rounds to improve the results.
-
-## How to run {.unnumbered}
-
-Do this to run it by yourself.
-
-## How to cite {.unnumbered}
-
-If scrnaseq was used to analyse single-cell data that is part of your publication, please cite it by mentioning the Dresden-concept Genome Center URL "https://genomecenter.tu-dresden.de". ZENODO!
+If [scrnaseq2](https://github.com/dcgc-bfx/scrnaseq2) was used to analyze your data, please cite it by mentioning the DRESDEN-concept Genome Center URL "https://genomecenter.tu-dresden.de". (TODO: Zenodo!)
