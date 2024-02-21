@@ -12,7 +12,7 @@ params:
   prev_module_dir: null
   
   # Default assay.
-  default_assay: "RNA"
+  default_assay: null
 
   # Thresholds to define marker genes; only genes expressed in at least N%% of cells in each group are tested
   marker_pct: 0.25
@@ -142,11 +142,11 @@ Seurat::DefaultAssay(sc) = default_assay
 
 ## Marker genes
 
-We next identify genes that are differentially expressed in one cluster compared to all other clusters, based on raw `r params$default_assay` data and the method "MAST". Resulting *p*-values are adjusted using the Bonferroni method. However, note that the *p*-values are likely inflated, since both clusters and marker genes were determined based on the same gene expression data, and there ought to be gene expression differences by design. Nevertheless, *p*-values can be used to sort and prioritize marker genes. 
+We next identify genes that are differentially expressed in one cluster compared to all other clusters. Resulting *p*-values are adjusted using the Bonferroni method. However, note that the *p*-values are likely inflated, since both clusters and marker genes were determined based on the same gene expression data, and there ought to be gene expression differences by design. Nevertheless, *p*-values can be used to sort and prioritize marker genes. 
 
 ::: {.callout-note}
 
-We require marker genes to be expressed in at least `r param("marker_pct") * 100`% of cells in the respective cluster, with a minimum log2 fold change of `r param("marker_log2FC")` and an adjusted p-value of at most `r param("marker_padj")`. The names of cluster markers, alongside statistical measures and additional gene annotation are written to file.
+We require marker genes to be expressed in at least `r param("marker_pct") * 100`% of cells in the respective cluster, with a minimum log2 fold change of `r param("marker_log2FC")`. The names of cluster markers, alongside statistical measures and additional gene annotation are written to file.
 
 :::
 
@@ -176,7 +176,7 @@ markers = SeuratWrappers::RunPrestoAll(object=sc,
                                        only.pos=FALSE,
                                        min.pct=param("marker_pct"),
                                        logfc.threshold=param("marker_log2FC"),
-                                       latent.vars=param("latend_vars"),
+                                       latent.vars=param("latent_vars"),
                                        verbose=FALSE)
 
 # If no markers were found, initialize the table so that further downstream chunks run
@@ -219,7 +219,7 @@ We use the term "markers" to specifically describe features that are up-regulate
 ```{r}
 #| label: cluster_annotation_markers_table 
 #| eval: !expr markers_found
-#| tbl-cap: "Up to top 5 markers per cluster"
+#| tbl-cap: "Top markers per cluster"
 
 if (markers_found) {
   markers_top = DegsUpDisplayTop(markers_filt$up, n=5)
