@@ -417,11 +417,10 @@ if (length(integration_methods) > 0 & num_datasets > 1) {
 
 # Join layers. Dataset layers are automatically dropped unless there is only one dataset (in which case we need to do it)
 layer_counts = SeuratObject::Layers(sc, search="^counts")
-sc = SeuratObject::JoinLayers(sc, layers=layer_counts, new="counts")
-if (length(layer_counts) == 1) SeuratObject::LayerData(sc, layer=layer_counts) = NULL
-
 layer_data = SeuratObject::Layers(sc, search="^data")
-sc = SeuratObject::JoinLayers(sc, layers=layer_data, new="data")
+
+sc = SeuratObject::JoinLayers(sc)
+if (length(layer_counts) == 1) SeuratObject::LayerData(sc, layer=layer_counts) = NULL
 if (length(layer_data) == 1) SeuratObject::LayerData(sc, layer=layer_data) = NULL
 ```
 
