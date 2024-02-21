@@ -24,7 +24,7 @@ params:
   latent_vars: null 
   
   # Known markger genes
-  file_known_markers: "known_markers.xlsx"
+  file_known_markers: null
 
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. 
   # Computations will access only the relevant parts of the data. 
@@ -360,7 +360,13 @@ Do cells in individual clusters express provided known marker genes?
 #| label: cluster_annotation_known_markers
 #| results: asis
 
-if (!is.null(param("file_known_markers"))) {
+file_known_markers = param("file_known_markers")
+known_markers_list = list()
+known_markers_n = 0
+known_markers_vect = 0
+idx_dotplot = c()
+
+if (!is.null(file_known_markers)) {
 
   # Fetch annotation for default assay 
   annot = sc[[default_assay]][[]] %>% dplyr::select(dplyr::starts_with("ensembl_"))
