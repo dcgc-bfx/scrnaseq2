@@ -19,24 +19,28 @@ DegsSort = function(degs, group=NULL) {
 #' 
 #' @param degs Result table of the "Seurat::FindAllMarkers" or the "Seurat::FindMarkers" functions.
 #' @param cut_log2FC Log2 fold change threshold.
-#' @param cut_padj Adjusted p-value threshold.
+#' @param cut_padj Adjusted p-value threshold; not advised for filtering markers
 #' @param split_by_dir Split filtered table into a table with all degs, a table with up-regulated degs and a table down-regulated degs.
 #' @return If split_by_dir is set to FALSE filtered table else list of filtered tables with all, up-regulated and down-regulated degs.
-DegsFilter = function(degs, cut_log2FC, split_by_dir=TRUE) { 
+DegsFilter = function(degs, cut_log2FC, cut_padj=NULL, split_by_dir=TRUE) { 
   
   # Filter differentially expressed genes based on fold change 
   filt = degs %>% 
     dplyr::filter(abs(avg_log2FC) >= cut_log2FC) %>% 
     as.data.frame()
   
+  # Filter based on p-values 
+  if (!is.null(cut_padj)) {
+    filt = filt %>%
+      dplyr::filter(p_val_adj <= cut_padj)  
+  }
+  
   # Separate up- and down-regulated genes if requested
   if (split_by_dir) {
     down = filt %>% 
-      dplyr::filter(avg_log2FC <= -cut_log2FC) %>% 
-      as.data.frame()
+      dplyr::filter(avg_log2FC <= -cut_log2FC)
     up = filt %>% 
-      dplyr::filter(avg_log2FC >= cut_log2FC) %>% 
-      as.data.frame()
+      dplyr::filter(avg_log2FC >= cut_log2FC)
     filt = list(all=filt, up=up, down=down)
   }
   
