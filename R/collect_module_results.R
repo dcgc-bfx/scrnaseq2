@@ -17,9 +17,6 @@ split_path = function(x) {
 quarto_output_files = Sys.getenv("QUARTO_PROJECT_OUTPUT_FILES")
 quarto_project_output_dir = Sys.getenv("QUARTO_PROJECT_OUTPUT_DIR")
 
-#quarto_output_files = "_book\\index.html\n_book\\modules\\read_data\\read_data.html\n_book\\modules\\visualisation\\visualisation.html"
-
-
 if (nchar(quarto_output_files) > 0 & nchar(quarto_project_output_dir) > 0) {
   quarto_output_files = stringi::stri_split_lines(quarto_output_files, omit_empty=TRUE) %>% unlist()
 
@@ -27,18 +24,15 @@ if (nchar(quarto_output_files) > 0 & nchar(quarto_project_output_dir) > 0) {
   modules_rendered = purrr::map(quarto_output_files, function(f) {
     m = NULL
     
+    # Split path and check whether it was produced as part of a module
     f = split_path(f)
     i = which(f == "modules")
-    if (length(i) > 0) {
-      i = i[1]
-      if (length(f) > i) {
-        d = do.call(file.path, as.list(f[1:(i+1)]))
-        if (dir.exists(d)) {
-          m = f[i+1]
-        }
-      }
-    }
+    if (length(i) == 0) return(NULL)
+    i = i[1]
+    j = length(f) - 1
     
+    # Return the path to the module directory
+    m = do.call(file.path, as.list(f[i:j]))
     return(m)
   }) %>% purrr::flatten_chr() %>% unique()
   
@@ -47,16 +41,21 @@ if (nchar(quarto_output_files) > 0 & nchar(quarto_project_output_dir) > 0) {
   unlink(results_dir, recursive=TRUE)
   dir.create(results_dir, showWarnings=FALSE)
   
+  # Make 'figures' directory
+  figures_dir = file.path(results_dir, "figures")
+  dir.create(figures_dir, showWarnings=FALSE)
+  
   # Now copy files located in the 'results'  directories of the rendered modules
-  for (module in modules_rendered) {
-    module_results_files = list.files(file.path("modules", module, "results"), full.names=TRUE)
-    module_results_dir = file.path(results_dir, module)
-    
+  # Also copy figures
+  for (m in modules_rendered) {
+    module_results_files = list.files(file.path(m, "results"), full.names=TRUE)
     if (length(module_results_files) > 0) {
-      dir.create(module_results_dir)
-      file.copy(module_results_files, module_results_dir, recursive=TRUE)
+      for(f in module_results_files) file.copy(f, results_dir, recursive=TRUE)
+    }
+    
+    module_figures_files = list.files(file.path(quarto_project_output_dir, m), full.names=TRUE, pattern="(png|pdf)$", recursive=TRUE)
+    if (length(module_figures_files) > 0) {
+      for(f in module_figures_files) file.copy(f, figures_dir)
     }
   }
-  
-
 }

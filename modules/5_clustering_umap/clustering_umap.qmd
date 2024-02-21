@@ -465,26 +465,7 @@ for (i in names(plist)) {
 cat(":::\n")
 ```
 
-## Output file
-
-```{r}
-#| label: clustering_save_seurat
-
-# If sketching was used, revert back to non-sketched assay
-if (use_sketching) {
-  SeuratObject::DefaultAssay(sc) = default_assay
-}
-
-# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-assignInNamespace("SaveSeuratRds", SaveSeuratRds_Fixed, ns="SeuratObject")
-
-# Save Seurat object and layer data
-with_progress({
-  SaveSeuratRdsWrapper(sc,
-                       on_disk_layers=on_disk_counts,
-                       outdir=file.path(module_dir, "sc"))
-}, enable=verbose)
-```
+## Output
 
 ### Dimensionality reduction
 
@@ -517,13 +498,32 @@ openxlsx::write.xlsx(x=sc[["seurat_clusters"]], file=file.path(module_dir, "resu
 CalloutBox("The default clustering is written to {outfile}.", type="note")
 ```
 
-### Software
+## Software
 
 ```{r}
 #| label: clustering_save_software
 
 sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
 gt(sessioninfo)
+```
+
+```{r}
+#| label: clustering_save_seurat
+
+# If sketching was used, revert back to non-sketched assay
+if (use_sketching) {
+  SeuratObject::DefaultAssay(sc) = default_assay
+}
+
+# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+assignInNamespace("SaveSeuratRds", SaveSeuratRds_Fixed, ns="SeuratObject")
+
+# Save Seurat object and layer data
+with_progress({
+  SaveSeuratRdsWrapper(sc,
+                       on_disk_layers=on_disk_counts,
+                       outdir=file.path(module_dir, "sc"))
+}, enable=verbose)
 ```
 
 ```{r}
