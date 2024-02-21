@@ -153,6 +153,8 @@ The following datasets are defined:
 datasets_file = param("datasets_file")
 datasets = ReadDatasetsTable(datasets_file)
 
+#datasets = datasets[1,]
+
 for (i in 1:nrow(datasets)) {
   # Required columns
   assertthat::assert_that(!is.na(datasets$sample[i]),
@@ -740,6 +742,10 @@ for(i in seq_along(assay_counts_lst)) {
 
 # Create Seurat default assay object
 assay_obj = SeuratObject::CreateAssay5Object(counts=assay_counts_lst)
+if (length(assay_counts_lst) == 1) {
+  n = names(assay_counts_lst)
+  assay_obj = split(assay_obj, rep(n, ncol(assay_obj)))
+}
 rownames(assay_obj@meta.data) = rownames(assay_obj)
 
 # Add to Seurat default assay object
@@ -790,6 +796,10 @@ for(a in setdiff(all_assays, default_assay)) {
   
   # Create Seurat default assay object
   assay_obj = SeuratObject::CreateAssay5Object(counts=assay_counts_lst)
+  if (length(assay_counts_lst) == 1) {
+    n = names(assay_counts_lst)
+    assay_obj = split(assay_obj, rep(n, ncol(assay_obj)))
+  }
   rownames(assay_obj@meta.data) = rownames(assay_obj)
 
   # Add to Seurat default assay object
