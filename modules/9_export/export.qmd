@@ -1,0 +1,303 @@
+---
+# Module-specific parameters (that are not already in the profile yaml)
+# Defaults
+params:
+  # Name of the module used in configurations
+  module: "export"
+    
+  # Relative path to the module directory (which contains the qmd file)
+  module_dir: "modules/9_export"
+
+  # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
+  # NOTE: Change to null if all modules are implemented and sc objects are written
+  prev_module_dir: null
+  
+  # Default assay
+  default_assay: null
+
+  # For large datasets: Do not keep counts in memory but store on disk in matrix directories. 
+  # Computations will access only the relevant parts of the data. 
+  # Once done, matrix directories will be saved together with the Seurat object in the module directory.
+  on_disk_counts: true
+  
+  # For large datasets: Copy matrix directories to a temporary directory for computations. 
+  # This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). 
+  # Once done, matrix directories will be copied back to the module directory. 
+  # The temporary directory will be deleted once the R session exists.
+  on_disk_use_tmp: true
+  
+  # Export results into Loupe Cell Browser format. Only the default assay will be used.
+  export_loupe: true
+  
+  # When exporting into Loupe Cell Browser format, write normalized counts instead of raw counts.
+  # If true raw counts are written else normalized counts are written.
+  export_loupe_normalized: false
+  
+  # Export results into h5ad format for cellxgene. Only the default assay will be used.
+  export_cellxgene: true
+  
+  # Export Seurat object.
+  export_sc: true
+  
+  # When exporting the Seurat object, convert on-disk layers to in-memory layers.
+  # If true on-disk layers are included into the Seurat object else they are kept on-disk.
+  export_sc_on_disk: false
+  
+  # Number of cores to use for computations
+  cores: 4
+  
+# Module execution
+execute:
+  # Should this module be frozen and never re-rendered?
+  # - auto: if the code has not changed (default)
+  # - true/false: freeze/re-render
+  # Does not apply in interactive mode or when explicitly rendering this document via in rstudio
+  freeze: auto
+---
+
+# Export data
+
+```{r}
+#| label: setup
+
+# If running code interactively in rstudio, set profile here
+# When rendering with quarto, profile is already set and should not be overwritten
+if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "scrnaseq")}
+
+# Load libraries
+library(knitr)
+library(magrittr)
+library(gt)
+library(Seurat)
+library(ggplot2)
+library(future)
+library(patchwork)
+
+# Get module name and directory (needed to access files within the module directory)
+module_name = params$module_name
+module_dir = params$module_dir
+```
+
+```{r}
+#| label: export_preparation
+
+# CODE
+# Working directory is automatically back to scrnaseq2 at this point
+# Source general configurations (always)
+source("R/general_configuration.R")
+
+# Source required R functions
+source("R/functions_util.R")
+source("R/functions_io.R")
+source("R/functions_plotting.R")
+source("R/functions_analysis.R")
+
+# Be verbose or not
+verbose = param("verbose")
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=param("cores"))
+
+# DIRECTORIES
+# Module directory 'results' contains all output that should be provided together with the final report of the project
+dir.create(file.path(module_dir, "results"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "results"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+# Module directory 'sc' contains the final Seurat object
+dir.create(file.path(module_dir, "sc"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "sc"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+# SEURAT OBJECT
+# Read in seurat object
+if (!is.null(param("prev_module_dir"))) {
+  prev_module_dir = param("prev_module_dir")
+} else {
+  prev_module_dir = PreviousModuleDir(module_dir)
+}
+prev_sc_obj = file.path(prev_module_dir, "sc", "sc.rds")
+if(!file.exists(prev_sc_obj)) {
+  stop(FormatString("Could not find a sc.rds file in {{prev_module_dir}}. Was the respective module already run?"))
+}
+sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
+
+# Move on-disk layers to faster temp location if requested
+on_disk_counts = param("on_disk_counts")
+on_disk_use_tmp = param("on_disk_use_tmp")
+
+if (on_disk_counts & on_disk_use_tmp) {
+  on_disk_path = tempdir()
+  with_progress({
+    sc = UpdateMatrixDirs(sc, dir=on_disk_path)
+  }, enable=verbose)
+} else {
+  on_disk_path = file.path(module_dir, "sc")
+}
+
+# Set default assay standard
+default_assay = param("default_assay")
+if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
+Seurat::DefaultAssay(sc) = default_assay
+
+# What do we export
+export_loupe = param("export_loupe")
+export_loupe_normalized = param("export_loupe_normalized")
+export_cellxgene = param("export_cellxgene")
+export_sc = param("export_sc")
+sc_convert_on_disk = param("sc_convert_on_disk")
+```
+
+## Loupe Cell Browser
+
+The Loupe Cell Browser is a powerful tool to explore single cell data. It allows you to visualize the data in a variety of ways. For download, please visit the [10x Genomics website](https://support.10xgenomics.com/single-cell-gene-expression/software/visualization/latest/what-is-loupe-cell-browser). There are also several tutorials available on the website.
+
+Results of the analysis are exported into a format that can be read by the Loupe Cell Browser. This includes the raw counts, categorial data per cell and vizualisations like UMAP. 
+
+```{r}
+#| label: export_loupe
+#| eval: !expr export_loupe
+#| include: !expr export_loupe
+#| results: asis
+
+# Create a cloupe file for the Loupe Cell Browser
+
+if (export_loupe) {
+  # Setup eula and download executable for loupeR.
+  # Needs to be done only once but cannot be done automatically.
+  louper_status = loupeR:::needs_setup()
+  if (!louper_status$success) stop(louper_status$msg)
+  
+  # Get counts and convert to sparse matrix if necessary
+  counts = SeuratObject::GetAssayData(sc, assay=default_assay, layer=ifelse(export_loupe_normalized, "data", "counts"))
+  counts = as(counts, "dgCMatrix")
+  
+  # Get clusters and other categories
+  categorial_data = list(active_cluster = Seurat::Idents(sc))
+  categories_to_export = setdiff(colnames(sc[[]]), "orig.barcode")
+  for (name in categories_to_export) {
+    data = sc[[]][,name]
+    if (is.factor(data)) {
+      categorial_data[[name]] = data
+    } else if (is.character(data)) {
+      categorial_data[[name]] = factor(data)
+    }
+  }
+  
+  # Get embeddings
+  embeddings = list()
+  name = DefaultVisualization(sc, assay=default_assay)
+  embeddings[[name]] = sc[[name]]@cell.embeddings
+  
+  # Seurat object version
+  seurat_obj_version = NULL
+  if (!is.null(sc@version)) seurat_obj_version = as.character(sc@version)
+  
+  # Create loupe
+  success = loupeR::create_loupe(counts, 
+                         clusters=categorial_data,
+                         projections=embeddings,
+                         output_dir=file.path(module_dir, "results"),
+                         output_name="scrnaseq2",
+                         force=TRUE,
+                         seurat_obj_version=seurat_obj_version)
+  
+  CalloutBox("The loupe file is: 'scrnaseq2.cloupe'.", type="note")
+  
+} else {
+  CalloutBox("The loupe file was not produced.", type="note")
+}
+```
+
+## Cellxgene
+
+Cellxgene is a web-based tool to explore single cell data. For download, please visit the [cellxgene website](https://cellxgene.cziscience.com/docs/01__CellxGene).
+
+Results of the analysis are exported into a format that can be read by cellxgene. This includes the normalized counts, categorial data per cell and vizualisations.
+
+```{r}
+#| label: export_cellxgene
+#| eval: !expr export_loupe
+#| include: !expr export_loupe
+#| results: asis
+
+# Create an adata.h5ad file for cellxgene
+if (export_cellxgene) {
+  
+  # Use only default assay, drop all other
+  adata = sc
+  assays_to_drop = setdiff(SeuratObject::Assays(adata), default_assay)
+  for(a in assays_to_drop) adata[[a]] = NULL
+  
+  # Convert back to old Seurat assay format
+  adata[["tmp"]] = as(object = adata[[default_assay]], Class = "Assay")
+  SeuratObject::DefaultAssay(adata) = "tmp"
+  adata[[default_assay]] = NULL
+  adata = SeuratObject::RenameAssays(adata, tmp=default_assay)
+  adata$orig_barcode = NULL
+  
+  # Convert Seurat single cell object to python anndata object which will be accessible via reticulate here
+  adata = sceasy::convertFormat(adata, from="seurat", to="anndata", outFile=NULL, assay=default_assay)
+  
+  # Set up correct colours (see https://chanzuckerberg.github.io/cellxgene/posts/prepare) so that colours match
+  colour_lists = SeuratObject::Misc(sc, "colour_lists")
+  colour_lists = purrr::map(colour_lists, function(l) {
+    l = reticulate::np_array(unname(l), dtype="<U7")
+    return(l)
+  })
+  names(colour_lists) = paste0(names(colour_lists), "_colors")
+  adata$uns = reticulate::dict(colour_lists)
+  
+  # Write to h5ad file
+  adata$write(file.path(module_dir, "results", "cellxgene.h5ad"), compression="gzip")
+
+  CalloutBox("The cellxgene file is: 'cellxgene.h5ad'.", type="note")
+  
+} else {
+  CalloutBox("The cellxgene file was not produced.", type="note")
+}
+```
+
+## Seurat object
+
+To facilitate further analysis, the Seurat object is exported. When counts are stored on disk, they will be exported as well. Alternatively, they can also be included in the Seurat object.
+
+```{r}
+#| label: export_sc
+#| results: asis
+
+# Export Seurat object
+if (export_sc) {
+  # This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+  assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
+
+  # Save Seurat object and layer data
+  dir.create(file.path(module_dir, "results", "sc"), showWarnings=FALSE)
+  with_progress({
+    SaveSeuratRdsWrapper(sc,
+                         on_disk_layers=on_disk_counts,
+                         outdir=file.path(module_dir, "results", "sc"),
+                         relative=TRUE)
+  }, enable=verbose)
+  
+    CalloutBox("The Seurat object was exported to: 'sc/sc.rds' (there might be on-disk directories as well).", type="note")
+} else {
+  CalloutBox("The Seurat object was not exported.", type="note")
+}
+```
+
+## Software
+
+```{r}
+#| label: export_save_software
+
+sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
+gt(sessioninfo)
+```
+
+```{r}
+#| label: export_finish
+
+# Stop multisession workers
+plan(sequential)
+```
