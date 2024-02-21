@@ -947,7 +947,7 @@ if (!is.null(ensembl_column) & !is.null(ensembl_version)) {
                                           mart_attributes2=c(ensembl_id2="ensembl_gene_id", 
                                                             ensembl_symbol2="external_gene_name"),
                                           useCache=TRUE)
-    seurat_g2m_genes = seurat_s_genes %>% dplyr::filter(one_to_one == TRUE) %>% dplyr::pull(ensembl_id2)
+    seurat_g2m_genes = seurat_g2m_genes %>% dplyr::filter(one_to_one == TRUE) %>% dplyr::pull(ensembl_id2)
   } else {
     # Fetch ids via Ensembl
     seurat_s_genes = EnsemblFetchGeneInfo(ids=seurat_s_genes,
@@ -1060,6 +1060,15 @@ CalloutBox("Metadata are written to {outfile}.", type="note")
 
 sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
 gt(sessioninfo)
+```
+
+## Parameter
+
+```{r}
+#| label: read_data_save_parameter  
+
+paraminfo = ScrnaseqParamsInfo(param()) %>% as.data.frame()
+gt(paraminfo)
 ```
 
 ```{r}

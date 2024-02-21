@@ -357,7 +357,7 @@ normalization_method = param("normalization_method")
 num_datasets = length(SeuratObject::Layers(sc, assay=default_assay, search="^counts"))
 first_reduct = NULL
 
-if (length(integration_methods) > 0 & num_datasets > 0) {
+if (length(integration_methods) > 0 & num_datasets > 1) {
   # Integration requested and necessary
   
   # Note: Seurat::RPCAIntegration is bugged. 
@@ -403,30 +403,33 @@ if (length(integration_methods) > 0 & num_datasets > 0) {
     }
   }
   
-  # Join layers
-  sc = SeuratObject::JoinLayers(sc)
-  
   # Message
   CalloutBox("Datasets have been integrated with the following methods: {integration_methods*}!", type="note")
   
 } else if (length(integration_methods) == 0 & num_datasets > 1) {
-  # Join layers
-  sc = SeuratObject::JoinLayers(sc)
-  
-# Integration not requested (just merge)
+  # Integration not requested (just merge)
   CalloutBox("Datasets are simply merged and no integration is done!", type="note")
   
 } else if (num_datasets == 1) {
   # Integration not necessary
   CalloutBox("There is only one dataset so that integration is not neccessary.", type="note")
 }
+
+# Join layers. Dataset layers are automatically dropped unless there is only one dataset (in which case we need to do it)
+layer_counts = SeuratObject::Layers(sc, search="^counts")
+sc = SeuratObject::JoinLayers(sc, layers=layer_counts, new="counts")
+if (length(layer_counts) == 1) SeuratObject::LayerData(sc, layer=layer_counts) = NULL
+
+layer_data = SeuratObject::Layers(sc, search="^data")
+sc = SeuratObject::JoinLayers(sc, layers=layer_data, new="data")
+if (length(layer_data) == 1) SeuratObject::LayerData(sc, layer=layer_data) = NULL
 ```
 
 ```{r}
 #| label: dimensionality_reduction_rna_integration_plots
 #| results: asis
-#| eval: !expr length(integration_methods) > 0 & num_datasets > 0
-#| include: !expr length(integration_methods) > 0 & num_datasets > 0
+#| eval: !expr length(integration_methods) > 0 & num_datasets > 1
+#| include: !expr length(integration_methods) > 0 & num_datasets > 1
 #| echo: false
 
 
@@ -516,6 +519,15 @@ CalloutBox("The default reduction {default_reduct} for the default assay {defaul
 
 sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
 gt(sessioninfo)
+```
+
+## Parameter
+
+```{r}
+#| label: read_data_save_parameter  
+
+paraminfo = ScrnaseqParamsInfo(param()) %>% as.data.frame()
+gt(paraminfo)
 ```
 
 ```{r}

@@ -740,6 +740,10 @@ for(i in seq_along(assay_counts_lst)) {
 
 # Create Seurat default assay object
 assay_obj = SeuratObject::CreateAssay5Object(counts=assay_counts_lst)
+if (length(assay_counts_lst) == 1) {
+  n = names(assay_counts_lst)
+  assay_obj = split(assay_obj, rep(n, ncol(assay_obj)))
+}
 rownames(assay_obj@meta.data) = rownames(assay_obj)
 
 # Add to Seurat default assay object
@@ -790,6 +794,10 @@ for(a in setdiff(all_assays, default_assay)) {
   
   # Create Seurat default assay object
   assay_obj = SeuratObject::CreateAssay5Object(counts=assay_counts_lst)
+  if (length(assay_counts_lst) == 1) {
+    n = names(assay_counts_lst)
+    assay_obj = split(assay_obj, rep(n, ncol(assay_obj)))
+  }
   rownames(assay_obj@meta.data) = rownames(assay_obj)
 
   # Add to Seurat default assay object
@@ -1159,6 +1167,15 @@ CalloutBox("Feature annotation for the default assay {default_assay} is written 
 
 sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
 gt(sessioninfo)
+```
+
+## Parameter
+
+```{r}
+#| label: read_data_save_parameter  
+
+paraminfo = ScrnaseqParamsInfo(param()) %>% as.data.frame()
+gt(paraminfo)
 ```
 
 ```{r}

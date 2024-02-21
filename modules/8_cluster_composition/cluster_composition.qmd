@@ -195,6 +195,15 @@ sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
 gt(sessioninfo)
 ```
 
+## Parameter
+
+```{r}
+#| label: read_data_save_parameter  
+
+paraminfo = ScrnaseqParamsInfo(param()) %>% as.data.frame()
+gt(paraminfo)
+```
+
 ```{r}
 #| label: cluster_composition_save_seurat
 

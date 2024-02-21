@@ -225,13 +225,17 @@ While raw data is typically used for statistical tests such as finding marker ge
 
 normalization_method = param("normalization_method")
 num_variable_features = param("num_variable_features")
+layer_counts = SeuratObject::Layers(sc, search="^counts")
+layer_data = gsub(pattern="^counts", replacement="data", x=layer_counts)
 
 # Do normalization
 if (normalization_method == "lognorm") {
   # Run log normalization
   sc = Seurat::NormalizeData(sc, 
                              normalization.method="LogNormalize", 
-                             verbose=verbose)
+                             verbose=verbose,
+                             layer=layer_counts,
+                             save=layer_data)
   
   CalloutBox("Seurat log normalization was applied.", type="note")
   
@@ -239,8 +243,8 @@ if (normalization_method == "lognorm") {
   # Run scran normalization
   with_progress({
     sc = NormalizeDataScran(sc, 
-                            layer="counts", 
-                            save="data",
+                            layer=layer_counts, 
+                            save=layer_data,
                             chunk_size=50000)
   }, enable=verbose)
   
@@ -252,6 +256,7 @@ if (normalization_method == "lognorm") {
   sc = SCTransform(sc,
                    assay=Seurat::DefaultAssay(sc),
                    new.assay.name=sct_assay_name,
+                   layers=layer_counts,
                    vst.flavor="v2",
                    variable.features.n=num_variable_features,
                    vars.to.regress=vars_to_regress,
@@ -576,6 +581,15 @@ if (use_sketching) {
 
 sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
 gt(sessioninfo)
+```
+
+## Parameter
+
+```{r}
+#| label: read_data_save_parameter  
+
+paraminfo = ScrnaseqParamsInfo(param()) %>% as.data.frame()
+gt(paraminfo)
 ```
 
 ```{r}
