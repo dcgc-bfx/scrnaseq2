@@ -153,8 +153,6 @@ The following datasets are defined:
 datasets_file = param("datasets_file")
 datasets = ReadDatasetsTable(datasets_file)
 
-#datasets = datasets[1,]
-
 for (i in 1:nrow(datasets)) {
   # Required columns
   assertthat::assert_that(!is.na(datasets$sample[i]),
