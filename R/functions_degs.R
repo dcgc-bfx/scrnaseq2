@@ -22,15 +22,14 @@ DegsSort = function(degs, group=NULL) {
 #' @param cut_padj Adjusted p-value threshold.
 #' @param split_by_dir Split filtered table into a table with all degs, a table with up-regulated degs and a table down-regulated degs.
 #' @return If split_by_dir is set to FALSE filtered table else list of filtered tables with all, up-regulated and down-regulated degs.
-DegsFilter = function(degs, cut_log2FC, cut_padj, split_by_dir=TRUE) { 
+DegsFilter = function(degs, cut_log2FC, split_by_dir=TRUE) { 
   
-  # Filter differentially expressed genes based on p-value and fold change 
+  # Filter differentially expressed genes based on fold change 
   filt = degs %>% 
-    dplyr::filter(p_val_adj <= cut_padj) %>% 
     dplyr::filter(abs(avg_log2FC) >= cut_log2FC) %>% 
     as.data.frame()
   
-  # Separate up- and down-regulated genes (if split_by_dir is TRUE)
+  # Separate up- and down-regulated genes if requested
   if (split_by_dir) {
     down = filt %>% 
       dplyr::filter(avg_log2FC <= -cut_log2FC) %>% 
@@ -112,43 +111,6 @@ DegsAvgDataPerIdentity = function(sc, genes, assay="RNA") {
   return(avg_data)
 }
 
-
-#' #' Compute average gene expression data per identity class for a set of genes. (ORIGINAL)
-#' #' 
-#' #' @param sc Seurat object.
-#' #' @param genes Gene list for which average data are to be extracted.
-#' #' @return A table with average RNA counts and data per identity class for each gene.
-#'   # The standard average log FC is derived from assay and slot="data"
-#'   # Add average scaled data per cluster for default assay
-#'   avg_set = list()
-#'   avg_set[[assay]] = "counts"
-#'   avg_set[[DefaultAssay(sc)]] = c(avg_set[[DefaultAssay(sc)]], "data")
-#'   avg_data = matrix(NA+0, nrow=length(genes), ncol=0)
-#'   
-#'   identities = levels(Idents(sc))
-#'   for (as in names(avg_set)) { 
-#'     for (sl in avg_set[[as]]) {
-#'       if (length(genes) > 0) {
-#'         avg_per_id = mapply(function(id) { 
-#'           id_cells = WhichCells(sc, idents=id)
-#'           if (sl=="data") {
-#'             # This calculation is in accordance with what Seurat is doing
-#'             id_avg = log2(Matrix::rowMeans(exp(Seurat::GetAssayData(sc[, id_cells], assay=as, slot=sl)[genes, ])) + 1)
-#'           } else if (sl=="counts") {
-#'             id_avg = Matrix::rowMeans(Seurat::GetAssayData(sc[, id_cells], assay=as, slot=sl)[genes, ])
-#'           }
-#'           return(id_avg)
-#'         }, identities)
-#'       } else {
-#'         avg_per_id = matrix(NA, nrow=0, ncol=length(identities)) %>% as.data.frame()
-#'       }
-#'       colnames(avg_per_id) = paste0("avg_", as, "_", sl, "_id", identities)
-#'       avg_data = cbind(avg_data, avg_per_id)
-#'     }
-#'   }
-#'   return(avg_data)
-#' }
-
 #' Compute average gene expression data for a set of cells and a set of genes.
 #' 
 #' @param object Seurat assay object.
@@ -199,35 +161,27 @@ DegsAvgData = function(object, cells=NULL, genes=NULL, slot="data") {
 #' @param file Output file name.
 #' @param additional_readme A data.frame to describe additional columns. Should contain columns 'Column' and 'Description'. Can be NULL.
 #' @return Output file name.
-DegsWriteToFile = function(degs, annot_ensembl, gene_to_ensembl, file, additional_readme=NULL) {
+DegsWriteToFile = function(degs, annot_ensembl, file, additional_readme=NULL) {
   # Always use list and add annotation
   if (is.data.frame(degs)) degs_lst = list(All=degs) else degs_lst = degs
   
   # Add Ensembl annotation
   for (i in seq(degs_lst)) {
-    degs_ensembl = gene_to_ensembl[as.character(degs_lst[[i]]$gene)]
-    degs_lst[[i]] = cbind(degs_lst[[i]], annot_ensembl[degs_ensembl, ])
+    degs_lst[[i]] = cbind(degs_lst[[i]], annot_ensembl[as.character(degs_lst[[i]]$gene), ])
   }
   
   # Add README
   readme_table = data.frame(Column=c("p_val"), Description=c("Uncorrected p-value"))
-  readme_table = rbind(readme_table, c("avg_log2FC", "Mean log2 fold change group 1 vs group 2"))
-  readme_table = rbind(readme_table, c("pct.1", "Fraction cells expressing gene in group 1"))
-  readme_table = rbind(readme_table, c("pct.2", "Fraction cells expressing gene in group 2"))
-  readme_table = rbind(readme_table, c("p_val_adj", "Adjusted p-value"))
-  readme_table = rbind(readme_table, c("gene", "Gene"))
-  readme_table = rbind(readme_table, c("p_val_adj_score", "Score calculated as follows: -log10(p_val_adj)*sign(avg_log2FC)"))
-  readme_table = rbind(readme_table, c("avg.1", "Mean expression in group 1"))
-  readme_table = rbind(readme_table, c("avg.2", "Mean expression in group 2"))
-  readme_table = rbind(readme_table, c("ensembl_gene_id","Ensembl gene id (if available)"))
-  readme_table = rbind(readme_table, c("external_gene_name","Gene symbol (if available)"))
-  readme_table = rbind(readme_table, c("chromosome_name","Chromosome name of gene (if available)"))    
-  readme_table = rbind(readme_table, c("start_position","Start position of gene (if available)"))
-  readme_table = rbind(readme_table, c("end_position","End position of gene (if availablen)"))
-  readme_table = rbind(readme_table, c("percentage_gene_gc_content","GC content of gene (if available)"))
-  readme_table = rbind(readme_table, c("gene_biotype","Biotype of gene (if available)"))    
-  readme_table = rbind(readme_table, c("strand","Strand of gene (if available)"))
-  readme_table = rbind(readme_table, c("description","Description of gene (if available)"))
+  readme_table = rbind(readme_table, 
+                       c("avg_log2FC", "Mean log2 fold change group 1 vs group 2"),
+                       c("pct.1", "Fraction cells expressing gene in group 1"),
+                       c("pct.2", "Fraction cells expressing gene in group 2"),
+                       c("p_val_adj", "Adjusted p-value"),
+                       c("gene", "Gene"),
+                       c("cluster", "Cluster"),
+                       c("p_val_adj_score", "Score calculated as follows: -log10(p_val_adj)*sign(avg_log2FC)"),
+                       c("avg_RNA_counts_id1", "Average counts in group 1"),
+                       c("avg_RNA_data_id1", "Average normalized expression in group 1"))
   
   if (!is.null(additional_readme)) readme_table = dplyr::bind_rows(readme_table, additional_readme)
   
@@ -243,7 +197,7 @@ DegsWriteToFile = function(degs, annot_ensembl, gene_to_ensembl, file, additiona
 
 #' Plot the number of DEGs per test.
 #' 
-#' @param degs Result table of the "Seurat::FindAllMarkers" function.
+#' @param markers Result table of the "Seurat::FindAllMarkers" function.
 #' @param group Group results by column for plotting.
 #' @param title Plot title.
 #' @return A ggplot object.
@@ -266,7 +220,7 @@ DegsPlotNumbers = function(degs, group=NULL, title=NULL) {
     p = ggplot(degs_n, aes(x=Identity, y=n, fill=Direction)) + 
       geom_bar(stat="identity") +
       xlab(group) +
-      AddStyle(title=title,
+      AddPlotStyle(title=title,
                fill=setNames(c("steelblue", "darkgoldenrod1"), c("Down", "Up")))
     return(p)
   }
