@@ -29,7 +29,8 @@ params:
   # Export results into Loupe Cell Browser format. Only the default assay will be used.
   export_loupe: true
   
-  # When exporting into Loupe Cell Browser format, use normalized counts instead of raw counts.
+  # When exporting into Loupe Cell Browser format, write normalized counts instead of raw counts.
+  # If true raw counts are written else normalized counts are written.
   export_loupe_normalized: false
   
   # Export results into h5ad format for cellxgene. Only the default assay will be used.
@@ -39,6 +40,7 @@ params:
   export_sc: true
   
   # When exporting the Seurat object, convert on-disk layers to in-memory layers.
+  # If true on-disk layers are included into the Seurat object else they are kept on-disk.
   export_sc_on_disk: false
   
   # Number of cores to use for computations
