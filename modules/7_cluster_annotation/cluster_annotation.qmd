@@ -1,0 +1,566 @@
+---
+# Module-specific parameters (that are not already in the profile yaml)
+# Defaults
+params:
+  # Name of the module used in configurations
+  module: "cluster_annotation"
+    
+  # Relative path to the module directory (which contains the qmd file)
+  module_dir: "modules/7_cluster_annotation"
+  
+  # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
+  prev_module_dir: null
+  
+  # Default assay.
+  default_assay: null
+
+  # Thresholds to define marker genes; only genes expressed in at least N%% of cells in each group are tested
+  marker_pct: 0.25
+
+  # Thresholds to define marker genes; fold change
+  marker_log2FC: 0.25
+  
+  # Additional (unwanted) variables to account for in statistical tests 
+  latent_vars: null 
+  
+  # Known markger genes
+  file_known_markers: "known_markers.xlsx"
+
+  # For large datasets: Do not keep counts in memory but store on disk in matrix directories. 
+  # Computations will access only the relevant parts of the data. 
+  # Once done, matrix directories will be saved together with the Seurat object in the module directory.
+  on_disk_counts: true
+  
+  # For large datasets: Copy matrix directories to a temporary directory for computations. 
+  # This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). 
+  # Once done, matrix directories will be copied back to the module directory. 
+  # The temporary directory will be deleted once the R session exists.
+  on_disk_use_tmp: true
+  
+  # Number of cores to use for computations
+  cores: 4
+  
+# Module execution
+execute:
+  # Should this module be frozen and never re-rendered?
+  # - auto: if the code has not changed (default)
+  # - true/false: freeze/re-render
+  # Does not apply in interactive mode or when explicitly rendering this document via in rstudio
+  freeze: auto
+---
+
+# Cluster Annotation
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+# Note: Setup chunk changes working directory automatically to the folder of this qmd file
+
+# If running code interactively in rstudio, set profile here
+# When rendering with quarto, profile is already set and should not be overwritten
+if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "scrnaseq")}
+
+# Load libraries
+library(knitr)
+library(magrittr)
+library(gt)
+library(Seurat)
+library(ggplot2)
+library(future)
+library(patchwork)
+
+# Get module name and directory (needed to access files within the module directory)
+module_name = params$module_name
+module_dir = params$module_dir
+```
+
+```{r}
+#| label: cluster_annotation_preparation
+
+# CODE
+# Working directory is automatically back to scrnaseq2 at this point
+# Source general configurations (always)
+source("R/general_configuration.R")
+
+# Source required R functions
+source("R/functions_util.R")
+source("R/functions_io.R")
+source("R/functions_plotting.R")
+source("R/functions_analysis.R")
+source("R/functions_degs.R")
+
+# Be verbose or not
+verbose = param("verbose")
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=param("cores"))
+
+# DIRECTORIES
+# Module directory 'results' contains all output that should be provided together with the final report of the project
+dir.create(file.path(module_dir, "results"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "results"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+# Module directory 'sc' contains the final Seurat object
+dir.create(file.path(module_dir, "sc"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "sc"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+# SEURAT OBJECT
+# Read in seurat object
+if (!is.null(param("prev_module_dir"))) {
+  prev_module_dir = param("prev_module_dir")
+} else {
+  prev_module_dir = PreviousModuleDir(module_dir)
+}
+prev_sc_obj = file.path(prev_module_dir, "sc", "sc.rds")
+if(!file.exists(prev_sc_obj)) {
+  stop(FormatString("Could not find a sc.rds file in {{prev_module_dir}}. Was the respective module already run?"))
+}
+sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
+
+# Move on-disk layers to faster temp location if requested
+on_disk_counts = param("on_disk_counts")
+on_disk_use_tmp = param("on_disk_use_tmp")
+
+if (on_disk_counts & on_disk_use_tmp) {
+  on_disk_path = tempdir()
+  with_progress({
+    sc = UpdateMatrixDirs(sc, dir=on_disk_path)
+  }, enable=verbose)
+} else {
+  on_disk_path = file.path(module_dir, "sc")
+}
+
+# Set default assay standard
+default_assay = param("default_assay")
+if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
+Seurat::DefaultAssay(sc) = default_assay
+```
+
+## Marker genes
+
+We next identify genes that are differentially expressed in one cluster compared to all other clusters. Resulting *p*-values are adjusted using the Bonferroni method. However, note that the *p*-values are likely inflated, since both clusters and marker genes were determined based on the same gene expression data, and there ought to be gene expression differences by design. Nevertheless, *p*-values can be used to sort and prioritize marker genes. 
+
+::: {.callout-note}
+
+We require marker genes to be expressed in at least `r param("marker_pct") * 100`% of cells in the respective cluster, with a minimum log2 fold change of `r param("marker_log2FC")`. The names of cluster markers, alongside statistical measures and additional gene annotation are written to file.
+
+:::
+
+::: {.callout-tip title="What are marker genes?" collapse="true"}
+
+As described above, cell clusters approximate cell types and states. But how do we know which cell types these are? To characterize cell clusters, we identify marker genes. Good marker genes are genes that are particularly expressed in one cluster, and existing knowledge of these marker genes can be used to extrapolate biological functions for the cluster. A good clustering of cells typically results in good marker genes. Hence, if you cannot find good marker genes you may need to go back to the start of the workflow and adapt your parameters. Note that we also determine genes that are particularly down-regulated in one cluster, even if these are not marker genes in the classical sense.
+
+Good marker genes are highly and possibly even only expressed in one cluster as compared to all other clusters. However, sometimes marker genes are also expressed in other clusters, or are declared as marker genes in these clusters, for example cell lineage markers that are shared by different cell subtypes. To evaluate marker genes, it is essential to visualize their expression patterns.
+
+In addition to detecting marker genes, it might be informative to detect genes that are differentially expressed between one specific cluster and one or several other clusters. This approach allows a more specific distinction of individual clusters and investigation of more subtle differences, see the section "Differentially expressed genes" below.
+
+:::
+
+```{r}
+#| label: "cluster_annotation_markers"
+#| fig-cap: "Number of markers, comparing each cluster to the rest"
+
+# Find DEGs for every cluster compared to all remaining cells 
+# Report up-regulated DEGS (=markers NAMING CONVENTION) and down-regulated ones
+
+# Latest best-practice paper recommends to use a Wilcox test
+# RunPresto is a wrapper around "immunogenomics/presto", which is a fast implementation of a Wilcox test
+markers = SeuratWrappers::RunPrestoAll(object=sc,
+                                       assay=default_assay,
+                                       test.use="wilcox",
+                                       slot="data",
+                                       only.pos=FALSE,
+                                       min.pct=param("marker_pct"),
+                                       logfc.threshold=param("marker_log2FC"),
+                                       latent.vars=param("latent_vars"),
+                                       verbose=FALSE)
+
+# If no markers were found, initialize the table so that further downstream chunks run
+if (ncol(markers)==0) markers = DegsEmptyMarkerResultsTable(levels(sc$seurat_clusters))
+
+# Sort markers (function "DegsSort" in "R/functions_degs.R")
+markers = markers %>% DegsSort(group=c("cluster"))
+  
+# Filter markers (function "DegsFilter" in "R/functions_degs.R")
+markers_filt = DegsFilter(markers, cut_log2FC=param("marker_log2FC"))
+markers_found = nrow(markers_filt$all) > 0
+
+# Add average data to table (function "DegsAvgDataPerIdentity" in "R/functions_degs.R")
+# Note that markers_out is written to file at the end of the module
+markers_out = cbind(markers_filt$all, DegsAvgDataPerIdentity(sc, genes=markers_filt$all$gene, assay=default_assay))
+
+# Add marker table to Seurat object
+Seurat::Misc(sc, paste0("markers_", default_assay)) = list(condition_column="seurat_clusters", test="wilcox", 
+                                   log2FC=param("marker_log2FC"), 
+                                   min_pct=param("marker_pct"), 
+                                   assay=default_assay, 
+                                   layer="data",
+                                   latent_vars=param("latent_vars"),
+                                   results=markers_filt$all)
+
+if (markers_found) {
+  # Plot number of markers
+  p = DegsPlotNumbers(markers_filt$all,
+                      group="cluster") 
+  p
+} else {
+  CalloutBox("No markers (cluster vs rest) found. In the following, code and plots that are not applicable are skipped.", type="warning")
+}
+```
+
+### Table of top markers
+
+We use the term "markers" to specifically describe features that are up-regulated in barcodes of one cluster compared to the rest.
+
+```{r}
+#| label: cluster_annotation_markers_table 
+#| eval: !expr markers_found
+#| tbl-cap: "Top markers per cluster"
+
+if (markers_found) {
+  markers_top = DegsUpDisplayTop(markers_filt$up, n=5)
+  
+  # Add labels
+  markers_top$labels = paste0(markers_top$cluster, ": ", markers_top$gene)
+
+  # Show table
+  gt(markers_top %>% dplyr::select(-labels)) %>% tab_options(container.overflow.y=FALSE)
+}
+```
+
+### Visualization of top marker genes
+
+The following plots visualize the top markers for each cluster, respectively. Clear markers indicate good clusters that represent barcode types.
+
+```{r}
+#| label: cluster_annotation_markers_plot
+#| eval: !expr markers_found
+#| results: asis
+
+if (markers_found) {
+  
+  # Loop through different visualizations of the top markers
+  plist = list()
+  captions = c()
+  plist[["FeaturePlot"]] = plist[["ViolinPlot"]] = list()
+
+  # Loop through clusters
+  for (cl in markers_top$cluster %>% levels()) {
+    markers_top_cl = markers_top %>% dplyr::filter(cluster==cl)
+
+    # Feature plots
+    plist[["FeaturePlot"]][[cl]] = lapply(markers_top_cl$gene, function(x) { 
+      Seurat::FeaturePlot(sc, features=x, combine=TRUE, label=TRUE) + 
+        viridis::scale_color_viridis() + 
+        AddPlotStyle(legend_position="bottom")
+    })
+    
+      
+    # Violin plots
+    plist[["ViolinPlot"]][[cl]] = lapply(markers_top_cl$gene, function(x) { 
+      Seurat::VlnPlot(sc, features=x, assay=default_assay, pt.size=0, cols=ScColours(sc, "seurat_clusters"), flip=TRUE) + 
+        AddPlotStyle(legend_position="none")
+    })
+    
+    names(plist[["FeaturePlot"]][[cl]]) = names(plist[["ViolinPlot"]][[cl]]) = markers_top_cl$gene
+  }
+  
+  # Dotplot (scaled)
+  plist[["DotPlotScaled"]] = Seurat::DotPlot(sc, features=markers_top$gene %>% unique()) + 
+    viridis::scale_color_viridis() + 
+    AddPlotStyle(ylab="Cluster", legend_position="bottom") + 
+    theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.5)) + 
+    guides(size=guide_legend(order=1)) 
+  
+  # Dotplot (unscaled)
+  plist[["DotPlotNonscaled"]] = DotPlotUpdated(sc, features=markers_top$gene %>% unique(), scale=FALSE) + 
+    viridis::scale_color_viridis() + 
+    AddPlotStyle(title="", ylab="Cluster", legend_position="bottom") + 
+    theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.5)) + 
+    guides(size=guide_legend(order=1))
+
+  # Set up layout and automatically generate chunks
+  # Feature and violin plots
+  chunk_template1 = "
+\`\`\`{r}
+#| label: fig-cluster_annotation_markers_{{type}}_cluster{{cluster}}_{{gene}}
+#| fig-cap: 'Cluster {{cluster}}, {{gene}}'
+#| echo: false
+
+plist[['{{type}}']][['{{cluster}}']][['{{gene}}']]
+\`\`\`
+"
+    # Dotplots
+  chunk_template2 = "
+\`\`\`{r}
+#| label: fig-cluster_annotation_markers_{{type}}
+#| fig-cap: '{{type}}'
+
+plist[['{{type}}']]
+\`\`\`
+"
+  
+  # Create one tab per plot type
+  cat("\n::: panel-tabset\n")
+  
+  # Loop through plot types
+  for (type in names(plist)) {
+    
+    cat("\n##### ", type, "\n")
+    
+    # Feature plots and violin plots (3 plots per row)
+    if (type %in% c("FeaturePlot", "ViolinPlot")) {
+
+      # Loop through clusters
+      for (cl in names(plist[[type]])) {
+        
+        cat("\n###### Cluster ", cl, "\n")
+        
+        cat("\n::: {layout-ncol=2}\n")
+        
+        # Loop through genes
+        for (gene in names(plist[[type]][[cl]])) {
+          chunk_filled =  knitr::knit_expand(text=chunk_template1, type=type, cluster=cl, gene=gene)
+          if(interactive()) {
+            print(EvalKnitrChunk(chunk_filled))
+          } else {
+            chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+            cat(chunk_filled, sep='\n')
+          }
+        }
+        
+        cat(":::\n")
+
+      }
+    }
+    
+    # Dotplots (1 per row)
+    if (type %in% c("DotPlotScaled", "DotPlotNonscaled")) {
+      chunk_filled =  knitr::knit_expand(text=chunk_template2, type=type)
+      if(interactive()) {
+        print(EvalKnitrChunk(chunk_filled))
+      } else {
+        chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+        cat(chunk_filled, sep='\n')
+      }
+    }
+  }
+  cat(":::\n")
+}
+```
+## Known marker genes {.tabset}
+
+Do cells in individual clusters express provided known marker genes?
+
+```{r}
+#| label: cluster_annotation_known_markers
+#| results: asis
+
+if (!is.null(param("file_known_markers"))) {
+
+  # Fetch annotation for default assay 
+  annot = sc[[default_assay]][[]] %>% dplyr::select(dplyr::starts_with("ensembl_"))
+
+  # Read known marker genes
+  known_markers = openxlsx::read.xlsx(param("file_known_markers"))
+  
+  # Convert to list
+  # Remove NAs and space chars
+  known_markers_list = lapply(colnames(known_markers), function(x) {
+    known_markers[,x] %>% na.exclude() %>% 
+      gsub(pattern=" ", replacement="", fixed=TRUE) %>% 
+      as.character()
+  })
+  names(known_markers_list) = colnames(known_markers)
+  
+  # Translate to gene symbols if available
+  if (ncol(annot) > 0) {
+    for (n in names(known_markers_list)) {
+      x = known_markers_list[[n]] %in% annot$ensembl_id
+      if (any(!x)) {
+        y = known_markers_list[[n]][!x]
+        CalloutBox("The following genes of marker list {n} cannot be found in the data: {y*}.", type="warning")
+      }
+    
+      idx = match(known_markers_list[[n]][x], annot$ensembl_id)
+      known_markers_list[[n]] = rownames(annot)[idx]
+    }
+  } 
+  
+  # Remove empty lists
+  is_empty = purrr::map_int(known_markers_list, .f=length) == 0 
+  known_markers_list = known_markers_list[!is_empty]
+  
+  # Count what is left
+  if(length(known_markers_list) > 0) { 
+    known_markers_n = length(known_markers_list) 
+    known_markers_vect = unlist(known_markers_list) %>% unique() %>% sort()
+    idx_dotplot = sapply(seq(known_markers_list), function(x) length(known_markers_list[[x]]) <= 50)
+  } 
+}
+```
+
+You provided `r length(known_markers_list)` list(s) of known marker genes. In the following tabs, you find:
+
+-   Dot plots for all gene lists containing at most 50 genes
+-   Individual feature plots for all genes if there are no more than 100 genes in total
+
+### Dot plot(s)
+
+A dot plot visualizes how gene expression changes across different clusters. The size of a dot encodes the percentage of cells in a cluster that expresses the gene, while the color encodes the scaled average expression across all cells within the cluster. Per gene (column), we group cells based on cluster identity (rows), calculate average expression per cluster, subtract the mean of average expression values and divide by the standard deviation. The resulting scores describe how high or low a gene is expressed in a cluster compared to all other clusters.
+
+```{r}
+#| label: cluster_annotation_knownmarkers_dotplot
+#| results: asis
+
+if ((known_markers_n > 0) & any(idx_dotplot)) {
+  known_markers_dotplot = known_markers_list[idx_dotplot]
+  plist = list()
+  for (n in names(known_markers_dotplot)) {
+    g = known_markers_dotplot[[n]]
+    g = g[length(g):1]
+    plist[[n]] = Seurat::DotPlot(sc, features=g) + 
+        viridis::scale_color_viridis() + 
+        AddPlotStyle(ylab="Cluster", legend_position="bottom") + 
+        theme(axis.text.x=element_text(angle=90, hjust=1, vjust=.5)) +
+        lims(size=c(0,100))
+  }
+  
+  # Set up layout and automatically generate chunks
+  chunk_template = "
+\`\`\`{r}
+#| label: fig-cluster_annotation_knownmarkers_dotplot_{{name}}
+#| fig-cap: '{{name}}'
+
+plist[['{{name}}']]
+\`\`\`
+"
+  # Loop through genes
+  for (n in names(plist)) {
+    chunk_filled =  knitr::knit_expand(text=chunk_template, name=n)
+    if(interactive()) {
+      print(EvalKnitrChunk(chunk_filled))
+    } else {
+      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+      cat(chunk_filled, sep='\n')
+    }
+  }
+} else if ((known_markers_n > 0) & !any(idx_dotplot)) {
+  CalloutBox("This tab is used for dot plots for up to 50 genes. All provided lists are longer than this, and hence dot plots are skipped.", type="note")
+} else {
+  CalloutBox("No known marker genes were provided and hence dot plots are skipped.", type="note")
+}
+```
+
+### Individual feature plots
+
+An individual feature plot colors single cells according to normalized gene expression.
+
+```{r}
+#| label: cluster_annotation_knownmarkers_featureplots
+#| results: asis
+
+if ((known_markers_n > 0) & length(known_markers_vect) <= 100) {
+  plist = Seurat::FeaturePlot(sc, features=known_markers_vect, combine=FALSE, label=TRUE)
+  for (i in seq(plist)) {
+    plist[[i]] = plist[[i]] + 
+      viridis::scale_color_viridis() + 
+      AddPlotStyle()
+  }
+  names(plist) = known_markers_vect
+  
+  # Set up layout and automatically generate chunks
+  chunk_template = "
+\`\`\`{r}
+#| label: fig-cluster_annotation_knownmarkers_featureplots_{{gene}}
+#| fig-cap: '{{gene}}'
+#| echo: false
+
+plist[['{{gene}}']]
+\`\`\`
+"
+  
+  cat("::: {layout-ncol=2}")
+  
+  # Loop through genes
+  for (gene in names(plist)) {
+    chunk_filled =  knitr::knit_expand(text=chunk_template, gene=gene)
+    if(interactive()) {
+      print(EvalKnitrChunk(chunk_filled))
+    } else {
+      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+      cat(chunk_filled, sep='\n')
+    }
+  }
+
+  cat(":::")
+  
+  } else if (length(known_markers_vect) > 100) { 
+  CalloutBox("This tab is used to plot up to 100 known marker genes. Your provided list is longer than this, and hence individual feature plots are skipped.", type="note")
+} else {
+  CalloutBox("No known marker genes were provided and hence individual feature plots are skipped.", type="note")
+}
+```
+
+## Output files
+
+### Markers
+
+```{r}
+#| label: cluster_annotation_save_markers
+#| results: asis
+
+# Write markers
+outfile = paste0("markers.xlsx")
+
+# Bring gene column to the first position, for better reading of the results
+markers_out = markers_out %>% dplyr::select(gene, everything())
+
+# Add Ensembl annotation if Ensembl was used 
+# This table has 0 columns if no Ensembl was used
+annot_ensembl = sc[[default_assay]][[]] %>% dplyr::select(dplyr::starts_with("ensembl_"))
+
+# Split by cluster and write to file (function "DegsWriteToFile" in "R/functions_degs.R")
+invisible(DegsWriteToFile(split(markers_out, markers_out$cluster),
+                          annot_ensembl=annot_ensembl,
+                          file=file.path(module_dir, "results", "markers.xlsx")))
+
+# Note
+CalloutBox("Marker features are written to {outfile}.", type="note")
+```
+
+### Software
+
+```{r}
+#| label: cluster_annoation_save_software  
+
+sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
+gt(sessioninfo)
+```
+
+```{r}
+#| label: cluster_annotation_save_seurat
+#| results: asis
+
+# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
+
+# Save Seurat object and layer data
+outdir = file.path(module_dir, "sc")
+with_progress({
+  SaveSeuratRdsWrapper(sc,
+                       on_disk_layers=on_disk_counts,
+                       outdir=outdir)
+}, enable=verbose)
+```
+
+```{r}
+#| label: cluster_annotation_finish
+
+# Stop multisession workers
+plan(sequential)
+```
