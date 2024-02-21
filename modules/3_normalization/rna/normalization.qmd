@@ -306,7 +306,7 @@ For each gene, we calculate its median expression across all cells, and then cal
 ##### Raw counts
 
 ```{r}
-#| label: normalization_rna_rle_plot_raw
+#| label: fig-normalization_rna_rle_plot_raw
 #| fig-cap: "Relative log expression plot for raw counts"
 
 # Plot relative log expression
@@ -321,7 +321,7 @@ p
 ##### Normalized counts
 
 ```{r}
-#| label: normalization_rna_rle_plot_normalized
+#| label: fig-normalization_rna_rle_plot_normalized
 #| fig-cap: "Relative log expression plot for normalized counts"
 
 # Plot relative log expression
@@ -572,6 +572,15 @@ if (use_sketching) {
 } else {
   CalloutBox("Sketching was not applied.", type="note")
 }
+```
+
+## Software
+
+```{r}
+#| label: normalization_rna_save_software
+
+sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
+gt(sessioninfo)
 ```
 
 ```{r}

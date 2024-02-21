@@ -1144,23 +1144,7 @@ plist[[{{i}}]]
 }
 ```
 
-## Output files
-
-```{r}
-#| label: read_data_save_seurat
-#| results: asis
-
-# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
-
-# Save Seurat object and layer data
-outdir = file.path(module_dir, "sc")
-with_progress({
-  SaveSeuratRdsWrapper(sc,
-                       on_disk_layers=on_disk_counts,
-                       outdir=outdir)
-}, enable=verbose)
-```
+## Output
 
 ### Annotation 
 
@@ -1176,13 +1160,29 @@ openxlsx::write.xlsx(x=sc[[default_assay]][[]], file=file.path(module_dir, "resu
 CalloutBox("Feature annotation for the default assay {default_assay} is written to {outfile}.", type="note")
 ```
 
-### Software
+## Software
 
 ```{r}
 #| label: read_data_save_software  
 
 sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
 gt(sessioninfo)
+```
+
+```{r}
+#| label: read_data_save_seurat
+#| results: asis
+
+# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
+
+# Save Seurat object and layer data
+outdir = file.path(module_dir, "sc")
+with_progress({
+  SaveSeuratRdsWrapper(sc,
+                       on_disk_layers=on_disk_counts,
+                       outdir=outdir)
+}, enable=verbose)
 ```
 
 ```{r}
