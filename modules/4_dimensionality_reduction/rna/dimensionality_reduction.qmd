@@ -37,8 +37,7 @@ params:
   
   # One or more integration method(s) to use. 
   # The following methods are available: null (just merge), CCAIntegration, RPCAIntegration, HarmonyIntegration , FastMNNIntegration, scVIIntegration.
-  integration_methods:
-  - "CCAIntegration"
+  integration_methods: null
 
   # Parameters for CCAIntegration
   CCAIntegration: null
@@ -353,10 +352,15 @@ integration_methods_params = purrr::map(integration_methods, function(method) {
 })
 names(integration_methods_params) = integration_methods
 
-normalization_method = param("normalization_method")
-num_datasets = length(SeuratObject::Layers(sc, assay=default_assay, search="^counts"))
-first_reduct = NULL
+# Number of datasets
+if (grepl(pattern="_SCT", x=default_assay)) {
+  num_datasets = sc[[default_assay]]@SCTModel.list %>% length()
+} else {
+  num_datasets = SeuratObject::Layers(sc, assay=default_assay, search="^counts") %>% length()
+}
 
+# Run all integrations
+first_reduct = NULL
 if (length(integration_methods) > 0 & num_datasets > 1) {
   # Integration requested and necessary
   
@@ -415,13 +419,16 @@ if (length(integration_methods) > 0 & num_datasets > 1) {
   CalloutBox("There is only one dataset so that integration is not neccessary.", type="note")
 }
 
-# Join layers. Dataset layers are automatically dropped unless there is only one dataset (in which case we need to do it)
-layer_counts = SeuratObject::Layers(sc, search="^counts")
-layer_data = SeuratObject::Layers(sc, search="^data")
-
-sc = SeuratObject::JoinLayers(sc)
-if (length(layer_counts) == 1) SeuratObject::LayerData(sc, layer=layer_counts) = NULL
-if (length(layer_data) == 1) SeuratObject::LayerData(sc, layer=layer_data) = NULL
+# Join layers if not SCT (SCT does not use layers)
+# Dataset layers are automatically dropped unless there is only one dataset (in which case we need to do it)
+if (!grepl(pattern="_SCT", x=default_assay)) {
+  layer_counts = SeuratObject::Layers(sc, search="counts")
+  layer_data = SeuratObject::Layers(sc, search="data")
+  
+  sc = SeuratObject::JoinLayers(sc)
+  if (length(layer_counts) == 1) SeuratObject::LayerData(sc, layer=layer_counts) = NULL
+  if (length(layer_data) == 1) SeuratObject::LayerData(sc, layer=layer_data) = NULL
+}
 ```
 
 ```{r}

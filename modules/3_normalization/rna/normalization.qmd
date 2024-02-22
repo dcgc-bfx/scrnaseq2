@@ -21,7 +21,7 @@ params:
   
   # Which normalization should be used for analysis?
   # lognorm (Seurat), scran or SCT
-  normalization_method: "lognorm"
+  normalization_method: "SCT"
   
    # Whether or not to remove cell cycle effects
   cellcycle_remove: false
@@ -42,7 +42,7 @@ params:
   
   # Which method should be used for feature selection?
   # vst (Seurat), scran or SCT
-  feature_selection_method: "vst"
+  feature_selection_method: "SCT"
   
   # Number of variable features to use
   num_variable_features: 3000
@@ -256,7 +256,6 @@ if (normalization_method == "lognorm") {
   sc = SCTransform(sc,
                    assay=Seurat::DefaultAssay(sc),
                    new.assay.name=sct_assay_name,
-                   layers=layer_counts,
                    vst.flavor="v2",
                    variable.features.n=num_variable_features,
                    vars.to.regress=vars_to_regress,
@@ -594,21 +593,6 @@ gt(paraminfo)
 
 ```{r}
 #| label: normalization_rna_save_seurat
-
-# For the SCT assay: Is it really necessary to keep the 'counts' and the 'data' slots? There is no possiblity to save them on-disk. Do we want do clear the to save memory? (Especially for big datasets)
-# - 'data' appears to be necessary for downstream analysis
-# - 'counts' is not necessary for downstream analysis
-if (normalization_method == "SCT") {
-  # Drop for full dataset
-  sct_assay_name = paste(default_assay, "SCT", sep="_")
-  SeuratObject::LayerData(sc, assay=sct_assay_name, layer="counts") = NULL
-  
-  # Drop for sketch
-  if (use_sketching) {
-    sketched_sct_assay_name = paste(default_assay, "SCT", sep="_") %>% paste("sketch", sep=".")
-    SeuratObject::LayerData(sc, assay=sketched_sct_assay_name, layer="counts") = NULL
-  }
-}
 
 # This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
 assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")

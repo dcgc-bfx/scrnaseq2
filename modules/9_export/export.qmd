@@ -31,7 +31,7 @@ params:
   
   # When exporting into Loupe Cell Browser format, write normalized counts instead of raw counts.
   # If true raw counts are written else normalized counts are written.
-  export_loupe_normalized: false
+  export_loupe_normalized: true
   
   # Export results into h5ad format for cellxgene. Only the default assay will be used.
   export_cellxgene: true
