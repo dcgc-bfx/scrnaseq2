@@ -412,7 +412,9 @@ for (i in 1:nrow(datasets)) {
                                   msg=FormatString("Column {feature_name_column} cannot be found in the feature metadata available for dataset {path}, assay {assay}."))
       }
       new_feature_names = feature_metadata[, feature_name_column, drop=TRUE]
-      new_feature_names = ifelse(is.na(new_feature_names), rownames(feature_metadata), new_feature_names)
+
+      # Use id if there is no symbol available
+      new_feature_names = ifelse(is.na(new_feature_names) | nchar(new_feature_names)==0, rownames(feature_metadata), new_feature_names)
     }
 
     
