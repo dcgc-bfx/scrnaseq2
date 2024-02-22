@@ -212,6 +212,7 @@ if (use_sketching) {
 ```{r}
 #| label: fig-dimensionality_reduction_rna_loadings
 #| fig-cap: "Loadings of the dimensionality reduction"
+#| fig-height: 4
 
 # When sketching is used, not available for the full dataset
 
@@ -475,8 +476,6 @@ chunk_template = "
 #| fig-cap: '{{caption}}'
 #| fig-width: 4
 #| fig-height: 4
-#| echo: false
-#| warning: false
 
 plist[[{{i}}]]
 \`\`\`

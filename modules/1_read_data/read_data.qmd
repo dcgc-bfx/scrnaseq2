@@ -1076,8 +1076,6 @@ for (a in Seurat::Assays(sc)) {
 #| label: fig-read_data_basic_summary_{{assay}}
 #| fig-cap: '{{caption}}'
 #| fig-height: 8
-#| echo: false
-#| warning: false
 
 p
 \`\`\`
@@ -1120,8 +1118,6 @@ p
 \`\`\`{r}
 #| label: fig-read_data_image_summary_{{qc}}_dataset_{{dataset}}
 #| fig-cap: '{{caption}}'
-#| echo: false
-#| warning: false
 
 plist[[{{i}}]]
 \`\`\`
