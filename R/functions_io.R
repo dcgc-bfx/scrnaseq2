@@ -1692,6 +1692,9 @@ UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL) {
   progr(message=paste("Copying on-disk matrices to directory", dir), class="sticky", amount=0)
   
   for (a in assays) {
+    # Skip if assay has no information about on-disk matrices
+    if (!a %in% cache$assay) next
+    
     progr(message = paste("Searching through assay", a), class="sticky", amount=0)
     
     if (!is.null(layer)) {
