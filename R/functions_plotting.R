@@ -382,7 +382,7 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
       geom_point() +
       scale_x_log10(xlab) +
       scale_y_continuous(ylab) +
-      scale_color_manual("Variable", values=c("black", "red")) +
+      scale_color_manual("Variable", values=c("FALSE"="black", "TRUE"="red")) +
       AddPlotStyle() + 
       theme(legend.position="none", legend.background=element_rect(fill=alpha("white", 0.0)))
     p = Seurat::LabelPoints(plot=p, points=top_genes, repel=TRUE, xnudge=0, ynudge=0)
