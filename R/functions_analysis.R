@@ -1,102 +1,150 @@
 #' Sums up the top n barcodes (per feature) or features (per barcode) of a sparse (dgCMatrix) or iterable (IterableMatrix) matrix. 
 #'
 #' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
-#' @param n Top n barcodes or features. Default is 50.
+#' @param top_n Top n barcodes or features. Can be multiple values. Default is 50.
 #' @param margin Margin. Can be: 1 - rows (top n barcodes per feature), 2 - columns (top n features per barcode). Default is 1.
 #' @param chunk_size Iterable matrices will be converted into sparse matrics. To avoid storing the entire matrix in memory, only process this number of rows/columns at once. Default is no chunks.
-#' @return A vector with sums to the top n.
-SumTopN = function(matrix, n=50, margin=1, chunk_size=NULL){
-  # Checks
-  assertthat::assert_that(margin %in% c("1", "2"),
-                          msg=FormatString("Margin can only be 1 - rows or 2 - columns."))
-  
-  # Calculate totals
-  if (margin == 1) {
-    totals = Matrix::rowSums(matrix)
-  } else {
-    totals = Matrix::colSums(matrix)
-  }
-  
-  # Define chunks
-  chunks = NULL
-  if (!is.null(chunk_size)) {
-    if (margin == 1) {
-      indices = 1:nrow(matrix)
-    } else {
-      indices = 1:ncol(matrix)
-    }
+#' @return A list of vectors with sums for each top n.
+SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
+    # Checks
+    assertthat::assert_that(margin %in% c("1", "2"),
+                            msg=FormatString("Margin can only be 1 - rows or 2 - columns."))
     
-    if (chunk_size < length(indices)) {
-      chunks = split(indices, ceiling(seq_along(indices)/chunk_size))
-      chunks = purrr::map(chunks, function(c) {
+    # Split counts into chunks for processing (if requested)
+    chunks = NULL
+    if (!is.null(chunk_size)) {
         if (margin == 1) {
-          mt = matrix[c, ]
+            indices = 1:nrow(matrix)
         } else {
-          mt = matrix[, c]
+            indices = 1:ncol(matrix)
         }
-        return(mt)
-      })
-    }
-  }
-  
-  if (!is.null(chunks)) {
-    # Analyse chunks
-    msg = paste("Sum up top", n, ifelse(margin==1, "barcodes", "features"))
-    progr = progressr::progressor(along=chunks, message=msg)
-    
-    topn_counts = furrr::future_map(chunks, function(counts) {
-      progr()
-      if (margin == 2) {
-        # Per barcode
-        if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
-  
-        d = diff(counts@p) 
-        col_lst = split(as.integer(counts@x)*(-1), rep.int(1:ncol(counts), d))  ## columns to list
-        col_lst = lapply(col_lst, function(x) return(sort(x)*(-1)))
-        topn = sapply(col_lst, function(x) return(sum(head(x, n))))
-      } else {
-        # Per feature
-        if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
         
-        row_lst = split(as.integer(counts@x)*(-1), counts@i) ## rows to list
-        row_lst = lapply(row_lst, function(x) return(sort(x)*(-1)))
-        topn = sapply(row_lst, function(x) return(sum(head(x, n))))
-      }
-      return(topn)
-    }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("margin", "n")))
-    progr(type='finish')
-    topn_counts = purrr::flatten_int(topn_counts)
-    topn_counts = ifelse(totals==0, 0, topn_counts)
-
-    if (margin == 2) {
-      names(topn_counts) = colnames(matrix)
-    } else {
-      names(topn_counts) = rownames(matrix)
-    } 
-  } else {
-    # Convert to sparse matrix
-    if (!is(matrix, "dgCMatrix")) matrix = as(matrix, "dgCMatrix")
-    
-    # Per barcode
-    if (margin == 2) {
-      d = diff(matrix@p) 
-      col_lst = split(as.integer(matrix@x)*(-1), rep.int(1:ncol(matrix), d))  ## columns to list
-      col_lst = lapply(col_lst, function(x) return(sort(x)*(-1)))
-      topn_counts = sapply(col_lst, function(x) return(sum(head(x, n))))
-      topn_counts = ifelse(totals==0, 0, topn_counts)
-      names(topn_counts) = colnames(matrix)
-    } else {
-      # Per feature
-      row_lst = split(as.integer(matrix@x)*(-1), matrix@i) ## rows to list
-      row_lst = lapply(row_lst, function(x) return(sort(x)*(-1)))
-      topn_counts = sapply(row_lst, function(x) return(sum(head(x, n))))
-      topn_counts = ifelse(totals==0, 0, topn_counts)
-      names(topn_counts) = rownames(matrix)
+        if (chunk_size < length(indices)) {
+            chunks = split(indices, ceiling(seq_along(indices)/chunk_size))
+            chunks = purrr::map(chunks, function(c) {
+                if (margin == 1) {
+                    mt = matrix[c, ]
+                } else {
+                    mt = matrix[, c]
+                }
+                return(mt)
+            })
+        }
     }
-  }
-  
-  return(topn_counts)
-}
+    
+    if (!is.null(chunks)) {
+        # Calculate for each chunk the top n sum (n can be one or more values)
+        msg = paste("Sum up top", n, ifelse(margin==1, "barcodes", "features"))
+        progr = progressr::progressor(along=chunks, message=msg)
+        
+        top_n_counts = furrr::future_map(chunks, function(counts) {
+            progr()
+            
+            if (margin == 2) {
+                # Per barcode
+                if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
+                totals = Matrix::colSums(counts)
+                
+                d = diff(counts@p) 
+                col_lst = split(as.integer(counts@x)*(-1), rep.int(1:ncol(counts), d))  ## columns to list
+                col_lst = lapply(col_lst, function(x) return(sort(x)*(-1)))
+                
+                top_n_cts = lapply(top_n, function(n) {
+                    s = sapply(col_lst, function(x) return(sum(head(x, n))))
+                    names(s) = names(totals[totals>0])
+                    
+                    if (length(s) == 0) s = c()
+                    
+                    if (sum(totals==0) > 0) {
+                        s[names(totals[totals==0])] = 0
+                        s = s[names(totals)]
+                    }
+                    
+                    return(s)
+                })
+            } else {
+                # Per feature
+                if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
+                totals = Matrix::rowSums(counts)
+                
+                row_lst = split(as.integer(counts@x)*(-1), counts@i) ## rows to list
+                row_lst = lapply(row_lst, function(x) return(sort(x)*(-1)))
+                
+                top_n_cts = lapply(top_n, function(n) {
+                    s = sapply(row_lst, function(x) return(sum(head(x, n))))
+                    names(s) = names(totals[totals>0])
+                    
+                    if (length(s) == 0) s = c()
+                    
+                    if (sum(totals==0) > 0) {
+                        s[names(totals[totals==0])] = 0
+                        s = s[names(totals)]
+                    }
+                    
+                    return(s)
+                })
+            }
+            return(top_n_cts)
+        }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("margin", "top_n")))
+        progr(type='finish')
+        
+        # Now combine chunk results: each chunk has values for the top n sum where n can have multiple values
+        top_n_counts = purrr::map(seq(top_n), function(i) {
+            # Get top sums for this n value 
+            top_n_cts = purrr::map(top_n_counts, i) %>% purrr::flatten_int()
+            return(top_n_cts)
+        })
+    } else {
+        # Convert to sparse matrix
+        if (!is(matrix, "dgCMatrix")) matrix = as(matrix, "dgCMatrix")
+        
+        # Per barcode
+        if (margin == 2) {
+            # Per barcode
+            totals = Matrix::colSums(matrix)
+            
+            d = diff(matrix@p) 
+            col_lst = split(as.integer(matrix@x)*(-1), rep.int(1:ncol(matrix), d))  ## columns to list
+            col_lst = lapply(col_lst, function(x) return(sort(x)*(-1)))
+            
+            top_n_counts = lapply(top_n, function(n) {
+                s = sapply(col_lst, function(x) return(sum(head(x, n))))
+                names(s) = names(totals[totals>0])
+                
+                if (length(s) == 0) s = c()
+                
+                if (sum(totals==0) > 0) {
+                    s[names(totals[totals==0])] = 0
+                    s = s[names(totals)]
+                }
+                
+                return(s)
+            })
+        } else {
+            # Per feature
+            totals = Matrix::rowSums(matrix)
+            
+            row_lst = split(as.integer(matrix@x)*(-1), matrix@i) ## rows to list
+            row_lst = lapply(row_lst, function(x) return(sort(x)*(-1)))
+            
+            top_n_counts = lapply(top_n, function(n) {
+                s = sapply(row_lst, function(x) return(sum(head(x, n))))
+                names(s) = names(totals[totals>0])
+                
+                if (length(s) == 0) s = c()
+                
+                if (sum(totals==0) > 0) {
+                    s[names(totals[totals==0])] = 0
+                    s = s[names(totals)]
+                }
+                
+                return(s)
+            })
+        }
+    }
+    
+    return(top_n_counts)
+}s
 
 #' Calculates the median of rows or columns of a sparse (dgCMatrix) or iterable (IterableMatrix) matrix. 
 #'
@@ -275,36 +323,46 @@ CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
 CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
-  # For each layer (dataset)
-  # In this case, we need to split the Seurat object 
-  # (since CellCycleScoring and AddModuleScore still cannot work with layers)
-  sc_split = suppressMessages(Seurat::SplitObject(sc, split.by="orig.ident"))
+  if (length(genes_s) >= 20 & length(genes_g2m) >= 20) {
+      # For each layer (dataset)
+      # In this case, we need to split the Seurat object 
+      # (since CellCycleScoring and AddModuleScore still cannot work with layers)
+      sc_split = Seurat::SplitObject(sc, split.by="orig.ident")
+      cell_cycle_scores = furrr::future_map_dfr(sc_split, function(s) {
+          # Check that the genes exist
+          genes_s_exists = genes_s %in% rownames(s[[assay]])
+          genes_g2m_exists = genes_g2m %in% rownames(s[[assay]])
+          
+          
+          if (sum(genes_s_exists) >= 20 & sum(genes_g2m_exists) >= 20) {
+              s = Seurat::CellCycleScoring(s,
+                                           s.features=genes_s[genes_s_exists],
+                                           g2m.features=genes_g2m[genes_g2m_exists],
+                                           assay=assay,
+                                           verbose=verbose)
+              cc_scores = s[[c("Phase", "S.Score", "G2M.Score")]]
+              cc_scores[["CC.Difference"]] = cc_scores[["S.Score"]] - cc_scores[["G2M.Score"]]
+          } else {
+              barcodes = Cells(s)
+              cc_scores = data.frame(Phase=rep(NA, length(barcodes)) %>% as.character(), 
+                                     S.Score=rep(0, length(barcodes)) %>% as.numeric(), 
+                                     G2M.Score=rep(0, length(barcodes)) %>% as.numeric(), 
+                                     CC.Difference=rep(0, length(barcodes)) %>% as.numeric(),
+                                     row.names=barcodes)
+          }
+          return(cc_scores)
+      }, .options = furrr::furrr_options(seed=getOption("random_seed")))
+  } else {
+      barcodes = Cells(sc)
+      cell_cycle_scores = data.frame(Phase=rep(NA, length(barcodes)) %>% as.character(), 
+                                     S.Score=rep(0, length(barcodes)) %>% as.numeric(), 
+                                     G2M.Score=rep(0, length(barcodes)) %>% as.numeric(), 
+                                     CC.Difference=rep(0, length(barcodes)) %>% as.numeric(),
+                                     row.names=barcodes)
+  }
   
-  cell_cycle_scores = furrr::future_map_dfr(sc_split, function(s) {
-    # Check that the genes exist
-    genes_s_exists = genes_s %in% rownames(s[[assay]])
-    genes_g2m_exists = genes_g2m %in% rownames(s[[assay]])
-    
-    
-    if (sum(genes_s_exists) >= 20 & sum(genes_g2m_exists) >= 20) {
-      s = Seurat::CellCycleScoring(s,
-                                               s.features=genes_s[genes_s_exists],
-                                               g2m.features=genes_g2m[genes_g2m_exists],
-                                               assay=assay,
-                                               verbose=verbose)
-      cc_scores = s[[c("Phase", "S.Score", "G2M.Score")]]
-      cc_scores[["CC.Difference"]] = cc_scores[["S.Score"]] - cc_scores[["G2M.Score"]]
-    } else {
-      barcodes = Cells(s)
-      cc_scores = data.frame(Phase=rep(NA, length(barcodes)) %>% as.character(), 
-                             S.Score=rep(NA, length(barcodes)) %>% as.numeric(), 
-                             G2M.Score=rep(NA, length(barcodes)) %>% as.numeric(), 
-                             CC.Difference=rep(NA, length(barcodes)) %>% as.numeric(),
-                             row.names=barcodes)
-    }
-    cc_scores[["Phase"]] = factor(cc_scores[["Phase"]], levels=c("G1", "G2M", "S"))
-    return(cc_scores)
-  }, .options = furrr::furrr_options(seed=getOption("random_seed")))
+  # Add Phase factor levels
+  cell_cycle_scores[["Phase"]] = factor(cell_cycle_scores[["Phase"]], levels=c("G1", "G2M", "S"))
 
   # Add to barcode metadata
   sc = Seurat::AddMetaData(sc, cell_cycle_scores)
