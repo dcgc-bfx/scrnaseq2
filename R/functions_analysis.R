@@ -144,7 +144,7 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
     }
     
     return(top_n_counts)
-}s
+}
 
 #' Calculates the median of rows or columns of a sparse (dgCMatrix) or iterable (IterableMatrix) matrix. 
 #'

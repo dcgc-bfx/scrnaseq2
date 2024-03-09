@@ -30,7 +30,7 @@ params:
   #                                   b) Specify 'ENSEMBL' to fetch gene information from Ensembl (gene features only), c) Leave empty or specify 'NO' to not rename features.
   #                                   If a dataset contains multiple assays, this option can be specified multiple times (comma-separated). 
   # - barcode_suffix (can be empty): Suffix to add to the barcodes. If left empty, numeric suffixes will be added ('-1', '-2', etc). If set to 'NO', no suffixes are added.
-  datasets_file: "datasets/10x_pbmc_datasets.xlsx"
+  datasets_file: "datasets/10x_xenium_mouse_brain.xlsx"
   
   # Default assay. All cells must have this assay.
   default_assay: RNA
@@ -903,11 +903,13 @@ for (i in seq_along(counts_lst)) {
   
   # Read image
   spatial_coordinate_type = param("spatial_coordinate_type")
-  image = ReadImage(image_dir=image_dir, 
-                    technology=technology, 
-                    assay=default_assay, 
-                    barcodes=barcodes,
-                    coordinate_type=spatial_coordinate_type)
+  with_progress({
+      image = ReadImage(image_dir=image_dir, 
+                        technology=technology, 
+                        assay=default_assay, 
+                        barcodes=barcodes,
+                        coordinate_type=spatial_coordinate_type)
+  }, enable=verbose)
   
   # Add image (10x visium) or field of view (10x xenium)
   if (technology == "10x_visium") {
@@ -929,12 +931,15 @@ for (i in seq_along(counts_lst)) {
 }
 ```
 
-Finally, we calculate some first basic statistics such as the precentage of counts in the top 50 features.
+Finally, we calculate some basic statistics such as the precentage of counts in the top n features.
 
 ```{r}
 #| label: read_data_basic_stats
 
 # Calculate basic statistics for barcodes (cells, nuclei or spots)
+
+# Top n features for calculation of percentage of counts
+top_n = c(5, 50)
 
 ############
 # Barcodes #
@@ -942,8 +947,8 @@ Finally, we calculate some first basic statistics such as the precentage of coun
 # Calculate for each assay
 for (a in Seurat::Assays(sc)) {
 
-  # Add percentage of counts in top 50 features
-  m = paste("pCountsTop50", a, sep="_")
+  # Add percentage of counts in top n features
+  m = paste0("pCountsTop", top_n) %>% paste(a, sep="_")
   sc[[m]] = 0
 
   # And each layer (dataset)
@@ -953,19 +958,24 @@ for (a in Seurat::Assays(sc)) {
     counts = sc[[a]][l]
     bcs = counts %>% colnames()
     total_counts = sc[[]][bcs, paste0("nCount_", a), drop=TRUE]
+    names(total_counts) = bcs
     
     # Get counts of the top 50 features per barcode
     with_progress({
-      top50_counts = SumTopN(counts, n=50, margin=2, chunk_size=10000)
+      top_n_counts = SumTopN(counts, top_n=top_n, margin=2, chunk_size=10000)
     }, enable=verbose)
     
-    # Zero counts barcodes will not be in top50_counts - add them here
-    top50_perc = ifelse(total_counts>0, top50_counts/total_counts*100, 0)
-    
-    # Then calculate percentage top50
-    top50_perc = setNames(top50_perc, bcs)
-    m = paste("pCountsTop50", a, sep="_")
-    sc[[m]][names(top50_perc), ] = top50_perc
+    # Then calculate percentages for topn
+    top_n_perc = purrr::map(top_n_counts, function(x) {
+      p = ifelse(x>0, x/total_counts*100, 0)
+      return(p)
+    })
+
+    # Add to metadata
+    for(i in seq(top_n)) {
+      m = paste0("pCountsTop", top_n[i]) %>% paste(a, sep="_")
+      sc[[m]][names(top_n_perc[[i]]), ] = top_n_perc[[i]]
+    }
   }
 }
 
@@ -1064,7 +1074,7 @@ orig_idents = levels(sc$orig.ident)
 for (a in Seurat::Assays(sc)) {
   cat("### Assay ", a, "\n\n")
   
-  barcode_qc = c("nCount", "nFeature", "pCountsTop50")
+  barcode_qc = c("nCount", "nFeature")
   barcode_qc = paste(barcode_qc, a, sep="_")
   
   # VIOLIN PLOTS
