@@ -277,7 +277,8 @@ if (export_sc) {
     SaveSeuratRdsWrapper(sc,
                          on_disk_layers=on_disk_counts,
                          outdir=file.path(module_dir, "results", "sc"),
-                         relative=TRUE)
+                         relative=TRUE,
+                         compress=TRUE)
   }, enable=verbose)
   
     CalloutBox("The Seurat object was exported to: 'sc/sc.rds' (there might be on-disk directories as well).", type="note")

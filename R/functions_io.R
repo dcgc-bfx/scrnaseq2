@@ -1659,8 +1659,9 @@ SaveSeuratRds_Fixed <- function (object, file = NULL, move = TRUE, destdir = dep
 #' @param outdir Output directory for saved Seurat object (sc.rds) and associated on-disk layers. If it does not exist, it will be created.
 #' @param on_disk_layers If TRUE also copy existing on-disk layers into this directory.
 #' @param clean If there are already files/directories in outdir, remove them.
+#' @param commpress Whether to compress the Seurat sc.rds file
 #' @param relative Make paths to on-disk layers relative.
-SaveSeuratRdsWrapper = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, relative=FALSE) {
+SaveSeuratRdsWrapper = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, relative=FALSE, compress=FALSE) {
   # If output directory does not exist, create it
   if (!dir.exists(outdir)) dir.create(outdir, recursive=TRUE)
   
@@ -1670,7 +1671,7 @@ SaveSeuratRdsWrapper = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, re
                           msg=FormatString("Target directory for Seurat object and associated matrix directories at {outdir} must be empty but is not. Please delete all files and directories in this directory."))
   
   # Save Seurat object and on-disk data using the SeuratObject function SaveSeuratRds
-  SeuratObject::SaveSeuratRds(sc, file=file.path(outdir, "sc.rds"), move=on_disk_layers, relative=relative)
+  SeuratObject::SaveSeuratRds(sc, file=file.path(outdir, "sc.rds"), move=on_disk_layers, relative=relative, compress=compress)
 }
 
 #' Copies on-disk layers of a Seurat object to a new directory.
