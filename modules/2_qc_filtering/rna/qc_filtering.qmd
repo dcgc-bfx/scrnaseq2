@@ -41,9 +41,8 @@ params:
 
   # Filter for barcodes. Set to 'null' to deactivate.
   barcode_filter: !expr list(
-    nCount_RNA = c(1000, NA),
-    nFeature_RNA = c(300, 10000),
-    pMito_RNA = c(NA, 25))
+    nCount_RNA = c(10, NA),
+    nFeature_RNA = c(10, 10000))
 
   # Filter for features. Set to 'null' to deactivate.
   feature_filter: !expr list(
@@ -298,6 +297,84 @@ plist[[{{i}}]]
   cat(":::\n")
 } else {
   CalloutBox(x="No barcode QC parameters for plotting available.", type="note")
+}
+```
+
+```{r}
+#| label: qc_filtering_rna_spatial_qc_plots
+#| eval: !expr length(SeuratObject::Images(sc)) > 0
+#| include: !expr length(SeuratObject::Images(sc)) > 0
+#| results: asis
+
+# Plot QC measures for barcodes (cells, nuclei or spots) in spatial context
+
+orig_idents = levels(sc$orig.ident)
+barcode_metadata = sc[[]]
+barcode_filter = PrepareBarcodeFilter(param("barcode_filter"), orig_idents)
+
+# Find barcode QC columns
+barcode_qc = param("barcode_qc")
+f = barcode_qc %in% colnames(sc[[]])
+if (!all(f)) {
+    CalloutBox(x="Cannot find QC {barcode_qc[!f]*} in barcode metadata.", type="warning")
+    barcode_qc = barcode_qc[f]
+}
+
+# Do not plot QC if there is no spatial information
+if (length(SeuratObject::Images(sc)) > 0) {
+    
+    # Do not plot QC if there is no QC metric available
+    if (length(barcode_qc) > 0) {
+        
+        # For each QC metric
+        cat("::: panel-tabset\n\n")
+        for(q in barcode_qc) {
+            cat ("##### ", q, "\n\n")
+            
+            # Make spatial plots split by sample
+            plist = purrr::map(SeuratObject::Images(sc), function(n) {
+                if (grepl("^fov\\.", n)) {
+                    # Xenium FOV plot
+                    p = Seurat::ImageFeaturePlot(sc, features=q, fov=n)
+                } else {
+                    # Visium image plot
+                    p = Seurat::SpatialFeaturePlot(sc, features=q, image=n)
+                }
+                return(p)
+            })
+            
+            # Make captions
+            captions = GeneratePlotCaptions(q, remove=paste0("_", default_assay))
+            dataset_names = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
+            captions = paste(captions, dataset_names, sep=" for dataset ")
+            
+            # Make chunk template for spatial plots
+            chunk_template = "
+\`\`\`{r}
+#| label: fig-read_data_image_summary_{{qc}}_dataset_{{dataset}}
+#| fig-cap: '{{caption}}'
+
+plist[[{{i}}]]
+\`\`\`
+"
+            # Fill out and print spatial plots
+            cat("::: panel-tabset\n\n")
+            for(i in seq_along(plist)) {
+                cat ("##### ", dataset_names[i], "\n\n")
+                chunk_filled =  knitr::knit_expand(text=chunk_template, qc=q, i=i, dataset=dataset_names[i], caption=captions[i])
+                if(interactive()) {
+                    print(EvalKnitrChunk(chunk_filled))
+                } else {
+                    chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+                    cat(chunk_filled, '\n')
+                }
+            }
+            cat(":::\n\n")
+        }
+        cat(":::\n\n")
+    } else {
+        CalloutBox(x="No barcode QC1 parameters for plotting available.", type="note")
+    }
 }
 ```
 

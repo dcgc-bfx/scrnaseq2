@@ -1138,7 +1138,7 @@ plist[[{{i}}]]
       cat("::: panel-tabset\n")
       for(i in seq_along(plist)) {
         cat ("##### ", dataset_names[i], "\n\n")
-        chunk_filled =  knitr::knit_expand(text=chunk_template, qc=q, assay=a, dataset=dataset_names[i], caption=captions[i])
+        chunk_filled =  knitr::knit_expand(text=chunk_template, qc=q, i=i, dataset=dataset_names[i], caption=captions[i])
         if(interactive()) {
           print(EvalKnitrChunk(chunk_filled))
         } else {
