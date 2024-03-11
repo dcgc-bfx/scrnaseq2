@@ -160,52 +160,117 @@ Results of the analysis are exported into a format that can be read by the Loupe
 #| include: !expr export_loupe
 #| results: asis
 
-# Create a cloupe file for the Loupe Cell Browser
+# Export files for the Loupe Browser (only 10x, 10x_visium and 10x_xenium)
+if (export_loupe & all(grepl("10x", sc$technology))) {
+  
+  dir.create(file.path(module_dir, "results", "loupe"), showWarnings=FALSE)
+  
+  # Brcode metadata for Loupe
+  barcode_metadata = sc[[]]
+  
+  categories_to_export = purrr::map(sc[[]], class) %>% unlist()
+  categories_to_export = categories_to_export[categories_to_export %in% c("factor", "character")] %>% names()
+  categories_to_export = categories_to_export[categories_to_export != "orig_barcode"]
+  
+  # 1. Create our own Loupe file (single-cell data only, no spatial data)
+  if (all(sc$technology == "10x")) {
+    
+    # Setup eula and download executable for loupeR.
+    # Needs to be done only once but cannot be done automatically.
+    louper_status = loupeR:::needs_setup()
+    if (!louper_status$success) stop(louper_status$msg)
+    
+    # Get counts and convert to sparse matrix if necessary
+    counts = SeuratObject::GetAssayData(sc, assay=default_assay, layer=ifelse(export_loupe_normalized, "data", "counts"))
+    counts = as(counts, "dgCMatrix")
+    
+    # Get clusters and other categories
+    categorial_data = list(active_cluster = Seurat::Idents(sc))
+    for (name in categories_to_export) {
+      data = unname(sc[[]][,name])
+      if (is.factor(data)) {
+        categorial_data[[name]] = data
+      } else if (is.character(data)) {
+        categorial_data[[name]] = factor(data)
+      }
+    }
+    
+    # Get embeddings
+    embeddings = purrr::map(SeuratObject::Reductions(sc), function(r) {
+      return(sc[[r]]@cell.embeddings[,1:2])
+    })
+    names(embeddings) = SeuratObject::Reductions(sc)
 
-if (export_loupe) {
-  # Setup eula and download executable for loupeR.
-  # Needs to be done only once but cannot be done automatically.
-  louper_status = loupeR:::needs_setup()
-  if (!louper_status$success) stop(louper_status$msg)
+    # Seurat object version
+    seurat_obj_version = NULL
+    if (!is.null(sc@version)) seurat_obj_version = as.character(sc@version)
+    
+    # Create Loupe file
+    success = loupeR::create_loupe(counts, 
+                           clusters=categorial_data,
+                           projections=embeddings,
+                           output_dir=file.path(module_dir, "results", "loupe"),
+                           output_name="scrnaseq2",
+                           force=TRUE,
+                           seurat_obj_version=seurat_obj_version)
+    
+    CalloutBox("The following loupe file can be loaded directly into the loupe browser: 'loupe/scrnaseq2.cloupe'.", type="note")
+  } else {
+    CalloutBox("Creating loupe files is supported only for single-cell (not spatial) datasets of technology '10x'.", type="note")
+  }
   
-  # Get counts and convert to sparse matrix if necessary
-  counts = SeuratObject::GetAssayData(sc, assay=default_assay, layer=ifelse(export_loupe_normalized, "data", "counts"))
-  counts = as(counts, "dgCMatrix")
-  
-  # Get clusters and other categories
-  categorial_data = list(active_cluster = Seurat::Idents(sc))
-  categories_to_export = setdiff(colnames(sc[[]]), "orig.barcode")
-  for (name in categories_to_export) {
-    data = sc[[]][,name]
-    if (is.factor(data)) {
-      categorial_data[[name]] = data
-    } else if (is.character(data)) {
-      categorial_data[[name]] = factor(data)
+  # 2. Create files that can be imported into the Loupe browser for each sample separately
+  dir.create(file.path(module_dir, "results", "loupe", "samples"), showWarnings=FALSE)
+  for(smp in levels(sc$orig.ident)) {
+    dir.create(file.path(module_dir, "results", "loupe", "samples", smp))
+    
+    barcodes = barcode_metadata %>% 
+      dplyr::filter(orig.ident == smp) %>% 
+      rownames()
+    
+    # Clusters and other categories
+    categorial_data = barcode_metadata[barcodes, c("orig_barcode", categories_to_export)]
+    col_nms = colnames(categorial_data)
+    col_nms[1] = "barcode"
+    colnames(categorial_data) = col_nms
+    readr::write_csv(x=categorial_data, 
+              file=file.path(module_dir, "results", "loupe", "samples", smp, "Loupe_metadata.csv"))
+    
+    # Embeddings
+    for( r in SeuratObject::Reductions(sc)) {
+      emb = sc[[r]]@cell.embeddings[barcodes, 1:2] %>%
+        as.data.frame() %>%
+        tibble::rownames_to_column(var="barcode")
+      emb$barcode = categorial_data$barcode
+      readr::write_csv(x=emb,
+                file=file.path(module_dir, "results", "loupe", "samples", smp, paste0("Loupe_projection_", r, ".csv")))
     }
   }
   
-  # Get embeddings
-  embeddings = list()
-  name = DefaultVisualization(sc, assay=default_assay)
-  embeddings[[name]] = sc[[name]]@cell.embeddings
+  # 3. Create the files that can be imported into the Loupe browser for the aggregated analysis
+  dir.create(file.path(module_dir, "results", "loupe", "samples", "all"), showWarnings=FALSE)
+
+  # Clusters and other categories
+  categorial_data = barcode_metadata[, c("orig_barcode", categories_to_export)]
+  col_nms = colnames(categorial_data)
+  col_nms[1] = "barcode"
+  colnames(categorial_data) = col_nms
+  readr::write_csv(x=categorial_data, 
+            file=file.path(module_dir, "results", "loupe", "samples", "all", "Loupe_metadata.csv"))
   
-  # Seurat object version
-  seurat_obj_version = NULL
-  if (!is.null(sc@version)) seurat_obj_version = as.character(sc@version)
+  # Embeddings
+  for( r in SeuratObject::Reductions(sc)) {
+    emb = sc[[r]]@cell.embeddings[, 1:2] %>%
+      as.data.frame() %>%
+      tibble::rownames_to_column(var="barcode")
+    emb$barcode = categorial_data$barcode
+    readr::write_csv(x=emb,
+              file=file.path(module_dir, "results", "loupe", "samples", "all", paste0("Loupe_projection_", r, ".csv")))
+  }
   
-  # Create loupe
-  success = loupeR::create_loupe(counts, 
-                         clusters=categorial_data,
-                         projections=embeddings,
-                         output_dir=file.path(module_dir, "results"),
-                         output_name="scrnaseq2",
-                         force=TRUE,
-                         seurat_obj_version=seurat_obj_version)
-  
-  CalloutBox("The loupe file is: 'scrnaseq2.cloupe'.", type="note")
-  
+  CalloutBox("Categories and projections can be imported into an active Loupe session. The directory 'loupe/samples' contains the file for the sample loupe files. The directory 'loupe/all' contains the files for the the loupe file of the aggregated analysis.", type="note")
 } else {
-  CalloutBox("The loupe file was not produced.", type="note")
+  CalloutBox("The loupe file was not created", type="note")
 }
 ```
 
@@ -223,6 +288,7 @@ Results of the analysis are exported into a format that can be read by cellxgene
 
 # Create an adata.h5ad file for cellxgene
 if (export_cellxgene) {
+  dir.create(file.path(module_dir, "results", "cellxgene"), showWarnings=FALSE)
   
   # Use only default assay, drop all other
   adata = sc
@@ -249,9 +315,9 @@ if (export_cellxgene) {
   adata$uns = reticulate::dict(colour_lists)
   
   # Write to h5ad file
-  adata$write(file.path(module_dir, "results", "cellxgene.h5ad"), compression="gzip")
+  adata$write(file.path(module_dir, "results", "cellxgene", "cellxgene.h5ad"), compression="gzip")
 
-  CalloutBox("The cellxgene file is: 'cellxgene.h5ad'.", type="note")
+  CalloutBox("The cellxgene file is: 'cellxgene/cellxgene.h5ad'.", type="note")
   
 } else {
   CalloutBox("The cellxgene file was not produced.", type="note")
