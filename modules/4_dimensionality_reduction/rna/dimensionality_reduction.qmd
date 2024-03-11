@@ -202,7 +202,7 @@ if (use_sketching) {
                            sketched.assay=Seurat::DefaultAssay(sc),
                            sketched.reduction=original_reduct,
                            full.reduction=full_reduct,
-                           normalization.method	= ifelse(normalization_method=="SCT", "SCT", "LogNormalize"),
+                           normalization.method	= ifelse(grepl("_SCT", Seurat::DefaultAssay(sc)), "SCT", "LogNormalize"),
                            dims=1:dim_n_compute)
   SeuratObject::Key(sc[[full_reduct]]) = paste0(stringr::str_to_title(original_reduct), "Full_")
   DefaultReduct(sc, assay=default_assay) = full_reduct
