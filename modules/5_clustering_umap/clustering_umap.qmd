@@ -198,7 +198,12 @@ for (method in dimensionality_reduction_methods) {
     old_name = paste0(DefaultAssay(sc), "_snn_res.", res)
     new_name = paste0(DefaultAssay(sc), "_", method, "_", "snn", res)
     sc[[]][, new_name] = sc[[]][, old_name]
-    sc[[]][, old_name] = NULL
+    sc@meta.data[old_name] = NULL
+      
+    # Fix levels
+    lvls = levels(sc[[]][, new_name])
+    lvls = lvls %>% as.integer() %>% sort() %>% as.character()
+    levels(sc[[]][, new_name]) = lvls
     
     # Colours
     l = levels(sc[[]][, new_name])
