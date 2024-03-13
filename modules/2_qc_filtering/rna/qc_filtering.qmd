@@ -332,16 +332,8 @@ if (length(SeuratObject::Images(sc)) > 0) {
             cat ("##### ", q, "\n\n")
             
             # Make spatial plots split by sample
-            plist = purrr::map(SeuratObject::Images(sc), function(n) {
-                if (grepl("^fov\\.", n)) {
-                    # Xenium FOV plot
-                    p = Seurat::ImageFeaturePlot(sc, features=q, fov=n)
-                } else {
-                    # Visium image plot
-                    p = Seurat::SpatialFeaturePlot(sc, features=q, image=n)
-                }
-                return(p)
-            })
+            plist = FeaurePlotSpatial(sc, features=q) + 
+                viridis::scale_fill_viridis()
             
             # Make captions
             captions = GeneratePlotCaptions(q, remove=paste0("_", default_assay))

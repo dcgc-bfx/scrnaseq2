@@ -25,9 +25,7 @@ params:
   # If multiple are specified, the first one will be used as default.
   cluster_resolution: 
   - 0.5
-  - 0.3
-  - 0.7
-  
+
   # Number of neighbors to look at for clustering
   cluster_k: 20
   
@@ -365,6 +363,55 @@ for (method in dimensionality_reduction_methods) {
 cat(":::\n")
 
 CalloutBox("Default clustering is set to the dimensionality reduction {dimensionality_reduction_methods[1]} with the resolution parameter {cluster_resolutions[1]}.", type="note")
+```
+
+```{r}
+#| label: clustering_umap_tests_spatial
+#| eval: !expr length(Seurat::Images(sc)) > 0
+#| include: !expr length(Seurat::Images(sc)) > 0
+#| results: asis
+
+# Test different dimensionality reduction methods and clustering resolution parameters
+clusterings_to_plot = purrr::map(dimensionality_reduction_methods, function(m) {
+    return(paste0(DefaultAssay(sc), "_", m, "_", "snn", cluster_resolutions, ifelse(use_sketching, "_full", "")))
+}) %>% purrr::flatten_chr()
+
+plist = purrr::map(SeuratObject::Images(sc), function(i) {
+    pl = DimPlotSpatial(sc, images=i, group.by=clusterings_to_plot)
+    return(pl)
+})
+names(plist) = SeuratObject::Images(sc)
+
+# Set up layout and automatically generate chunks
+chunk_template = "
+\`\`\`{r}
+#| label: fig-clustering_{{name}}
+#| fig-cap: '{{caption}}'
+
+plist[['{{name}}']]
+\`\`\`
+"
+
+cat("::: {layout-ncol=3}\n")
+
+for (method in dimensionality_reduction_methods) {
+    for (res in cluster_resolutions) {
+        if (use_sketching) {
+            name = paste0(DefaultAssay(sc), "_", method, "_", "snn", res, "_full")
+        } else {
+            name = paste0(DefaultAssay(sc), "_", method, "_", "snn", res)
+        }
+        chunk_filled =  knitr::knit_expand(text=chunk_template, name=name, caption=paste("Reduction", toupper(method), ", clustering resolution", res))
+        if(interactive()) {
+            print(EvalKnitrChunk(chunk_filled))
+        } else {
+            chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+            cat(chunk_filled, sep='\n')
+        }
+    }
+}
+
+cat(":::\n")
 ```
 
 ## Visualization with UMAP

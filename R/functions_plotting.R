@@ -487,6 +487,68 @@ PlotRLE = function(sc, assay=NULL, layer="counts", nbarcodes=500, is_log=FALSE) 
   return(p)
 }
 
+#' Wrapper for spatial dim plots. Takes as input a Seurat v5 object, one or more image names and other parameters to 
+#' be passed on to SpatialDimPlot (sequencing-based) or ImageDimPlot (image-based).
+#'
+#' @param sc Seurat v5 object.
+#' @param images One or more images (name: image.XX) or FOV (name: fov.XXX). If NULL, will use all images in Seurat object.
+#' @return A list of ggplot2 objects.
+DimPlotSpatial = function(sc, images=NULL, ...) {
+    if (is.null(images)) images = SeuratObject::Images(sc) 
+    
+    if (length(images) > 1) {
+        plist = purrr::map(images, function(i) {
+            if (grepl("^fov\\.", i)) {
+                # Xenium FOV plot
+                return(Seurat::ImageDimPlot(sc, fov=i, ...))
+            } else {
+                # Visium image plot
+                return(Seurat::SpatialDimPlot(sc, image=i, ...))
+            }
+        })
+    } else {
+        if (grepl("^fov\\.", images[1])) {
+            # Xenium FOV plot
+            plist = Seurat::ImageDimPlot(sc, fov=images[1], ...)
+        } else {
+            # Visium image plot
+            plist = Seurat::SpatialDimPlot(sc, image=images[1], ...)
+        }
+    }
+    return(plist)
+}
+
+#' Wrapper for spatial feaure plots. Takes as input a Seurat v5 object, one or more image names and other parameters to 
+#' be passed on to SpatialFeaturePlot (sequencing-based) or ImageFeaturePlot (image-based).
+#'
+#' @param sc Seurat v5 object.
+#' @param images One or more images (name: image.XX) or FOV (name: fov.XXX). If NULL, will use all images in Seurat object.
+#' @return A list of ggplot2 objects.
+FeaurePlotSpatial = function(sc, images=NULL, ...) {
+    if (is.null(images)) images = SeuratObject::Images(sc) 
+    
+    if (length(image) > 1) {
+        plist = purrr::map(images, function(i) {
+            if (grepl("^fov\\.", i)) {
+                # Xenium FOV plot
+                return(Seurat::ImageFeaturePlot(sc, fov=i, ...))
+            } else {
+                # Visium image plot
+                return(Seurat::SpatialFeaturePlot(sc, image=i, ...))
+            }
+        })
+    } else {
+        if (grepl("^fov\\.", images[1])) {
+            # Xenium FOV plot
+            plist = Seurat::ImageFeaturePlot(sc, fov=images[1], ...)
+        } else {
+            # Visium image plot
+            plist = Seurat::SpatialFeaturePlot(sc, image=images[1], ...)
+        }
+    }
+    return(plist)
+}
+
 #' Transform a matrix cells (rows) x htos (cols) into a format that can be understood by feature_grid: cell class, name hto1, value hto1, name hto2, value hto2
 #' 
 #' @param x: A matrix cells (rows) x htos (cols).
