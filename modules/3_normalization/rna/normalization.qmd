@@ -384,9 +384,9 @@ if (feature_selection_method == "SCT") {
                      top=10)
 }
 
+# Make captions
 orig_idents = gsub(pattern="varFeatures_", replacement="", x=names(plist))
-captions = GeneratePlotCaptions(names(plist), remove="_\\S+")
-captions = paste(captions, "for dataset", orig_idents)
+captions = GeneratePlotCaptions("varFeatures", assay_names=SeuratObject::Assays(sc)) %>% paste("for dataset {orig_idents}") %>% FormatString()
 
 # Generate chunks
 chunk_template = "
@@ -394,7 +394,7 @@ chunk_template = "
 
 \`\`\`{r}
 #| label: fig-normalization_rna_variable_features_{{name}}
-#| fig-cap: '{{caption}}'
+#| fig-cap: {{caption}}
 #| echo: false
 #| warning: false
 

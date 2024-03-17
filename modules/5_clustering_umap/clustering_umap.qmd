@@ -308,8 +308,8 @@ if (use_sketching) {
 
 ```{r}
 #| label: clustering_tests
-#| eval: !expr length(dimensionality_reduction_methods) * length(cluster_resolutions) > 1
-#| include: !expr length(dimensionality_reduction_methods) * length(cluster_resolutions) > 1
+#| eval: !expr length(dimensionality_reduction_methods) * length(cluster_resolutions) > 0
+#| include: !expr length(dimensionality_reduction_methods) * length(cluster_resolutions) > 0
 #| results: asis
 #| echo: false
 
@@ -337,16 +337,14 @@ for (method in dimensionality_reduction_methods) {
 chunk_template = "
 \`\`\`{r}
 #| label: fig-clustering_{{name}}
-#| fig-cap: '{{caption}}'
-#| fig-height: 3
-#| fig-width: 2.67
+#| fig-cap: {{caption}}
 #| echo: false
 
 plist[['{{name}}']]
 \`\`\`
 "
 
-cat("::: {layout-ncol=3}\n")
+cat("::: {layout-ncol=", min(length(plist), 3), "}\n", sep="")
 
 for (method in dimensionality_reduction_methods) {
   for (res in cluster_resolutions) {
@@ -355,7 +353,7 @@ for (method in dimensionality_reduction_methods) {
     } else {
       name = paste0(DefaultAssay(sc), "_", method, "_", "snn", res)
     }
-    chunk_filled =  knitr::knit_expand(text=chunk_template, name=name, caption=paste("Reduction", toupper(method), ", clustering resolution", res))
+    chunk_filled =  knitr::knit_expand(text=chunk_template, name=name, caption=FormatString("UMAP coloured by clustering with resolution {res} based on reduction {toupper(method)}"))
     if(interactive()) {
       print(EvalKnitrChunk(chunk_filled))
     } else {
@@ -377,36 +375,45 @@ CalloutBox("Default clustering is set to the dimensionality reduction {dimension
 #| results: asis
 
 # Test different dimensionality reduction methods and clustering resolution parameters
-clusterings_to_plot = purrr::map(dimensionality_reduction_methods, function(m) {
-    return(paste0(DefaultAssay(sc), "_", m, "_", "snn", cluster_resolutions, ifelse(use_sketching, "_full", "")))
+clusterings_to_plot = purrr::map(dimensionality_reduction_methods, function(method) {
+    return(paste0(DefaultAssay(sc), "_", method, "_", "snn", cluster_resolutions, ifelse(use_sketching, "_full", "")))
 }) %>% purrr::flatten_chr()
 
+# Generate plots and captions
 plist = purrr::map(SeuratObject::Images(sc), function(i) {
-    pl = DimPlotSpatial(sc, images=i, group.by=clusterings_to_plot)
+    pl = DimPlotSpatial(sc, images=i, group.by=clusterings_to_plot, combine=FALSE, cols=ScColours(sc, clusterings_to_plot))
+    names(pl) = clusterings_to_plot
     return(pl)
 })
-names(plist) = SeuratObject::Images(sc)
+names(plist) = gsub(pattern="^(fov|image)\\.", replacement="", x=SeuratObject::Images(sc))
 
 # Set up layout and automatically generate chunks
 chunk_template = "
 \`\`\`{r}
-#| label: fig-clustering_{{name}}
-#| fig-cap: '{{caption}}'
+#| label: fig-clustering_spatial_{{clstr}}_dataset_{{ident}}
+#| fig-cap: {{caption}}
 
-plist[['{{name}}']]
+plist[['{{ident}}']][['{{clstr}}']]
 \`\`\`
 "
 
-cat("::: {layout-ncol=3}\n")
+cat("::: panel-tabset\n")
 
-for (method in dimensionality_reduction_methods) {
-    for (res in cluster_resolutions) {
-        if (use_sketching) {
-            name = paste0(DefaultAssay(sc), "_", method, "_", "snn", res, "_full")
-        } else {
-            name = paste0(DefaultAssay(sc), "_", method, "_", "snn", res)
-        }
-        chunk_filled =  knitr::knit_expand(text=chunk_template, name=name, caption=paste("Reduction", toupper(method), ", clustering resolution", res))
+for(ident in names(plist)) {
+    cat("#####", ident, "\n")
+    
+    # If more than one plot, choose two column layout
+    if (length(plist[[ident]]) > 1) cat("::: {layout-ncol=2}\n")
+    
+    # Generate captions
+    captions = purrr::map(dimensionality_reduction_methods, function(method) return(FormatString("Spatial plot for {ident} coloured by clustering with resolution {res} based on reduction {toupper(method)}"))) %>% purrr::flatten_chr()
+
+    for(i in seq(plist[[ident]])) {
+        clstr = names(plist[[ident]])[i]
+        
+        # Fill out chunk template
+        chunk_filled =  knitr::knit_expand(text=chunk_template, ident=ident, clstr=clstr, caption=captions[i])
+        # Render chunk
         if(interactive()) {
             print(EvalKnitrChunk(chunk_filled))
         } else {
@@ -414,6 +421,8 @@ for (method in dimensionality_reduction_methods) {
             cat(chunk_filled, sep='\n')
         }
     }
+    
+    if (length(plist[[ident]]) > 1) cat(":::\n")
 }
 
 cat(":::\n")

@@ -473,7 +473,7 @@ captions = c("No integration", paste('Integrated with method', integration_metho
 chunk_template = "
 \`\`\`{r}
 #| label: fig-dimensionality_reduction_rna_integration_{{type}}
-#| fig-cap: '{{caption}}'
+#| fig-cap: {{caption}}
 #| fig-width: 4
 #| fig-height: 4
 

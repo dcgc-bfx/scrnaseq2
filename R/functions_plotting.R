@@ -65,11 +65,12 @@ AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, lege
 #' Helper function to generate plot captions.
 #'
 #' @param plot_names A list of plot names.
-#' @param remove Part to remove before matching. Can be a string or regex.
+#' @param assay_names A list of assay names that should be recognized in the plot names as such.
 #' @param split If not NULL, split plot names to generate a X vs Y caption.
 #' @param capitalize If TRUE, capitalize the first letter of the caption.
 #' @return A list of captions.
-GeneratePlotCaptions = function(plot_names, remove=NULL, split=NULL, capitalize=TRUE) {
+GeneratePlotCaptions = function(plot_names, assay_names=NULL, split=NULL, capitalize=TRUE) {
+
   # Split names into two parts if requested
   if (!is.null(split)) {
     plot_names = strsplit(plot_names, split)
@@ -77,35 +78,59 @@ GeneratePlotCaptions = function(plot_names, remove=NULL, split=NULL, capitalize=
     plot_names = as.list(plot_names)
   }
   
-  # Remove parts
-  if (!is.null(remove)) {
-    plot_names = purrr::map(plot_names, function(x) {
-      return(gsub(pattern=remove, replacement="", x))
-    })
-  }
-  
   # Match and generate captions
-  captions = purrr::map(plot_names, function(x) {
+  captions = purrr::map(plot_names, function(nms) {
+      
     # Add captions here
-    capts = dplyr::case_match(x,
-                                 "nCount" ~ "number of counts",
-                                 "nFeature" ~ "number of features",
-                                 "pCountsTop50" ~ "percent counts in top50 features",
-                                 "pMito" ~ "percent counts in mitochondrial genes",
-                                 "pRibosomal" ~ "percent counts in ribosomal genes",
-                                 "pGlobin" ~ "percent counts in globin genes",
-                                 "pERCC" ~ "percent counts in ERCC controls",
-                                 "pXIST" ~ "percent counts in XIST gene",
-                                 "pChrY" ~ "percent counts in chrY genes",
-                                 "S.Score" ~ "S phase score",
-                                 "G2M.Score" ~ "G2M phase score",
-                                 "Phase" ~ "cell cycle phase",
-                                 "varFeatures" ~ "variable features",
-                                 "Expression" ~ "Expression of",
-                                 .default = NULL
+    capts = dplyr::case_when(startsWith(nms, "nCount_") ~ "number of counts",
+                             startsWith(nms, "nFeature_") ~ "number of features",
+                             startsWith(nms, "pCountsTop50_") ~ "percent counts in top50 features",
+                             startsWith(nms, "pCountsTop5_") ~ "percent counts in top5 features",
+                             startsWith(nms, "pMito_") ~ "percent counts in mitochondrial genes",
+                             startsWith(nms, "pRibosomal_") ~ "percent counts in ribosomal genes",
+                             startsWith(nms, "pGlobin_") ~ "percent counts in globin genes",
+                             startsWith(nms, "pERCC_") ~ "percent counts in ERCC controls",
+                             startsWith(nms, "pXIST_") ~ "percent counts in female-determining XIST gene",
+                             startsWith(nms, "pChrY_") ~ "percent counts in male-determining chrY genes",
+                             startsWith(nms, "S.Score") ~ "S phase score",
+                             startsWith(nms, "G2M.Score") ~ "G2M phase score",
+                             startsWith(nms, "Phase") ~ "cell cycle phase",
+                             startsWith(nms, "varFeatures") ~ "variable features",
+                             startsWith(nms, "Expression") ~ "Expression of",
+                             .default = NULL
     )
+    
+    # Add generic caption if necessary
     idx = which(is.na(capts))
-    capts[idx] = paste0('Metric "', x[idx], '"')
+    capts[idx] = paste0("metric '", nms[idx], "'")
+    
+    # Try to find out whether the assay is part of the name (or its parts) and add it to the caption
+    if (!is.null(assay_names)) {
+        
+        # Iterate over the plot names
+        assays_to_add = purrr::map_chr(nms, function(n) {
+            # Check which assay name is part of the name (or its parts) 
+            is_part = purrr::map_lgl(assay_names, function(a) return(endsWith(n, paste0("_", a))))
+            
+            if (any(is_part)) {
+                # If yes, return the assay name
+                return(assay_names[is_part])
+            } else {
+                # If not, return NA
+                return(NA)
+            }
+        })
+        
+        # If all parts of the name contain the same assay name, add it to the last part else to all parts
+        if (length(unique(na.omit(assays_to_add))) == 1) {
+            i = length(capts)
+            
+        } else {
+            i = which(!is.na(assays_to_add))
+        }
+        capts[i] = paste0(capts[i], " for assay '", assays_to_add[i], "'")
+    }
+    
     return(capts)
   })
   
@@ -480,7 +505,7 @@ PlotRLE = function(sc, assay=NULL, layer="counts", nbarcodes=500, is_log=FALSE) 
     geom_segment(aes(x=x, xend=x, y=lower_whisker , yend=upper_whisker, col=orig.ident)) +
     geom_segment(aes(x=x, xend=x, y=q25-0.01 , yend=q75+0.01), colour="grey20") +
     geom_point(aes(x=x, y=q50), shape=1) +
-    AddPlotStyle(xlab="Cells", ylab="Relative log expression", col=ScColours(sc, "orig.ident")) + 
+    AddPlotStyle(xlab="Cells", ylab="Relative log expression", col=ScColours(sc, "orig.ident"), legend_title="Dataset") + 
     theme(axis.text.x=element_blank(),
           axis.ticks.x=element_blank())
   

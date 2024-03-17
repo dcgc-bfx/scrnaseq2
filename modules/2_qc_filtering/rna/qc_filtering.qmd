@@ -265,7 +265,7 @@ if (length(barcode_qc) > 0) {
   plist = PlotBarcodeQC(sc, qc=barcode_qc, filter=barcode_filter)
   
   # Prepare captions
-  captions = GeneratePlotCaptions(names(plist), remove=paste0("_", default_assay))
+  captions = GeneratePlotCaptions(names(plist), assay_names=SeuratObject::Assays(sc))
 
   # Set up layout and generate chunks
   chunk_template = "
@@ -273,7 +273,7 @@ if (length(barcode_qc) > 0) {
 
 \`\`\`{r}
 #| label: fig-qc_filtering_rna_qc_{{type}}
-#| fig-cap: '{{caption}}'
+#| fig-cap: {{caption}}
 #| echo: false
 #| message: false
 #| warning: false
@@ -336,15 +336,14 @@ if (length(SeuratObject::Images(sc)) > 0) {
                 viridis::scale_fill_viridis()
             
             # Make captions
-            captions = GeneratePlotCaptions(q, remove=paste0("_", default_assay))
-            dataset_names = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
-            captions = paste(captions, dataset_names, sep=" for dataset ")
+            orig_idents = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
+            captions = GeneratePlotCaptions(q, assay_names=SeuratObject::Assays(sc)) %>% paste("for dataset {orig_idents}") %>% FormatString()
             
             # Make chunk template for spatial plots
             chunk_template = "
 \`\`\`{r}
-#| label: fig-read_data_image_summary_{{qc}}_dataset_{{dataset}}
-#| fig-cap: '{{caption}}'
+#| label: fig-qc_filtering_rna_spatial_qc_{{qc}}_dataset_{{dataset}}
+#| fig-cap: {{caption}}
 
 plist[[{{i}}]]
 \`\`\`
@@ -352,8 +351,8 @@ plist[[{{i}}]]
             # Fill out and print spatial plots
             cat("::: panel-tabset\n\n")
             for(i in seq_along(plist)) {
-                cat ("##### ", dataset_names[i], "\n\n")
-                chunk_filled =  knitr::knit_expand(text=chunk_template, qc=q, i=i, dataset=dataset_names[i], caption=captions[i])
+                cat ("##### ", orig_idents[i], "\n\n")
+                chunk_filled =  knitr::knit_expand(text=chunk_template, qc=q, i=i, dataset=orig_idents[i], caption=captions[i])
                 if(interactive()) {
                     print(EvalKnitrChunk(chunk_filled))
                 } else {
@@ -365,7 +364,7 @@ plist[[{{i}}]]
         }
         cat(":::\n\n")
     } else {
-        CalloutBox(x="No barcode QC1 parameters for plotting available.", type="note")
+        CalloutBox(x="No barcode QC parameters for plotting available.", type="note")
     }
 }
 ```
@@ -398,7 +397,7 @@ if (length(barcode_qc_cor) > 0) {
   plist = PlotBarcodeQCCor(sc, qc=barcode_qc_cor, filter=barcode_filter)
 
   # Prepare captions
-  captions = GeneratePlotCaptions(names(plist), remove=paste0("_", default_assay), split="__")
+  captions = GeneratePlotCaptions(names(plist), assay_names=SeuratObject::Assays(sc), split="__")
 
   # Generate chunks
   chunk_template = "
@@ -406,7 +405,7 @@ if (length(barcode_qc_cor) > 0) {
 
 \`\`\`{r}
 #| label: fig-qc_filtering_rna_qc_{{type1}}_vs_{{type2}}
-#| fig-cap: '{{caption}}'
+#| fig-cap: {{caption}}
 #| echo: false
 #| message: false
 #| warning: false
@@ -498,7 +497,7 @@ highestExpr_summary$orig.ident = factor(highestExpr_summary$orig.ident, levels=o
 
 ```{r}
 #| label: fig-qc_filtering_rna_highest_genes
-#| fig-cap: "Highest expressed genes overall"
+#| fig-cap: "Highest expressed features (genes) overall"
 #| warning: false
 
 # Plot highest expressed genes (overall)
@@ -552,7 +551,7 @@ chunk_template = "
 
 \`\`\`{r}
 #| label: fig-qc_filtering_rna_highest_genes_dataset_{{dataset}}
-#| fig-cap: 'Highest expressed genes for dataset {{dataset}}'
+#| fig-cap: Highest expressed features (genes) for dataset '{{dataset}}'
 #| echo: false
 #| message: false
 #| warning: false
@@ -863,7 +862,7 @@ if (length(barcode_qc) > 0) {
   plist = PlotBarcodeQC(sc, qc=barcode_qc, filter=barcode_filter)
   
   # Prepare captions
-  captions = GeneratePlotCaptions(names(plist), remove=paste0("_", default_assay))
+  captions = GeneratePlotCaptions(names(plist), assay_names=SeuratObject::Assays(sc))
   captions = paste(captions, "(filtered)")
   
   # Setup layout and generate chunks
@@ -872,7 +871,7 @@ if (length(barcode_qc) > 0) {
 
 \`\`\`{r}
 #| label: fig-preprocessing_rna_postqc_{{type}}
-#| fig-cap: '{{caption}}'
+#| fig-cap: {{caption}}
 #| echo: false
 #| warning: false
 #| message: false
@@ -928,7 +927,7 @@ if (length(barcode_qc_cor) > 0) {
   plist = PlotBarcodeQCCor(sc, qc=barcode_qc_cor, filter=barcode_filter)
   
   # Prepare captions
-  captions = GeneratePlotCaptions(names(plist), remove=paste0("_", default_assay), split="__")
+  captions = GeneratePlotCaptions(names(plist), assay_names=SeuratObject::Assays(sc), split="__")
   
   # Generate chunks
   chunk_template = "
@@ -936,7 +935,7 @@ if (length(barcode_qc_cor) > 0) {
 
 \`\`\`{r}
 #| label: fig-preprocessing_rna_postqc_{{type1}}_vs_{{type2}}
-#| fig-cap: '{{caption}}'
+#| fig-cap: {{caption}}
 #| echo: false
 #| message: false
 #| warning: false

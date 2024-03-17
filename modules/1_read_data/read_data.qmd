@@ -1072,7 +1072,7 @@ orig_idents = levels(sc$orig.ident)
 
 # Do this per assay
 for (a in Seurat::Assays(sc)) {
-  cat("### Assay ", a, "\n\n")
+  cat("### Assay", a, "\n\n")
   
   barcode_qc = c("nCount", "nFeature")
   barcode_qc = paste(barcode_qc, a, sep="_")
@@ -1086,15 +1086,15 @@ for (a in Seurat::Assays(sc)) {
   chunk_template = "
 \`\`\`{r}
 #| label: fig-read_data_basic_summary_{{assay}}
-#| fig-cap: '{{caption}}'
-#| fig-height: 8
+#| fig-cap: {{caption}}
+#| fig-height: 4
 
 p
 \`\`\`
 "
   
   # Fill out and print violin plots
-  chunk_filled =  knitr::knit_expand(text=chunk_template, assay=a, caption=paste("Basic stats for assay ", a))
+  chunk_filled =  knitr::knit_expand(text=chunk_template, assay=a, caption=FormatString("Number of counts and features for assay {a}"))
   if(interactive()) {
     print(EvalKnitrChunk(chunk_filled))
   } else {
@@ -1113,15 +1113,14 @@ p
                 viridis::scale_fill_viridis()
       
       # Make captions
-      captions = GeneratePlotCaptions(q, remove=paste0("_", a))
-      dataset_names = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
-      captions = paste(captions, dataset_names, sep=" for dataset ")
+      orig_idents = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
+      captions = GeneratePlotCaptions(q, assay_names=SeuratObject::Assays(sc)) %>% paste("for dataset {orig_idents}") %>% FormatString()
       
       # Make chunk template for spatial plots
       chunk_template = "
 \`\`\`{r}
-#| label: fig-read_data_image_summary_{{qc}}_dataset_{{dataset}}
-#| fig-cap: '{{caption}}'
+#| label: fig-read_data_basic_summary_spatial_{{qc}}_dataset_{{dataset}}
+#| fig-cap: {{caption}}
 
 plist[[{{i}}]]
 \`\`\`
@@ -1129,8 +1128,8 @@ plist[[{{i}}]]
       # Fill out and print spatial plots
       cat("::: panel-tabset\n")
       for(i in seq_along(plist)) {
-        cat ("##### ", dataset_names[i], "\n\n")
-        chunk_filled =  knitr::knit_expand(text=chunk_template, qc=q, i=i, dataset=dataset_names[i], caption=captions[i])
+        cat ("##### ", orig_idents[i], "\n\n")
+        chunk_filled =  knitr::knit_expand(text=chunk_template, qc=q, i=i, dataset=orig_idents[i], caption=captions[i])
         if(interactive()) {
           print(EvalKnitrChunk(chunk_filled))
         } else {
