@@ -172,9 +172,10 @@ GeneratePlotCaptions = function(plot_names, assay_names=NULL, split=NULL, capita
 #' @param filter A nested list where the first level is the barcode metadata column and the second levels 
 #' contains filters per dataset. Filters for numeric columns must numeric vectors with min and max. Filter
 #' for character/factor columns must be character vectors with the values that should be kept. 
-#' level contains the filter values 
+#' level contains the filter values
+#' @param log10 If set to TRUE, show the y-axis in log10. Can also be a regular expression to apply only to specific columns. Only numeric columns will be affected.
 #' @return A list of ggplot2 objects.
-PlotBarcodeQC = function(sc, qc, filter=NULL) {
+PlotBarcodeQC = function(sc, qc, filter=NULL, log10=FALSE) {
   barcode_metadata = sc[[]]
   
   # Determine QC type (numeric or non-numeric)
@@ -218,13 +219,23 @@ PlotBarcodeQC = function(sc, qc, filter=NULL) {
     # Add style
     p = plist_numeric[[n]] + 
       AddPlotStyle(legend_position="none", xlab="", fill=ScColours(sc, "orig.ident")) +
-      theme(axis.text.x=element_text(angle=45, hjust=1))
+      theme(axis.text.x=element_text(angle=45, hjust=1)) +
+      scale_y_continuous(labels=scales::comma)
     
     # Add filter thresholds
     qc_threshold_segments = purrr::pmap(qc_thresholds_numeric[[n]], function(qc_feature, ident, threshold, value) {
       return(annotate(geom="segment", x=as.integer(ident)-0.5, xend=as.integer(ident)+0.5, y=value, yend=value, linetype=ifelse(threshold=="max", 6, 2), colour="firebrick"))
     })
     p = p + qc_threshold_segments
+    
+    
+    # Add log10 if requested
+    if (!is.null(log10)) {
+      if ( (is.logical(log10) & log10==TRUE) | (is.character(log10) & grepl(pattern=log10, x=n)) ) {
+          p = p + scale_y_log10()
+          p = p + ggtitle(paste0(n, " (log10)"))
+      }
+    }
     return(p)
   })
   names(plist_numeric) = qc[is_numeric]
@@ -543,13 +554,13 @@ DimPlotSpatial = function(sc, images=NULL, ...) {
     return(plist)
 }
 
-#' Wrapper for spatial feaure plots. Takes as input a Seurat v5 object, one or more image names and other parameters to 
+#' Wrapper for spatial feature plots. Takes as input a Seurat v5 object, one or more image names and other parameters to 
 #' be passed on to SpatialFeaturePlot (sequencing-based) or ImageFeaturePlot (image-based).
 #'
 #' @param sc Seurat v5 object.
 #' @param images One or more images (name: image.XX) or FOV (name: fov.XXX). If NULL, will use all images in Seurat object.
 #' @return A list of ggplot2 objects.
-FeaurePlotSpatial = function(sc, images=NULL, ...) {
+FeaturePlotSpatial = function(sc, images=NULL, ...) {
     if (is.null(images)) images = SeuratObject::Images(sc) 
     
     if (length(image) > 1) {

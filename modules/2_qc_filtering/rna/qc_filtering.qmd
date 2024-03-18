@@ -262,7 +262,7 @@ if (!all(f)) {
 # Do not plot QC if there are no features to plot
 if (length(barcode_qc) > 0) {
   # Make plots
-  plist = PlotBarcodeQC(sc, qc=barcode_qc, filter=barcode_filter)
+  plist = PlotBarcodeQC(sc, qc=barcode_qc, filter=barcode_filter, log10="nCount")
   
   # Prepare captions
   captions = GeneratePlotCaptions(names(plist), assay_names=SeuratObject::Assays(sc))
@@ -332,8 +332,15 @@ if (length(SeuratObject::Images(sc)) > 0) {
             cat ("##### ", q, "\n\n")
             
             # Make spatial plots split by sample
-            plist = FeaurePlotSpatial(sc, features=q) + 
-                viridis::scale_fill_viridis()
+            plist = FeaturePlotSpatial(sc, features=q, combine=FALSE)
+            plist = purrr::map(plist, function(p) {
+                if (grepl(pattern="nCount", q)) {
+                    p = p +  viridis::scale_fill_viridis(paste(q, "(log10)", trans="log10"))
+                } else {
+                    p = p +  viridis::scale_fill_viridis()
+                }
+                return(p)
+            })
             
             # Make captions
             orig_idents = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)

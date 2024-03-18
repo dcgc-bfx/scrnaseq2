@@ -156,18 +156,29 @@ if (!all(f)) {
 if (length(qc_features) > 0) {
 
   # Left: QC on UMAP
-  plist1 = Seurat::FeaturePlot(sc, features=qc_features, combine=FALSE)
+  plist1 = Seurat::FeaturePlot(sc, features=qc_features, combine=FALSE, order=TRUE)
   for (i in seq(plist1)) {
-    plist1[[i]] = plist1[[i]] + AddPlotStyle(title="") + viridis::scale_color_viridis()
+    q = qc_features[i]
+    if (grepl(pattern="nCount", q)) {
+        plist1[[i]] = plist1[[i]] + viridis::scale_color_viridis(trans="log10")
+        plist1[[i]] = plist1[[i]] + AddPlotStyle(title=paste(q, "(log10)"))
+    } else {
+        plist1[[i]] = plist1[[i]] + viridis::scale_color_viridis()
+        plist1[[i]] = plist1[[i]] + AddPlotStyle(title=q)
+    }
+    
+    plist1[[i]] = Seurat::LabelClusters(plist1[[i]], id="ident", box=TRUE, fill="white", label.padding=0.05)
   }
   names(plist1) = qc_features
-  if (default_assay == "RNA") plist1[["nCount_RNA"]] = plist1[["nCount_RNA"]] + viridis::scale_color_viridis(trans="log10")
   
   # Right: QC as violin plots
   plist2 = lapply(qc_features, function(x) {
     p = ggplot(sc[[]], aes(x=seurat_clusters, y=!!sym(x), fill=seurat_clusters, group=seurat_clusters)) + 
       geom_violin(scale="width") + 
-      AddPlotStyle(fill=ScColours(sc, "seurat_clusters"), xlab="Cluster", legend_position="none")
+      AddPlotStyle(fill=ScColours(sc, "seurat_clusters"), xlab="Cluster", legend_position="none", title="") +
+      theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1))
+    
+    if (grepl(pattern="nCount", x)) p = p + scale_y_log10()
     return(p)
   })
   names(plist2) = qc_features
@@ -177,7 +188,7 @@ if (length(qc_features) > 0) {
     p = plist1[[x]] + plist2[[x]]
     return(p)
   })
-  captions = GeneratePlotCaptions(qc_features, remove=paste0("_", default_assay), capitalize=TRUE)
+  captions = GeneratePlotCaptions(qc_features, assay_names=SeuratObject::Assays(sc), capitalize=TRUE)
   names(plist) = names(captions) = qc_features
   
   # Set up layout and automatically generate chunks
@@ -186,7 +197,7 @@ if (length(qc_features) > 0) {
 
 \`\`\`{r}
 #| label: fig-clusterqc_{{type}}
-#| fig-cap: '{{caption}}'
+#| fig-cap: {{caption}}
 #| fig-height: 4
 
 plist[['{{type}}']]
@@ -261,11 +272,17 @@ plist = list()
 plist[["Phase"]] = Seurat::DimPlot(sc, group.by="Phase", pt.size=1, cols=ScColours(sc, "Phase")) + 
   AddPlotStyle(title="")
 
+# Hack to colour by phase but label by
+barcodes = rownames(plist[["Phase"]]$data)
+plist[["Phase"]]$data$ident = sc[["seurat_clusters"]][barcodes,]
+plist[["Phase"]] = LabelClusters(plist[["Phase"]], id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
+
+
 for (i in c("S.Score", "G2M.Score", "CC.Difference")) {
   plist[[i]] = FeaturePlot(sc, features=i, pt.size=1, min.cutoff="q1", max.cutoff="q99") +
     AddPlotStyle(title="") + 
     viridis::scale_color_viridis()
-  plist[[i]] = LabelClusters(plist[[i]], id="ident", box=TRUE, fill="white")
+  plist[[i]] = LabelClusters(plist[[i]], id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
 }
 
 captions = paste("UMAP coloured by", names(plist))
@@ -277,7 +294,7 @@ chunk_template = "
 
 \`\`\`{r}
 #| label: fig-clusterqc_cellcycle_umap_{{type}}
-#| fig-cap: '{{caption}}'
+#| fig-cap: {{caption}}
 
 plist[['{{type}}']]
 \`\`\`

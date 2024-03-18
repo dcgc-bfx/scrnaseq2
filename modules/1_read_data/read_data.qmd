@@ -1109,8 +1109,15 @@ p
     for(q in barcode_qc) {
       
       # Make spatial plots split by sample
-      plist = FeaurePlotSpatial(sc, features=q) + 
-                viridis::scale_fill_viridis()
+      plist = FeaturePlotSpatial(sc, features=q, combine=FALSE)
+      plist = purrr::map(plist, function(p) {
+        if (grepl(pattern="nCount", q)) {
+            p = p + viridis::scale_fill_viridis(paste(q, "(log10)", trans="log10"))
+        } else {
+            p = p + viridis::scale_fill_viridis()
+        }
+        return(p)
+      })
       
       # Make captions
       orig_idents = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)

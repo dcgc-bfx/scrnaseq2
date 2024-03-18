@@ -24,7 +24,7 @@ params:
   latent_vars: null 
   
   # Known markger genes
-  file_known_markers: null
+  file_known_markers: "datasets/10x_xenium_mouse_brain/selected_markers.xlsx"
 
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. 
   # Computations will access only the relevant parts of the data. 
@@ -167,6 +167,10 @@ In addition to detecting marker genes, it might be informative to detect genes t
 # Find DEGs for every cluster compared to all remaining cells 
 # Report up-regulated DEGS (=markers NAMING CONVENTION) and down-regulated ones
 
+# Prepare SCT for marker detection
+if (grepl(pattern="_SCT$", x=default_assay, perl=TRUE)) sc = Seurat::PrepSCTFindMarkers(object=sc, assay=default_assay)
+
+
 # Latest best-practice paper recommends to use a Wilcox test
 # RunPresto is a wrapper around "immunogenomics/presto", which is a fast implementation of a Wilcox test
 markers = SeuratWrappers::RunPrestoAll(object=sc,
@@ -253,17 +257,19 @@ if (markers_found) {
     markers_top_cl = markers_top %>% dplyr::filter(cluster==cl)
 
     # Feature plots
-    plist[["FeaturePlot"]][[cl]] = lapply(markers_top_cl$gene, function(x) { 
-      Seurat::FeaturePlot(sc, features=x, combine=TRUE, label=TRUE) + 
-        viridis::scale_color_viridis() + 
-        AddPlotStyle(legend_position="bottom")
+    plist[["FeaturePlot"]][[cl]] = lapply(markers_top_cl$gene, function(x) {
+        p = Seurat::FeaturePlot(sc, features=x, order=TRUE) + 
+            viridis::scale_color_viridis() + 
+            AddPlotStyle(legend_position="bottom")
+        p = Seurat::LabelClusters(p, id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
+        return(p)
     })
     
-      
     # Violin plots
     plist[["ViolinPlot"]][[cl]] = lapply(markers_top_cl$gene, function(x) { 
-      Seurat::VlnPlot(sc, features=x, assay=default_assay, pt.size=0, cols=ScColours(sc, "seurat_clusters"), flip=TRUE) + 
-        AddPlotStyle(legend_position="none")
+        Seurat::VlnPlot(sc, features=x, assay=default_assay, pt.size=0, cols=ScColours(sc, "seurat_clusters"), flip=TRUE) + 
+            AddPlotStyle(legend_position="none", xlab="Cluster", ylab="") +
+            theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1))
     })
     
     names(plist[["FeaturePlot"]][[cl]]) = names(plist[["ViolinPlot"]][[cl]]) = markers_top_cl$gene
@@ -367,13 +373,9 @@ known_markers_vect = 0
 idx_dotplot = c()
 
 if (!is.null(file_known_markers)) {
-
-  # Fetch annotation for default assay 
-  annot = sc[[default_assay]][[]] %>% dplyr::select(dplyr::starts_with("ensembl_"))
-
   # Read known marker genes
   known_markers = openxlsx::read.xlsx(param("file_known_markers"))
-  
+    
   # Convert to list
   # Remove NAs and space chars
   known_markers_list = lapply(colnames(known_markers), function(x) {
@@ -382,6 +384,14 @@ if (!is.null(file_known_markers)) {
       as.character()
   })
   names(known_markers_list) = colnames(known_markers)
+  
+  # Fetch annotation for default assay 
+  annot = sc[[default_assay]][[]] %>% dplyr::select(dplyr::starts_with("ensembl_"))
+
+  # Fetch annotation for default assay
+  # Note: When using SCT, need to use the original assay
+  d = gsub(pattern="_SCT$", replacement="", default_assay)
+  annot = sc[[d]][[]] %>% dplyr::select(dplyr::starts_with("ensembl_"))
   
   # Translate to gene symbols if available
   if (ncol(annot) > 0) {
@@ -431,7 +441,7 @@ if ((known_markers_n > 0) & any(idx_dotplot)) {
     g = g[length(g):1]
     plist[[n]] = Seurat::DotPlot(sc, features=g) + 
         viridis::scale_color_viridis() + 
-        AddPlotStyle(ylab="Cluster", legend_position="bottom") + 
+        AddPlotStyle(ylab="Cluster", xlab="", legend_position="bottom") + 
         theme(axis.text.x=element_text(angle=90, hjust=1, vjust=.5)) +
         lims(size=c(0,100))
   }
@@ -471,39 +481,49 @@ An individual feature plot colors single cells according to normalized gene expr
 #| results: asis
 
 if ((known_markers_n > 0) & length(known_markers_vect) <= 100) {
-  plist = Seurat::FeaturePlot(sc, features=known_markers_vect, combine=FALSE, label=TRUE)
-  for (i in seq(plist)) {
-    plist[[i]] = plist[[i]] + 
-      viridis::scale_color_viridis() + 
-      AddPlotStyle()
-  }
-  names(plist) = known_markers_vect
+  plist = purrr::map(known_markers_list, function(f) {
+    pl = Seurat::FeaturePlot(sc, features=f, combine=FALSE, order=TRUE)
+    for (i in seq(pl)) {
+      pl[[i]] = pl[[i]] + viridis::scale_color_viridis() + AddPlotStyle()
+      pl[[i]] = Seurat::LabelClusters(pl[[i]], id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
+    }
+    names(pl) = f
+    return(pl)
+  })
+  names(plist) = names(known_markers_list)
   
   # Set up layout and automatically generate chunks
   chunk_template = "
 \`\`\`{r}
 #| label: fig-cluster_annotation_knownmarkers_featureplots_{{gene}}
-#| fig-cap: '{{gene}}'
+#| fig-cap: UMAP coloured by expression of {{gene}}
 #| echo: false
 
-plist[['{{gene}}']]
+plist[['{{lst}}']][['{{gene}}']]
 \`\`\`
 "
   
-  cat("::: {layout-ncol=2}")
-  
-  # Loop through genes
-  for (gene in names(plist)) {
-    chunk_filled =  knitr::knit_expand(text=chunk_template, gene=gene)
-    if(interactive()) {
-      print(EvalKnitrChunk(chunk_filled))
-    } else {
-      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
-      cat(chunk_filled, sep='\n')
-    }
-  }
+  cat("::: panel-tabset\n")
+  # Loop through lists
+  for (lst in names(plist)) {
+    cat("##### ", lst, "\n")
 
-  cat(":::")
+    # Plot in two column layout
+    cat("::: {layout-ncol=2}\n")
+
+    # Loop through genes
+    for (gene in names(plist[[lst]])) {
+      chunk_filled =  knitr::knit_expand(text=chunk_template, gene=gene, lst=lst)
+      if(interactive()) {
+        print(EvalKnitrChunk(chunk_filled))
+      } else {
+        chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+        cat(chunk_filled, sep='\n')
+      }
+     }
+    cat(":::\n")
+  }
+  cat(":::\n")
   
   } else if (length(known_markers_vect) > 100) { 
   CalloutBox("This tab is used to plot up to 100 known marker genes. Your provided list is longer than this, and hence individual feature plots are skipped.", type="note")
