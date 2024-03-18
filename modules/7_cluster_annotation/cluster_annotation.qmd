@@ -221,7 +221,7 @@ if (markers_found) {
 We use the term "markers" to specifically describe features that are up-regulated in barcodes of one cluster compared to the rest.
 
 ```{r}
-#| label: cluster_annotation_markers_table 
+#| label: tbl-cluster_annotation_markers_table 
 #| eval: !expr markers_found
 #| tbl-cap: "Top markers per cluster"
 
@@ -232,7 +232,8 @@ if (markers_found) {
   markers_top$labels = paste0(markers_top$cluster, ": ", markers_top$gene)
 
   # Show table
-  gt(markers_top %>% dplyr::select(-labels)) %>% tab_options(container.overflow.y=FALSE)
+  gt(markers_top %>% dplyr::select(-labels)) %>% 
+      tab_options(container.height=450)
 }
 ```
 
