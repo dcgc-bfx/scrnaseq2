@@ -261,7 +261,7 @@ if (markers_found) {
     plist[["FeaturePlot"]][[cl]] = lapply(markers_top_cl$gene, function(x) {
         p = Seurat::FeaturePlot(sc, features=x, order=TRUE) + 
             viridis::scale_color_viridis() + 
-            AddPlotStyle(legend_position="bottom")
+            AddPlotStyle(legend_position="right", xlab="", ylab="")
         p = Seurat::LabelClusters(p, id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
         return(p)
     })
@@ -284,9 +284,9 @@ if (markers_found) {
     guides(size=guide_legend(order=1)) 
   
   # Dotplot (unscaled)
-  plist[["DotPlotNonscaled"]] = DotPlotUpdated(sc, features=markers_top$gene %>% unique(), scale=FALSE) + 
+  plist[["DotPlotNonscaled"]] = Seurat::DotPlot(sc, features=markers_top$gene %>% unique(), scale=FALSE) + 
     viridis::scale_color_viridis() + 
-    AddPlotStyle(title="", ylab="Cluster", legend_position="bottom") + 
+    AddPlotStyle(ylab="Cluster", legend_position="bottom") + 
     theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.5)) + 
     guides(size=guide_legend(order=1))
 
@@ -295,7 +295,9 @@ if (markers_found) {
   chunk_template1 = "
 \`\`\`{r}
 #| label: fig-cluster_annotation_markers_{{type}}_cluster{{cluster}}_{{gene}}
-#| fig-cap: 'Cluster {{cluster}}, {{gene}}'
+#| fig-cap: Cluster {{cluster}}, {{gene}}
+#| fig-width: 4
+#| fig-height: 3
 #| echo: false
 
 plist[['{{type}}']][['{{cluster}}']][['{{gene}}']]
@@ -305,7 +307,7 @@ plist[['{{type}}']][['{{cluster}}']][['{{gene}}']]
   chunk_template2 = "
 \`\`\`{r}
 #| label: fig-cluster_annotation_markers_{{type}}
-#| fig-cap: '{{type}}'
+#| fig-cap: {{type}}
 
 plist[['{{type}}']]
 \`\`\`
@@ -451,7 +453,7 @@ if ((known_markers_n > 0) & any(idx_dotplot)) {
   chunk_template = "
 \`\`\`{r}
 #| label: fig-cluster_annotation_knownmarkers_dotplot_{{name}}
-#| fig-cap: '{{name}}'
+#| fig-cap: {{name}}
 
 plist[['{{name}}']]
 \`\`\`
@@ -485,7 +487,7 @@ if ((known_markers_n > 0) & length(known_markers_vect) <= 100) {
   plist = purrr::map(known_markers_list, function(f) {
     pl = Seurat::FeaturePlot(sc, features=f, combine=FALSE, order=TRUE)
     for (i in seq(pl)) {
-      pl[[i]] = pl[[i]] + viridis::scale_color_viridis() + AddPlotStyle()
+      pl[[i]] = pl[[i]] + viridis::scale_color_viridis() + AddPlotStyle(xlab="", ylab="")
       pl[[i]] = Seurat::LabelClusters(pl[[i]], id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
     }
     names(pl) = f
@@ -499,6 +501,8 @@ if ((known_markers_n > 0) & length(known_markers_vect) <= 100) {
 #| label: fig-cluster_annotation_knownmarkers_featureplots_{{gene}}
 #| fig-cap: UMAP coloured by expression of {{gene}}
 #| echo: false
+#| fig-width: 4
+#| fig-height: 3
 
 plist[['{{lst}}']][['{{gene}}']]
 \`\`\`

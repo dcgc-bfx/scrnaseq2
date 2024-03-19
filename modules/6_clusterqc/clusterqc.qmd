@@ -161,10 +161,10 @@ if (length(qc_features) > 0) {
     q = qc_features[i]
     if (grepl(pattern="nCount", q)) {
         plist1[[i]] = plist1[[i]] + viridis::scale_color_viridis(trans="log10")
-        plist1[[i]] = plist1[[i]] + AddPlotStyle(title=paste(q, "(log10)"))
+        plist1[[i]] = plist1[[i]] + AddPlotStyle(title=paste(q, "(log10)"), xlab="", ylab="")
     } else {
         plist1[[i]] = plist1[[i]] + viridis::scale_color_viridis()
-        plist1[[i]] = plist1[[i]] + AddPlotStyle(title=q)
+        plist1[[i]] = plist1[[i]] + AddPlotStyle(title=q, xlab="", ylab="")
     }
     
     plist1[[i]] = Seurat::LabelClusters(plist1[[i]], id="ident", box=TRUE, fill="white", label.padding=0.05)
@@ -198,7 +198,7 @@ if (length(qc_features) > 0) {
 \`\`\`{r}
 #| label: fig-clusterqc_{{type}}
 #| fig-cap: {{caption}}
-#| fig-height: 4
+#| fig-height: 3
 
 plist[['{{type}}']]
 \`\`\`
@@ -270,7 +270,7 @@ p
 # Phases on UMAP
 plist = list()
 plist[["Phase"]] = Seurat::DimPlot(sc, group.by="Phase", pt.size=1, cols=ScColours(sc, "Phase")) + 
-  AddPlotStyle(title="")
+  AddPlotStyle(title="", xlab="", ylab="")
 
 # Hack to colour by phase but label by
 barcodes = rownames(plist[["Phase"]]$data)
