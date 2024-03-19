@@ -1079,7 +1079,7 @@ for (a in Seurat::Assays(sc)) {
   
   # VIOLIN PLOTS
   # Make violin plots and combine into patchworked object
-  plist = PlotBarcodeQC(sc, qc=barcode_qc)
+  plist = PlotBarcodeQC(sc, qc=barcode_qc, log10="nCount")
   p = patchwork::wrap_plots(plist, ncol=2)
   
   # Make chunk template for violin plots
@@ -1111,8 +1111,9 @@ p
       # Make spatial plots split by sample
       plist = FeaturePlotSpatial(sc, features=q, combine=FALSE)
       plist = purrr::map(plist, function(p) {
+        p =  p + theme(legend.title=element_blank())
         if (grepl(pattern="nCount", q)) {
-            p = p + viridis::scale_fill_viridis(paste(q, "(log10)", trans="log10"))
+            p = p + viridis::scale_fill_viridis(trans="log10") + ggtitle(paste(q, "(log10)"))
         } else {
             p = p + viridis::scale_fill_viridis()
         }
