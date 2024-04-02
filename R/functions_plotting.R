@@ -563,7 +563,7 @@ DimPlotSpatial = function(sc, images=NULL, ...) {
 FeaturePlotSpatial = function(sc, images=NULL, ...) {
     if (is.null(images)) images = SeuratObject::Images(sc) 
     
-    if (length(image) > 1) {
+    if (length(images) > 1) {
         plist = purrr::map(images, function(i) {
             if (grepl("^fov\\.", i)) {
                 # Xenium FOV plot
