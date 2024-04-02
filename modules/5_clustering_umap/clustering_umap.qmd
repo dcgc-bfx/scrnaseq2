@@ -308,8 +308,6 @@ if (use_sketching) {
 
 ```{r}
 #| label: clustering_tests
-#| eval: !expr length(dimensionality_reduction_methods) * length(cluster_resolutions) > 0
-#| include: !expr length(dimensionality_reduction_methods) * length(cluster_resolutions) > 0
 #| results: asis
 #| echo: false
 
@@ -344,7 +342,7 @@ plist[['{{name}}']]
 \`\`\`
 "
 
-cat("::: {layout-ncol=", min(length(plist), 3), "}\n", sep="")
+cat("::: {layout-ncol=3\n", sep="")
 
 for (method in dimensionality_reduction_methods) {
   for (res in cluster_resolutions) {
@@ -381,9 +379,9 @@ clusterings_to_plot = purrr::map(dimensionality_reduction_methods, function(meth
 
 # Generate plots and captions
 plist = purrr::map(SeuratObject::Images(sc), function(i) {
-    pl = DimPlotSpatial(sc, images=i, group.by=clusterings_to_plot, combine=FALSE, cols=ScColours(sc, clusterings_to_plot))
+    pl = DimPlotSpatial(sc, images=i, group.by=clusterings_to_plot, combine=FALSE)
     pl = purrr::map(seq(pl), function(i) {
-        p = pl[[i]] + theme(legend.title=element_blank()) + ggtitle(clusterings_to_plot[i])
+        p = pl[[i]] + theme(legend.title=element_blank()) + ggtitle(clusterings_to_plot[i]) + scale_fill_manual(values=ScColours(sc, clusterings_to_plot[i]))
         return(p)
     })
     names(pl) = clusterings_to_plot
@@ -396,6 +394,7 @@ chunk_template = "
 \`\`\`{r}
 #| label: fig-clustering_spatial_{{clstr}}_dataset_{{ident}}
 #| fig-cap: {{caption}}
+#| echo: false
 
 plist[['{{ident}}']][['{{clstr}}']]
 \`\`\`
@@ -410,7 +409,7 @@ for(ident in names(plist)) {
     if (length(plist[[ident]]) > 1) cat("::: {layout-ncol=2}\n")
     
     # Generate captions
-    captions = purrr::map(dimensionality_reduction_methods, function(method) return(FormatString("Spatial plot for dataset {ident} coloured by clustering with resolution {res} based on reduction {toupper(method)}"))) %>% purrr::flatten_chr()
+    captions = purrr::map(dimensionality_reduction_methods, function(method) return(FormatString("Spatial plot for dataset {ident} coloured by clustering with resolution {cluster_resolutions} based on reduction {toupper(method)}"))) %>% purrr::flatten_chr()
 
     for(i in seq(plist[[ident]])) {
         clstr = names(plist[[ident]])[i]
