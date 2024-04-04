@@ -633,9 +633,13 @@ barcode_filter = PrepareBarcodeFilter(param("barcode_filter"), orig_idents)
 barcode_filter_tbl = purrr::map_dfr(names(barcode_filter), function(s) {
   tbl = purrr::map(barcode_filter[[s]], function(f) {
     if (is.numeric(f) & length(f)==2) {
-      if (is.na(f[1])) f[1] = ""
-      if (is.na(f[2])) f[2] = ""
-      return(paste(f, collapse="-"))
+        r = dplyr::case_when(
+            is.na(f[1]) & is.na(f[2]) ~ "",
+            is.na(f[1]) & !is.na(f[2]) ~ paste0("<=", f[2]),
+            !is.na(f[1]) & is.na(f[2]) ~ paste0(">=", f[1]),
+            !is.na(f[1]) & !is.na(f[2]) ~ paste0(f[1], "-", f[2])
+        )
+        return(r)
     } else {
       return(paste(f, collapse=", "))
     }
@@ -655,9 +659,13 @@ feature_filter = PrepareFeatureFilter(param("feature_filter"), orig_idents)
 feature_filter_tbl = purrr::map_dfr(names(feature_filter), function(s) {
   tbl = purrr::map(feature_filter[[s]], function(f) {
     if (is.numeric(f) & length(f)==2) {
-      if (is.na(f[1])) f[1] = ""
-      if (is.na(f[2])) f[2] = ""
-      return(paste(f, collapse="-"))
+        r = dplyr::case_when(
+            is.na(f[1]) & is.na(f[2]) ~ "",
+            is.na(f[1]) & !is.na(f[2]) ~ paste0("<=", f[2]),
+            !is.na(f[1]) & is.na(f[2]) ~ paste0(">=", f[1]),
+            !is.na(f[1]) & !is.na(f[2]) ~ paste0(f[1], "-", f[2]),
+        )
+        return(r)
     } else {
       return(paste(f, collapse=", "))
     }
@@ -726,17 +734,18 @@ barcodes_to_exclude = purrr::map(orig_idents, function(s) {
     if (is.numeric(filter) & length(filter)==2) {
       if (is.na(filter[1])) filter[1] = -Inf
       if (is.na(filter[2])) filter[2] = Inf
-      idx_exclude = which(barcode_metadata[[n]] < filter[1] | barcode_metadata[[n]] > filter[2])
+      idx_exclude = which(barcode_metadata[["orig.ident"]] == s & !(barcode_metadata[[n]] >= filter[1] & barcode_metadata[[n]] <= filter[2]))
     } else {
-      idx_exclude = which(!barcode_metadata[[n]] %in% filter)
+      idx_exclude = which(barcode_metadata[["orig.ident"]] == s & !barcode_metadata[[n]] %in% filter)
     }
     return(rownames(barcode_metadata)[idx_exclude])
   })
   names(filter_result) = names(barcode_filter[[s]])
   
   # Samples to drop
-  if (s %in% param("samples_to_drop")) {
-    idx_exclude = which(barcode_metadata$orig.ident == s)
+  samples_to_drop = param("samples_to_drop")
+  if (s %in% samples_to_drop) {
+    idx_exclude = which(barcode_metadata[["orig.ident"]] == s)
     filter_result[["samples_to_drop"]] = rownames(barcode_metadata)[idx_exclude]
   } else {
     filter_result[["samples_to_drop"]] = as.character(c())
@@ -746,7 +755,7 @@ barcodes_to_exclude = purrr::map(orig_idents, function(s) {
   samples_min_cells = param("samples_min_cells")
   filter_result[["samples_min_cells"]] = as.character(c())
   if (!is.null(samples_min_cells)) {
-    idx_exclude = which(barcode_metadata$orig.ident == s)
+    idx_exclude = which(barcode_metadata[["orig.ident"]] == s)
     if (length(idx_exclude) < samples_min_cells) {
       filter_result[["samples_min_cells"]] = rownames(barcode_metadata)[idx_exclude]
     }
@@ -761,9 +770,10 @@ barcodes_to_exclude_tbl = purrr::map_dfr(barcodes_to_exclude, function(s) {
   return(as.data.frame(purrr::map(s, length))) 
   })
 rownames(barcodes_to_exclude_tbl) = names(barcodes_to_exclude)
-barcodes_to_exclude_tbl$Original = purrr::map_int(orig_idents, function(s) return(sum(barcode_metadata$orig.ident == s)))
+barcodes_to_exclude_tbl$N = purrr::map_int(orig_idents, function(s) return(sum(barcode_metadata$orig.ident == s)))
 barcodes_to_exclude_tbl$Excluded = purrr::map_int(barcodes_to_exclude, function(s) { return(purrr::flatten(s) %>% unique() %>% length())})
-barcodes_to_exclude_tbl$PercKept = round((barcodes_to_exclude_tbl$Original - barcodes_to_exclude_tbl$Excluded) / barcodes_to_exclude_tbl$Original * 100, 2)
+barcodes_to_exclude_tbl$PercKept = round((barcodes_to_exclude_tbl$N - barcodes_to_exclude_tbl$Excluded) / barcodes_to_exclude_tbl$N * 100, 2)
+barcodes_to_exclude_tbl = barcodes_to_exclude_tbl %>% dplyr::relocate(N)
 
 # Filter
 barcodes_to_exclude = purrr::flatten(barcodes_to_exclude) %>% purrr::flatten_chr() %>% unique()
@@ -771,7 +781,10 @@ barcodes_to_keep = rownames(barcode_metadata)
 barcodes_to_keep = barcodes_to_keep[!barcodes_to_keep %in% barcodes_to_exclude]
 sc = subset(sc, cells=barcodes_to_keep)
 
-gt(barcodes_to_exclude_tbl, rownames_to_stub=TRUE)
+gt(barcodes_to_exclude_tbl, rownames_to_stub=TRUE) %>%
+    tab_spanner("Original", columns = c(N)) %>%
+    tab_spanner("Filtered by", columns = c(-N, -Excluded, -PercKept)) %>%
+    tab_spanner("Total", columns = c(Excluded, PercKept))
 ```
 
 ```{r}
@@ -814,12 +827,10 @@ features_to_exclude_all = purrr::map(features_to_exclude, function(x) return(nam
 features_to_exclude_tbl = purrr::map_dfr(names(features_to_exclude), function(n) {
   # Boolean vector for all features in dataset
   features = features_to_exclude[[n]]
-  df = data.frame(Original=length(features), 
-                  FailThreshold=sum(features))
-  df$PercFailThreshold = round(df$FailThreshold / df$Original * 100, 2)
+  df = data.frame(N=length(features), FailThreshold=sum(features))
   
-  df$Kept = length(setdiff(names(features), features_to_exclude_all))
-  df$PercKept = round(df$Kept / df$Original * 100, 2)
+  df$Excluded = length(setdiff(names(features), features_to_exclude_all))
+  df$PercKept = round( (df$N - df$FailThreshold) / df$N * 100, 2)
   return(df)
 })
 rownames(features_to_exclude_tbl) = names(features_to_exclude)
@@ -833,7 +844,10 @@ sc[[default_assay]] = suppressWarnings(subset(sc[[default_assay]], features=feat
 sc[[default_assay]]@meta.data = feature_metadata[features_to_keep, ]
                              
 # Print table
-gt(features_to_exclude_tbl, rownames_to_stub=TRUE)
+gt(features_to_exclude_tbl, rownames_to_stub=TRUE) %>%
+    tab_spanner("Original", columns = c(N)) %>%
+    tab_spanner("Filtered by", columns = c(-N, -Excluded, -PercKept)) %>%
+    tab_spanner("Total", columns = c(Excluded, PercKept))
 ```
 
 After filtering, the size of the Seurat object is:
@@ -867,7 +881,7 @@ if (!all(f)) {
 # Do not plot QC if there are no features to plot
 if (length(barcode_qc) > 0) {
   # Make plots
-  plist = PlotBarcodeQC(sc, qc=barcode_qc, filter=barcode_filter)
+  plist = PlotBarcodeQC(sc, qc=barcode_qc, filter=barcode_filter, log10="nCount")
   
   # Prepare captions
   captions = GeneratePlotCaptions(names(plist), assay_names=SeuratObject::Assays(sc))
