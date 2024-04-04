@@ -351,6 +351,10 @@ PlotBarcodeQCCor = function(sc, qc, filter=NULL) {
 #' @param top The top genes that should be labeled.
 #' @return A list of ggplot2 objects.
 PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
+
+    method = "vst"
+    assay = "RNA"
+    top = 10
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
   # Checks
@@ -366,6 +370,8 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
   orig_idents =  levels(sc$orig.ident)
   
   plist = purrr::map(orig_idents, function(n) {
+      n = "brain1"
+      
     # Collect information about highly variable genes
     if (method == "sct") {
       assertthat::assert_that(.hasSlot(sc[[assay]], "SCTModel.list"),
@@ -397,15 +403,16 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
     
     # Define columns to plot
     if (method == "scran") {
-      hvf_info = hvf_info[, c(1, 2, ncol(hvf_info)-1, ncol(hvf_info))]
+      hvf_info = hvf_info[, c("mean", "total", "variable", "rank")]
       xlab = "Average Expression"
       ylab = "Dispersion"
     } else if (method == "vst") {
-      hvf_info = hvf_info[, c(1, 4, ncol(hvf_info)-1, ncol(hvf_info))]
+      
+      hvf_info = hvf_info[, c("mean", "variance.standardized", "variable", "rank")]
       xlab = "Average Expression"
       ylab = "Standardized Variance"
     } else if (method == "sct") {
-      hvf_info = hvf_info[, c(1, 3, ncol(hvf_info)-1, ncol(hvf_info))]
+      hvf_info = hvf_info[, c("gmean", "residual_variance", "variable", "rank")]
       xlab = "Geometric Mean of Expression"
       ylab = "Residual Variance"
     }
