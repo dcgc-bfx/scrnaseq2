@@ -1031,7 +1031,10 @@ if (!is.null(ensembl_column) & !is.null(ensembl_version)) {
                                           mart_attributes2=c(ensembl_id2="ensembl_gene_id", 
                                                             ensembl_symbol2="external_gene_name"),
                                           useCache=TRUE)
-    seurat_s_genes = seurat_s_genes %>% dplyr::filter(one_to_one == TRUE) %>% dplyr::pull(ensembl_id2)
+    
+    human_symbols = seurat_s_genes %>% dplyr::filter(one_to_one == TRUE) %>% dplyr::pull(ensembl_symbol1)
+    species_ensemblids = seurat_s_genes %>% dplyr::filter(one_to_one == TRUE) %>% dplyr::pull(ensembl_id2)
+    seurat_s_genes = setNames(species_ensemblids, human_symbols)
     
     seurat_g2m_genes = EnsemblFetchOrthologues(ids=seurat_g2m_genes,
                                           symbols=TRUE,
@@ -1043,7 +1046,10 @@ if (!is.null(ensembl_column) & !is.null(ensembl_version)) {
                                           mart_attributes2=c(ensembl_id2="ensembl_gene_id", 
                                                             ensembl_symbol2="external_gene_name"),
                                           useCache=TRUE)
-    seurat_g2m_genes = seurat_g2m_genes %>% dplyr::filter(one_to_one == TRUE) %>% dplyr::pull(ensembl_id2)
+    
+    human_symbols = seurat_g2m_genes %>% dplyr::filter(one_to_one == TRUE) %>% dplyr::pull(ensembl_symbol1)
+    species_ensemblids = seurat_g2m_genes %>% dplyr::filter(one_to_one == TRUE) %>% dplyr::pull(ensembl_id2)
+    seurat_g2m_genes = setNames(species_ensemblids, human_symbols)
   } else {
     # Fetch ids via Ensembl
     seurat_s_genes = EnsemblFetchGeneInfo(ids=seurat_s_genes,
@@ -1053,7 +1059,10 @@ if (!is.null(ensembl_column) & !is.null(ensembl_version)) {
                                           mart_attributes=c(ensembl_id="ensembl_gene_id", 
                                                             ensembl_symbol="external_gene_name"),
                                           useCache=TRUE)
-    seurat_s_genes = seurat_s_genes %>% dplyr::filter(!is.na(ensembl_id)) %>% dplyr::pull(ensembl_id)
+    
+    human_symbols = seurat_s_genes %>% dplyr::pull(ensembl_symbol)
+    human_ensemblids = seurat_s_genes %>% dplyr::pull(ensembl_id)
+    seurat_s_genes = setNames(human_ensemblids, human_symbols)
     
     seurat_g2m_genes = EnsemblFetchGeneInfo(ids=seurat_g2m_genes,
                                           symbols=TRUE,
@@ -1062,24 +1071,35 @@ if (!is.null(ensembl_column) & !is.null(ensembl_version)) {
                                           mart_attributes=c(ensembl_id="ensembl_gene_id", 
                                                             ensembl_symbol="external_gene_name"),
                                           useCache=TRUE)
-    seurat_g2m_genes = seurat_g2m_genes %>% dplyr::filter(!is.na(ensembl_id)) %>% dplyr::pull(ensembl_id)
+    
+    human_symbols = seurat_g2m_genes %>% dplyr::pull(ensembl_symbol)
+    human_ensemblids = seurat_g2m_genes %>% dplyr::pull(ensembl_id)
+    seurat_g2m_genes = setNames(human_ensemblids, human_symbols)
   }
   
   # Subset feature names
-  idx = which(feature_metadata[, ensembl_column, drop=TRUE] %in% seurat_s_genes)
-  seurat_s_genes = rownames(feature_metadata)[idx]
+  idx = match(seurat_s_genes, feature_metadata[, ensembl_column, drop=TRUE])
+  seurat_s_genes = seurat_s_genes[!is.na(idx)]
+  idx = idx[!is.na(idx)]
+  seurat_s_genes = setNames(rownames(feature_metadata)[idx], names(seurat_s_genes))
   
-  idx = which(feature_metadata[, ensembl_column, drop=TRUE] %in% seurat_g2m_genes)
-  seurat_g2m_genes = rownames(feature_metadata)[idx]
+  idx = match(seurat_g2m_genes, feature_metadata[, ensembl_column, drop=TRUE])
+  seurat_g2m_genes = seurat_g2m_genes[!is.na(idx)]
+  idx = idx[!is.na(idx)]
+  seurat_g2m_genes = setNames(rownames(feature_metadata)[idx], names(seurat_g2m_genes))
 } else {
   # Do not use Ensembl
   
   # Simply match while ignoring case
-  idx = which(toupper(rownames(feature_metadata)) %in% topupper(seurat_s_genes))
-  seurat_s_genes = rownames(feature_metadata)[idx]
-  
-  idx = which(toupper(rownames(feature_metadata)) %in% topupper(seurat_g2m_genes))
-  seurat_g2m_genes = rownames(feature_metadata)[idx]
+  idx = match(toupper(seurat_s_genes), toupper(rownames(feature_metadata)))
+  seurat_s_genes = seurat_s_genes[!is.na(idx)]
+  idx = idx[!is.na(idx)]
+  seurat_s_genes = setNames(rownames(feature_metadata)[idx], seurat_s_genes)
+
+  idx = match(toupper(seurat_g2m_genes), toupper(rownames(feature_metadata)))
+  seurat_g2m_genes = seurat_g2m_genes[!is.na(idx)]
+  idx = idx[!is.na(idx)]
+  seurat_g2m_genes = setNames(rownames(feature_metadata)[idx], seurat_g2m_genes)
 }
 
 # Add to Seurat object
@@ -1093,7 +1113,7 @@ sc = ScAddLists(sc, lists=list(CC_S_phase=seurat_s_genes, CC_G2M_phase=seurat_g2
 sc = Seurat::NormalizeData(sc, verbose=verbose)
 
 # Calculate scores
-sc = CCScoring(sc, genes_s=seurat_s_genes, genes_g2m=seurat_g2m_genes, verbose=verbose)
+sc = CCScoring(sc, genes_s=unname(seurat_s_genes), genes_g2m=unname(seurat_g2m_genes), verbose=verbose)
 
 # Warn if there not enough genes for cell cycle scoring
 if (length(seurat_s_genes) < 20 | length(seurat_g2m_genes) < 20) {
