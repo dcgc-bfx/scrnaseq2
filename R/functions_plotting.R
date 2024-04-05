@@ -352,9 +352,6 @@ PlotBarcodeQCCor = function(sc, qc, filter=NULL) {
 #' @return A list of ggplot2 objects.
 PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
 
-    method = "vst"
-    assay = "RNA"
-    top = 10
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
   # Checks
@@ -370,7 +367,6 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
   orig_idents =  levels(sc$orig.ident)
   
   plist = purrr::map(orig_idents, function(n) {
-      n = "brain1"
       
     # Collect information about highly variable genes
     if (method == "sct") {
