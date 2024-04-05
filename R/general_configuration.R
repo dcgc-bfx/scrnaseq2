@@ -19,6 +19,7 @@ options(Seurat.object.assay.version="v5")
 
 # Python3 path needed for clustering, umap, other python packages
 reticulate_python3_path = unname(Sys.which("python3"))
+reticulate_python3_path = "C:\\Users\\andpe\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
 Sys.setenv(RETICULATE_PYTHON=reticulate_python3_path)
 
 # Buffer for reading large text files
@@ -49,6 +50,9 @@ options(ggrastr.default.dpi=300)
 
 # Use cairo library for pngs
 options(bitmapType='cairo')
+
+# ggrepel: maximum number of overlaps
+options(ggrepel.max.overlaps=50)
 
 ###################
 # Colour palettes #
