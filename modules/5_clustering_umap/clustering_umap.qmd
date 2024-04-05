@@ -336,13 +336,15 @@ chunk_template = "
 \`\`\`{r}
 #| label: fig-clustering_{{name}}
 #| fig-cap: {{caption}}
+#| fig-width: 2.6
+#| fig-height: 3
 #| echo: false
 
 plist[['{{name}}']]
 \`\`\`
 "
 
-cat("::: {layout-ncol=3\n", sep="")
+cat("::: {layout-ncol=3}\n", sep="")
 
 for (method in dimensionality_reduction_methods) {
   for (res in cluster_resolutions) {
@@ -404,10 +406,7 @@ cat("::: panel-tabset\n")
 
 for(ident in names(plist)) {
     cat("#####", ident, "\n")
-    
-    # If more than one plot, choose two column layout
-    if (length(plist[[ident]]) > 1) cat("::: {layout-ncol=2}\n")
-    
+        
     # Generate captions
     captions = purrr::map(dimensionality_reduction_methods, function(method) return(FormatString("Spatial plot for dataset {ident} coloured by clustering with resolution {cluster_resolutions} based on reduction {toupper(method)}"))) %>% purrr::flatten_chr()
 
@@ -423,9 +422,7 @@ for(ident in names(plist)) {
             chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
             cat(chunk_filled, sep='\n')
         }
-    }
-    
-    if (length(plist[[ident]]) > 1) cat(":::\n")
+    }    
 }
 
 cat(":::\n")
@@ -486,7 +483,7 @@ for (i in names(plist)) {
     # Repel? 
     repel = ifelse((j == "per_sample") & length(unique(sc$orig.ident)) > 5, FALSE, TRUE)
     plist[[i]][[j]] = LabelClusters(plist[[i]][[j]], 
-                                    id="seurat_clusters", box=TRUE, fill="white", repel=repel)
+                                    id="seurat_clusters", box=TRUE, fill="white", repel=repel, label.padding=0.05)
     
     # Add color
     if (i == "by_cluster") { 
