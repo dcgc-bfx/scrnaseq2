@@ -228,12 +228,17 @@ We use the term "markers" to specifically describe features that are up-regulate
 if (markers_found) {
   markers_top = DegsUpDisplayTop(markers_filt$up, n=5)
   
-  # Add labels
-  markers_top$labels = paste0(markers_top$cluster, ": ", markers_top$gene)
-
+  # Highlight rows per cluster for better readability
+  rows_cluster_nums = factor(markers_top$cluster, levels=unique(markers_top$cluster)) %>% as.integer()
+  rows_to_highlight = which(rows_cluster_nums %% 2 == 0)
+  
   # Show table
-  gt(markers_top %>% dplyr::select(-labels)) %>% 
-      tab_options(container.height=450)
+  gt(markers_top) %>% 
+      tab_options(container.height=450) %>%
+      tab_style(
+        style = cell_fill(color="grey80"),
+        locations = cells_body(rows=rows_to_highlight)
+      )  
 }
 ```
 
@@ -247,118 +252,117 @@ The following plots visualize the top markers for each cluster, respectively. Cl
 #| results: asis
 
 if (markers_found) {
-  
-  # Loop through different visualizations of the top markers
-  plist = list()
-  captions = c()
-  plist[["FeaturePlot"]] = plist[["ViolinPlot"]] = list()
-
-  # Loop through clusters
-  for (cl in markers_top$cluster %>% levels()) {
-    markers_top_cl = markers_top %>% dplyr::filter(cluster==cl)
-
-    # Feature plots
-    plist[["FeaturePlot"]][[cl]] = lapply(markers_top_cl$gene, function(x) {
-        p = Seurat::FeaturePlot(sc, features=x, order=TRUE) + 
-            viridis::scale_color_viridis() + 
-            AddPlotStyle(legend_position="right", xlab="", ylab="")
-        p = Seurat::LabelClusters(p, id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
-        return(p)
-    })
     
-    # Violin plots
-    plist[["ViolinPlot"]][[cl]] = lapply(markers_top_cl$gene, function(x) { 
-        Seurat::VlnPlot(sc, features=x, assay=default_assay, pt.size=0, cols=ScColours(sc, "seurat_clusters"), flip=TRUE) + 
-            AddPlotStyle(legend_position="none", xlab="Cluster", ylab="") +
-            theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1))
-    })
-    
-    names(plist[["FeaturePlot"]][[cl]]) = names(plist[["ViolinPlot"]][[cl]]) = markers_top_cl$gene
-  }
-  
-  # Dotplot (scaled)
-  plist[["DotPlotScaled"]] = Seurat::DotPlot(sc, features=markers_top$gene %>% unique()) + 
-    viridis::scale_color_viridis() + 
-    AddPlotStyle(ylab="Cluster", legend_position="bottom") + 
-    theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.5)) + 
-    guides(size=guide_legend(order=1)) 
-  
-  # Dotplot (unscaled)
-  plist[["DotPlotNonscaled"]] = Seurat::DotPlot(sc, features=markers_top$gene %>% unique(), scale=FALSE) + 
-    viridis::scale_color_viridis() + 
-    AddPlotStyle(ylab="Cluster", legend_position="bottom") + 
-    theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.5)) + 
-    guides(size=guide_legend(order=1))
-
-  # Set up layout and automatically generate chunks
-  # Feature and violin plots
-  chunk_template1 = "
+    # Set up layout and automatically generate chunks
+    # Feature and violin plots
+    chunk_template1 = "
 \`\`\`{r}
-#| label: fig-cluster_annotation_markers_{{type}}_cluster{{cluster}}_{{gene}}
+#| label: fig-cluster_annotation_markers_{{type}}_cluster{{cluster}}_{{gene_patched}}
 #| fig-cap: Cluster {{cluster}}, {{gene}}
 #| fig-width: 4
 #| fig-height: 3
 #| echo: false
 
-plist[['{{type}}']][['{{cluster}}']][['{{gene}}']]
+plist[['{{gene}}']]
 \`\`\`
 "
     # Dotplots
-  chunk_template2 = "
+    chunk_template2 = "
 \`\`\`{r}
 #| label: fig-cluster_annotation_markers_{{type}}
-#| fig-cap: {{type}}
+#| fig-cap: {{caption}}
 
-plist[['{{type}}']]
+p
 \`\`\`
 "
-  
-  # Create one tab per plot type
-  cat("\n::: panel-tabset\n")
-  
-  # Loop through plot types
-  for (type in names(plist)) {
     
-    cat("\n##### ", type, "\n")
+    # Create one tab per plot type
+    cat("\n::: panel-tabset\n")
     
-    # Feature plots and violin plots (3 plots per row)
-    if (type %in% c("FeaturePlot", "ViolinPlot")) {
-
-      # Loop through clusters
-      for (cl in names(plist[[type]])) {
+    # Feature plots and violin plots
+    for (type in c("FeaturePlot", "ViolinPlot")) {
+        cat("\n#####", type, "\n")
         
-        cat("\n###### Cluster ", cl, "\n")
+        # Loop through clusters 
+        for (cl in markers_top$cluster %>% levels()) {
+            plist = list()
+            markers_top_cl = markers_top %>% dplyr::filter(cluster==cl)
+            
+            # Produce plots
+            if (type == "FeaturePlot") {
+                plist = Seurat::FeaturePlot(sc, features=markers_top_cl$gene, order=TRUE, combine=FALSE)
+                plist = lapply(plist, function(p) {
+                    p = p + viridis::scale_color_viridis() + 
+                        AddPlotStyle(legend_position="right", xlab="", ylab="") +
+                        theme(legend.key.width = unit(0.02, "npc"))
+                    p = Seurat::LabelClusters(p, id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
+                    return(p)
+                })
+                
+            } else if (type == "ViolinPlot") {
+                plist = Seurat::VlnPlot(sc, features=markers_top_cl$gene, assay=default_assay, pt.size=0, cols=ScColours(sc, "seurat_clusters"), flip=TRUE, combine=FALSE)
+                plist = lapply(plist, function(p) {
+                    p = p + AddPlotStyle(legend_position="none", xlab="Cluster", ylab="") +
+                        theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1))
+                    return(p)
+                })
+            }
+            names(plist) = markers_top_cl$gene
+            
+            # Layout plots  (3 plots per row)
+            cat("\n###### Cluster ", cl, "\n")
+            cat("\n::: {layout-ncol=2}\n")
+            
+            # Loop through genes
+            for (gene in names(plist)) {
+                # Note: 'gene_patched' is 'gene' but with special characters removed since it will be used for the plot name
+                chunk_filled =  knitr::knit_expand(text=chunk_template1, type=type, cluster=cl, gene=gene, gene_patched=MakeNamesValid(gene))
+                if(interactive()) {
+                    print(EvalKnitrChunk(chunk_filled))
+                } else {
+                    chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+                    cat(chunk_filled, sep='\n')
+                }
+            }
+            
+            cat(":::\n")
+        }
+    }
+    
+    # Dot plots (scaled and unscaled)
+    for (type in c("DotPlotScaled", "DotPlotNonscaled")) {
+        cat("\n#####", type, "\n")
         
-        cat("\n::: {layout-ncol=2}\n")
-        
-        # Loop through genes
-        for (gene in names(plist[[type]][[cl]])) {
-          chunk_filled =  knitr::knit_expand(text=chunk_template1, type=type, cluster=cl, gene=gene)
-          if(interactive()) {
-            print(EvalKnitrChunk(chunk_filled))
-          } else {
-            chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
-            cat(chunk_filled, sep='\n')
-          }
+        # Produce plots
+        if (type == "DotPlotScaled") {
+            p = Seurat::DotPlot(sc, features=markers_top$gene %>% unique()) + 
+                viridis::scale_color_viridis() + 
+                AddPlotStyle(ylab="Cluster", xlab="", legend_position="bottom") + 
+                theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.5)) + 
+                guides(size=guide_legend(order=1, title="Pct expressed"),
+                       color = guide_colorbar(title = "Scaled Expression"))
+            caption = "Top markers per cluster (expression scaled)"
+            
+        } else if (type == "DotPlotNonscaled") {
+            p = Seurat::DotPlot(sc, features=markers_top$gene %>% unique(), scale=FALSE) + 
+                viridis::scale_color_viridis() + 
+                AddPlotStyle(ylab="Cluster", xlab="", legend_position="bottom") + 
+                theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.5)) + 
+                guides(size=guide_legend(order=1, title="Pct expressed"),
+                       color = guide_colorbar(title = "Average Expression"))
+            caption = "Top markers per cluster (expression unscaled)"
         }
         
-        cat(":::\n")
-
-      }
+        # Print
+        chunk_filled =  knitr::knit_expand(text=chunk_template2, type=type, caption=caption)
+        if(interactive()) {
+            print(EvalKnitrChunk(chunk_filled))
+        } else {
+            chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+            cat(chunk_filled, sep='\n')
+        }
     }
-    
-    # Dotplots (1 per row)
-    if (type %in% c("DotPlotScaled", "DotPlotNonscaled")) {
-      chunk_filled =  knitr::knit_expand(text=chunk_template2, type=type)
-      if(interactive()) {
-        print(EvalKnitrChunk(chunk_filled))
-      } else {
-        chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
-        cat(chunk_filled, sep='\n')
-      }
-    }
-  }
-  cat(":::\n")
+    cat(":::\n")
 }
 ```
 ## Known marker genes {.tabset}
@@ -376,50 +380,64 @@ known_markers_vect = 0
 idx_dotplot = c()
 
 if (!is.null(file_known_markers)) {
-  # Read known marker genes
-  known_markers = openxlsx::read.xlsx(param("file_known_markers"))
+    # Read known marker genes
+    known_markers = openxlsx::read.xlsx(file_known_markers, check.names=FALSE, sep.names=" ")
     
-  # Convert to list
-  # Remove NAs and space chars
-  known_markers_list = lapply(colnames(known_markers), function(x) {
-    known_markers[,x] %>% na.exclude() %>% 
-      gsub(pattern=" ", replacement="", fixed=TRUE) %>% 
-      as.character()
-  })
-  names(known_markers_list) = colnames(known_markers)
-  
-  # Fetch annotation for default assay 
-  annot = sc[[default_assay]][[]] %>% dplyr::select(dplyr::starts_with("ensembl_"))
-
-  # Fetch annotation for default assay
-  # Note: When using SCT, need to use the original assay
-  d = gsub(pattern="_SCT$", replacement="", default_assay)
-  annot = sc[[d]][[]] %>% dplyr::select(dplyr::starts_with("ensembl_"))
-  
-  # Translate to gene symbols if available
-  if (ncol(annot) > 0) {
-    for (n in names(known_markers_list)) {
-      x = known_markers_list[[n]] %in% annot$ensembl_id
-      if (any(!x)) {
-        y = known_markers_list[[n]][!x]
-        CalloutBox("The following genes of marker list {n} cannot be found in the data: {y*}.", type="warning")
-      }
+    # Convert to list
+    # Remove NAs and space chars
+    known_markers_list = lapply(colnames(known_markers), function(x) {
+        known_markers[,x] %>% na.exclude() %>% 
+            gsub(pattern=" ", replacement="", fixed=TRUE) %>% 
+            as.character()
+    })
+    names(known_markers_list) = colnames(known_markers)
     
-      idx = match(known_markers_list[[n]][x], annot$ensembl_id)
-      known_markers_list[[n]] = rownames(annot)[idx]
+    # Fetch annotation for default assay 
+    annot = sc[[default_assay]][[]] %>% dplyr::select(dplyr::starts_with("ensembl_"))
+    
+    # Fetch annotation for default assay
+    # Note: When using SCT, need to use the original assay
+    d = gsub(pattern="_SCT$", replacement="", default_assay)
+    annot = sc[[d]][[]] %>% dplyr::select(dplyr::starts_with("ensembl_"))
+    
+    # Translate to gene symbols if available
+    if (ncol(annot) > 0) {
+        for (n in names(known_markers_list)) {
+            x = known_markers_list[[n]] %in% annot$ensembl_id
+            if (any(!x)) {
+                y = known_markers_list[[n]][!x]
+                CalloutBox("The following genes of marker list {n} cannot be found in the data: {y*}.", type="warning")
+            }
+            
+            idx = match(known_markers_list[[n]][x], annot$ensembl_id)
+            known_markers_list[[n]] = rownames(annot)[idx]
+        }
+    } 
+    
+    # Remove empty lists
+    is_empty = purrr::map_int(known_markers_list, .f=length) == 0 
+    known_markers_list = known_markers_list[!is_empty]
+    
+    # Count what is left
+    if(length(known_markers_list) > 0) { 
+        known_markers_n = length(known_markers_list) 
+        known_markers_vect = unlist(known_markers_list) %>% unique() %>% sort()
+        idx_dotplot = sapply(seq(known_markers_list), function(x) length(known_markers_list[[x]]) <= 50)
     }
-  } 
-  
-  # Remove empty lists
-  is_empty = purrr::map_int(known_markers_list, .f=length) == 0 
-  known_markers_list = known_markers_list[!is_empty]
-  
-  # Count what is left
-  if(length(known_markers_list) > 0) { 
-    known_markers_n = length(known_markers_list) 
-    known_markers_vect = unlist(known_markers_list) %>% unique() %>% sort()
-    idx_dotplot = sapply(seq(known_markers_list), function(x) length(known_markers_list[[x]]) <= 50)
-  } 
+    
+    # Calculate combined scores with UCell
+    if(length(known_markers_list) > 0) {
+        # Calculate scores based on the Mann-Whitney U statistic using UCell
+        with_progress({
+            known_markers_scores = CalculateModuleScoreUCell(matrix=Seurat::GetAssayData(sc, assay=default_assay, layer="counts"), features=known_markers_list, chunk_size=10000)
+        }, enable=verbose)
+        
+        # Make names valid for Seurat (get rid of special characters etc)
+        names(known_markers_scores) = paste0("UCell_", MakeNamesValid(names(known_markers_list)))
+        
+        # Add to Seurat object
+        sc = SeuratObject::AddMetaData(sc, known_markers_scores)
+    }
 }
 ```
 
@@ -433,7 +451,7 @@ You provided `r length(known_markers_list)` list(s) of known marker genes. In th
 A dot plot visualizes how gene expression changes across different clusters. The size of a dot encodes the percentage of cells in a cluster that expresses the gene, while the color encodes the scaled average expression across all cells within the cluster. Per gene (column), we group cells based on cluster identity (rows), calculate average expression per cluster, subtract the mean of average expression values and divide by the standard deviation. The resulting scores describe how high or low a gene is expressed in a cluster compared to all other clusters.
 
 ```{r}
-#| label: cluster_annotation_knownmarkers_dotplot
+#| label: cluster_annotation_known_dotplots
 #| results: asis
 
 if ((known_markers_n > 0) & any(idx_dotplot)) {
@@ -444,23 +462,32 @@ if ((known_markers_n > 0) & any(idx_dotplot)) {
     g = g[length(g):1]
     plist[[n]] = Seurat::DotPlot(sc, features=g) + 
         viridis::scale_color_viridis() + 
-        AddPlotStyle(ylab="Cluster", xlab="", legend_position="bottom") + 
+        AddPlotStyle(title=n, ylab="Cluster", xlab="", legend_position="bottom") + 
         theme(axis.text.x=element_text(angle=90, hjust=1, vjust=.5)) +
-        lims(size=c(0,100))
+        lims(size=c(0,100)) +
+        guides(size=guide_legend(order=1, title="Pct expressed"),
+            color = guide_colorbar(title = "Scaled Expression"))
   }
+  names(plist) = names(known_markers_dotplot)
   
   # Set up layout and automatically generate chunks
   chunk_template = "
 \`\`\`{r}
-#| label: fig-cluster_annotation_knownmarkers_dotplot_{{name}}
+#| label: fig-cluster_annotation_known_list{{i}}_dotplot
 #| fig-cap: {{name}}
 
 plist[['{{name}}']]
 \`\`\`
 "
-  # Loop through genes
-  for (n in names(plist)) {
-    chunk_filled =  knitr::knit_expand(text=chunk_template, name=n)
+
+  cat("::: panel-tabset\n")
+
+  # Loop through plots
+  for (i in seq(plist)) {
+    name = names(plist)[i]
+    cat("#####", name, "\n")
+    
+    chunk_filled =  knitr::knit_expand(text=chunk_template, name=name, i=i)
     if(interactive()) {
       print(EvalKnitrChunk(chunk_filled))
     } else {
@@ -468,10 +495,65 @@ plist[['{{name}}']]
       cat(chunk_filled, sep='\n')
     }
   }
+  
+  cat(":::\n")
 } else if ((known_markers_n > 0) & !any(idx_dotplot)) {
   CalloutBox("This tab is used for dot plots for up to 50 genes. All provided lists are longer than this, and hence dot plots are skipped.", type="note")
 } else {
   CalloutBox("No known marker genes were provided and hence dot plots are skipped.", type="note")
+}
+```
+
+### Combined score feature plots
+
+An combined feature plot visualises the combined score of each gene list on a single-cell level. The combined score is calculated based on the Mann-Whitney U statistic using UCell. Scores can range between 0 and 1. The closer a score gets to 1, the more genes of a list are among the top expressed genes.
+
+```{r}
+#| label: cluster_annotation_known_scoreplots
+#| results: asis
+
+if (markers_found > 0) {
+
+  # Produce plots (feature and violin plots)
+  plist = list()
+  
+  for (name in names(known_markers_list)) {
+      p1 = Seurat::FeaturePlot(sc, features=paste0("UCell_", MakeNamesValid(name)), order=TRUE) +
+          viridis::scale_color_viridis() + 
+          AddPlotStyle(title=name, xlab="", ylab="") +
+          theme(legend.key.width = unit(0.02, "npc"))
+      p1 = Seurat::LabelClusters(p1, id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
+      
+      p2 = Seurat::VlnPlot(sc, features=paste0("UCell_", MakeNamesValid(name)), pt.size=0, cols=ScColours(sc, "seurat_clusters"), flip=TRUE) +
+          AddPlotStyle(title="", legend_position="none", xlab="Cluster", ylab="") +
+          theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1))
+      
+      plist[[name]] = patchwork::wrap_plots(p1, p2, ncol=2)
+  }
+  
+  # Set up layout and automatically generate chunks
+  chunk_template = "
+\`\`\`{r}
+#| label: fig-cluster_annotation_known_list{{i}}_scoreplot
+#| fig-cap: {{name}}
+#| echo: false
+#| fig-height: 3
+
+plist[['{{name}}']]
+\`\`\`
+"
+  # Loop through plots
+  for (i in seq(plist)) {
+    name = names(plist)[i]
+    chunk_filled =  knitr::knit_expand(text=chunk_template, name=name, i=i)
+    if(interactive()) {
+      print(EvalKnitrChunk(chunk_filled))
+    } else {
+      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+      cat(chunk_filled, sep='\n')
+    }
+  }
+  
 }
 ```
 
@@ -480,60 +562,60 @@ plist[['{{name}}']]
 An individual feature plot colors single cells according to normalized gene expression.
 
 ```{r}
-#| label: cluster_annotation_knownmarkers_featureplots
+#| label: cluster_annotation_known_individual_featureplots
 #| results: asis
 
 if ((known_markers_n > 0) & length(known_markers_vect) <= 100) {
-  plist = purrr::map(known_markers_list, function(f) {
-    pl = Seurat::FeaturePlot(sc, features=f, combine=FALSE, order=TRUE)
-    for (i in seq(pl)) {
-      pl[[i]] = pl[[i]] + viridis::scale_color_viridis() + AddPlotStyle(xlab="", ylab="")
-      pl[[i]] = Seurat::LabelClusters(pl[[i]], id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
-    }
-    names(pl) = f
-    return(pl)
-  })
-  names(plist) = names(known_markers_list)
-  
-  # Set up layout and automatically generate chunks
-  chunk_template = "
+    
+    # Set up layout and automatically generate chunks
+    chunk_template = "
 \`\`\`{r}
-#| label: fig-cluster_annotation_knownmarkers_featureplots_{{gene}}
-#| fig-cap: UMAP coloured by expression of {{gene}}
+#| label: fig-cluster_annotation_known_list{{i}}_{{gene_patched}}
+#| fig-cap: {{gene}}
 #| echo: false
 #| fig-width: 4
 #| fig-height: 3
 
-plist[['{{lst}}']][['{{gene}}']]
+plist[['{{gene}}']]
 \`\`\`
 "
-  
-  cat("::: panel-tabset\n")
-  # Loop through lists
-  for (lst in names(plist)) {
-    cat("##### ", lst, "\n")
-
-    # Plot in two column layout
-    cat("::: {layout-ncol=2}\n")
-
-    # Loop through genes
-    for (gene in names(plist[[lst]])) {
-      chunk_filled =  knitr::knit_expand(text=chunk_template, gene=gene, lst=lst)
-      if(interactive()) {
-        print(EvalKnitrChunk(chunk_filled))
-      } else {
-        chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
-        cat(chunk_filled, sep='\n')
-      }
-     }
+    
+    cat("::: panel-tabset\n")
+    # Loop through lists
+    for (lst in names(known_markers_list)) {
+        cat("#####", lst, "\n")
+        
+        # Produce plots
+        plist = Seurat::FeaturePlot(sc, features=known_markers_list[[lst]], combine=FALSE, order=TRUE)
+        plist = purrr::map(plist, function(p) {
+            p = p + viridis::scale_color_viridis() + AddPlotStyle(xlab="", ylab="") +
+                theme(legend.key.width = unit(0.02, "npc"))
+            p = Seurat::LabelClusters(p, id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
+            return(p)
+        })
+        names(plist) = known_markers_list[[lst]]
+        
+        # Plot in two column layout
+        cat("::: {layout-ncol=2}\n")
+        
+        # Loop through genes
+        for (gene in names(plist)) {
+            chunk_filled =  knitr::knit_expand(text=chunk_template, gene=gene, gene_patched=MakeNamesValid(gene), i=i)
+            if(interactive()) {
+                print(EvalKnitrChunk(chunk_filled))
+            } else {
+                chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+                cat(chunk_filled, sep='\n')
+            }
+        }
+        cat(":::\n")
+    }
     cat(":::\n")
-  }
-  cat(":::\n")
-  
-  } else if (length(known_markers_vect) > 100) { 
-  CalloutBox("This tab is used to plot up to 100 known marker genes. Your provided list is longer than this, and hence individual feature plots are skipped.", type="note")
+    
+} else if (length(known_markers_vect) > 100) { 
+    CalloutBox("This tab is used to plot up to 100 known marker genes. Your provided list is longer than this, and hence individual feature plots are skipped.", type="note")
 } else {
-  CalloutBox("No known marker genes were provided and hence individual feature plots are skipped.", type="note")
+    CalloutBox("No known marker genes were provided and hence individual feature plots are skipped.", type="note")
 }
 ```
 
@@ -567,7 +649,7 @@ CalloutBox("Marker features are written to {outfile}.", type="note")
 ### Software
 
 ```{r}
-#| label: cluster_annoation_save_software  
+#| label: cluster_annotation_save_software  
 
 sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
 gt(sessioninfo)
