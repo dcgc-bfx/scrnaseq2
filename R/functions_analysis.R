@@ -227,13 +227,6 @@ CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
                           msg=FormatString("Margin can only be 1 - rows or 2 - columns."))
   
   # Define chunks
-  if (margin == 1) {
-    indices = 1:nrow(matrix)
-  } else {
-    indices = 1:ncol(matrix)
-  }
-  
-  # Define chunks
   chunks = NULL
   if (!is.null(chunk_size)) {
     if (margin == 1) {
@@ -308,6 +301,87 @@ CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
   })
   
   return(boxplot_stats)
+}
+
+#' Calculates scores for feature sets per cell using UCell.
+#'
+#' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
+#' @param features Named list of feature vectors to use for scoring.
+#' @param chunk_size Iterable matrices will be converted into sparse matrics. To avoid storing the entire matrix in memory, only process this number of rows/columns at once. Default is no chunks.
+#' @return A named vector with medians.
+CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
+    #matrix = Seurat::GetAssayData(sc, layer="counts", assay=assay)
+    #features = known_markers_list
+    #chunk_size = 5000
+    
+    
+    # Checks
+    features_vect = purrr::flatten(features) %>% unlist() %>% unique()
+    valid = features_vect %in% rownames(matrix)
+    assertthat::assert_that(all(valid),
+                            msg=FormatString("The following features were not found in the data: {features_vect[!valid]*}."))
+    
+    # Define chunks
+    chunks = NULL
+    if (!is.null(chunk_size)) {
+        indices = 1:ncol(matrix)
+        
+        if (chunk_size < length(indices)) {
+            chunks = split(indices, ceiling(seq_along(indices)/chunk_size))
+            chunks = purrr::map(chunks, function(c) {
+                mt = matrix[, c]
+                return(mt)
+            })
+        }
+    }
+    
+    if (!is.null(chunks)) {
+        # Analyse chunks
+        msg = paste("Calculate UCell scores for feature sets")
+        progr = progressr::progressor(along=chunks, message=msg)
+        ucell_scores = furrr::future_map_dfr(chunks, function(counts) {
+            progr()
+            if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
+            
+            # Calculate scores with UCell
+            ucell = UCell:::calculate_Uscore(counts,
+                                    features=features,
+                                    maxRank=1500,
+                                    chunk.size=ncol(counts),
+                                    BPPARAM=BiocParallel::SerialParam(),
+                                    ncores=1,
+                                    w_neg=1,
+                                    ties.method="average",
+                                    storeRanks=FALSE,
+                                    force.gc=FALSE,
+                                    name = "")
+            ucell = as.data.frame(ucell[[1]][["cells_AUC"]])
+            rownames(ucell) = colnames(counts)
+            return(ucell)
+        }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("features")))
+        progr(type='finish')
+    } else {
+        # Convert to sparse matrix
+        if (!is(matrix, "dgCMatrix")) matrix = as(matrix, "dgCMatrix")
+        
+        # Calculate scores with UCell
+        ucell_scores = UCell:::calculate_Uscore(matrix,
+                                         features=features,
+                                         maxRank=1500,
+                                         chunk.size=ncol(matrix),
+                                         BPPARAM=BiocParallel::SerialParam(),
+                                         ncores=1,
+                                         w_neg=1,
+                                         ties.method="average",
+                                         storeRanks=FALSE,
+                                         force.gc=FALSE,
+                                         name = "")
+        ucell_scores = as.data.frame(ucell_scores[[1]][["cells_AUC"]])
+        rownames(ucell_scores) = colnames(matrix)
+        
+    }
+    
+    return(ucell_scores)
 }
 
 
