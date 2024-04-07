@@ -154,31 +154,32 @@ if (!all(f)) {
 
 # Don't plot QC if there aren't any features to plot
 if (length(qc_features) > 0) {
+    
+  # If there are more than 25 cluster, plots need to be optimised so that they are not too crowded
+  optimise_plots = levels(sc$seurat_clusters) %>% length() >= 25
 
   # Left: QC on UMAP
   plist1 = Seurat::FeaturePlot(sc, features=qc_features, combine=FALSE, order=TRUE)
   for (i in seq(plist1)) {
     q = qc_features[i]
-    if (grepl(pattern="nCount", q)) {
-        plist1[[i]] = plist1[[i]] + viridis::scale_color_viridis(trans="log10")
-        plist1[[i]] = plist1[[i]] + AddPlotStyle(title=paste(q, "(log10)"), xlab="", ylab="")
-    } else {
-        plist1[[i]] = plist1[[i]] + viridis::scale_color_viridis()
-        plist1[[i]] = plist1[[i]] + AddPlotStyle(title=q, xlab="", ylab="")
-    }
     
+    plist1[[i]] = plist1[[i]] + 
+        AddPlotStyle(title=q, xlab="", ylab="") +
+        viridis::scale_color_viridis(trans=ifelse(grepl(pattern="nCount", q), "log10", "identity")) +
+        theme(legend.key.width = unit(0.01, "npc"), legend.position=ifelse(optimise_plots, "none", "right"))
     plist1[[i]] = Seurat::LabelClusters(plist1[[i]], id="ident", box=TRUE, fill="white", label.padding=0.05)
   }
   names(plist1) = qc_features
   
   # Right: QC as violin plots
   plist2 = lapply(qc_features, function(x) {
-    p = ggplot(sc[[]], aes(x=seurat_clusters, y=!!sym(x), fill=seurat_clusters, group=seurat_clusters)) + 
-      geom_violin(scale="width") + 
-      AddPlotStyle(fill=ScColours(sc, "seurat_clusters"), xlab="Cluster", legend_position="none", title="") +
-      theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1))
-    
-    if (grepl(pattern="nCount", x)) p = p + scale_y_log10()
+    p = ggplot(sc[[]] %>% dplyr::select(seurat_clusters, qc=x), 
+               aes(x=seurat_clusters, y=qc, fill=seurat_clusters, group=seurat_clusters)) + 
+      geom_violin(scale="width", linewidth=ifelse(optimise_plots, 0.1, 0.5)) + 
+      scale_x_discrete(guide=guide_axis(n.dodge=ifelse(optimise_plots, 2, 1))) +
+      scale_y_continuous(trans=ifelse(grepl(pattern="nCount", x), "log10", "identity")) +
+      AddPlotStyle(fill=ScColours(sc, "seurat_clusters"), xlab="", legend_position="none", title="") +
+      theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))
     return(p)
   })
   names(plist2) = qc_features
@@ -225,16 +226,32 @@ plist[['{{type}}']]
 How much do gene expression profiles in the dataset reflect the cell cycle phases the single cells were in? After initial normalisation, we determined the effects of cell cycle heterogeneity by calculating a score for each cell based on its expression of G2M and S phase markers. Scoring is based on the strategy described in @Tirosh_2016, and human gene symbols are translated to gene symbols of the species of interest using biomaRt. This section of the report visualizes the above calculated cell cycle scores. 
 
 ```{r}
+#| label: clusterqc_cellcycle
+#| results: asis
+
+# Do we have cell cycle scores?
+have_cellcyle_scores = sc$Phase %>% is.na() %>% all() %>% not()
+
+if (!have_cellcyle_scores) CalloutBox(x="All cell cycle scores are zero and cell cycle information is not available. Most likely there were not enough S or G2M phase genes available for calculation.", type="warning")
+
+```
+
+```{r}
 #| label: fig-clusterqc_cellcycle
+#| eval: !expr have_cellcyle_scores
+#| include: !expr have_cellcyle_scores
 #| fig-cap: Cell Cycle Effects
 #| fig-height: 4
 
+    
+# If there are more than 25 cluster, plots need to be optimised so that they are not too crowded
+optimise_plots = levels(sc$seurat_clusters) %>% length() >= 25
+
 # Left: How strong are cell cycle effects?
-p1 = ggplot(sc[[]], aes(x=S.Score, y=G2M.Score, colour=Phase)) +
-  geom_point() + 
-  scale_x_continuous("S score") + 
-  scale_y_continuous("G2/M score") + 
-  AddPlotStyle(col=ScColours(sc, "Phase"), legend_position="bottom")
+p1 = ggplot(sc[[]] %>% dplyr::select(S.Score, G2M.Score, Phase), 
+            aes(x=S.Score, y=G2M.Score, colour=Phase)) +
+  geom_point() +
+  AddPlotStyle(col=ScColours(sc, "Phase"), xlab="S score", ylab="G2/M score", legend_position="bottom")
 
 # Middle: Phases per cluster
 p2 = ggplot(sc[[]] %>% 
@@ -242,9 +259,7 @@ p2 = ggplot(sc[[]] %>%
               dplyr::summarise(num_cells=length(Phase)), 
             aes(x=seurat_clusters, y=num_cells, fill=Phase)) + 
   geom_bar(stat="identity", position="fill") + 
-  scale_x_discrete("Seurat clusters") + 
-  scale_y_continuous("Fraction of cells") + 
-  AddPlotStyle(fill=ScColours(sc, "Phase"), legend_position="bottom") + 
+  AddPlotStyle(fill=ScColours(sc, "Phase"), xlab="", y="Fraction of cells", legend_position="bottom") + 
   theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1)) 
 
 # Right: Phases per sample
@@ -253,18 +268,24 @@ p3 = ggplot(sc[[]] %>%
               dplyr::summarise(num_cells=length(Phase)), 
             aes(x=orig.ident, y=num_cells, fill=Phase)) + 
   geom_bar(stat="identity", position="fill") + 
-  scale_y_continuous("Fraction of cells") +
-  AddPlotStyle(fill=ScColours(sc, "Phase"), legend_position="bottom") + 
-  theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1)) + xlab("")
+  AddPlotStyle(fill=ScColours(sc, "Phase"), xlab="", ylab="Fraction of cells", legend_position="bottom") + 
+  theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1))
 
 # Combine plots with the patchwork library
-p = p1 + p2 + p3 & theme(legend.position="bottom")
+if (optimise_plots) {
+  p = (p1 + p3)/p2 & theme(legend.position="right")
+} else {
+  p = p1 + p2 + p3 & theme(legend.position="bottom")
+}
+
 p = p + patchwork::plot_annotation(title="Cell cycle phases") + patchwork::plot_layout(guides="collect")
 p
 ```
 
 ```{r}
 #| label: clusterqc_cellcycle_umap
+#| eval: !expr have_cellcyle_scores
+#| include: !expr have_cellcyle_scores
 #| results: asis
 
 # Phases on UMAP
@@ -279,7 +300,7 @@ plist[["Phase"]] = LabelClusters(plist[["Phase"]], id="ident", box=TRUE, fill="w
 
 
 for (i in c("S.Score", "G2M.Score", "CC.Difference")) {
-  plist[[i]] = FeaturePlot(sc, features=i, pt.size=1, min.cutoff="q1", max.cutoff="q99") +
+  plist[[i]] = FeaturePlot(sc, features=i, pt.size=1, order=TRUE) +
     AddPlotStyle(title="") + 
     viridis::scale_color_viridis()
   plist[[i]] = LabelClusters(plist[[i]], id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
@@ -313,6 +334,12 @@ for (i in names(plist)) {
 }
 
 cat(":::", sep="\n")
+```
+
+Alternatively, the expression of Ki67 and PCNA, if available, can be used to identify proliferating cells.
+
+```{r}
+
 ```
 
 ## Software
