@@ -485,12 +485,15 @@ for (i in names(plist)) {
     plist[[i]][[j]] = LabelClusters(plist[[i]][[j]], 
                                     id="seurat_clusters", box=TRUE, fill="white", repel=repel, label.padding=0.05)
     
-    # Add color
+    # Add color; increase the number of rows in legend to use tzhe full width of the plot
     if (i == "by_cluster") { 
-      plist[[i]][[j]] = plist[[i]][[j]] + scale_color_manual(values=ScColours(sc, "seurat_clusters"), labels=cluster_labels)
+      plist[[i]][[j]] = plist[[i]][[j]] + 
+          scale_color_manual(values=ScColours(sc, "seurat_clusters"), labels=cluster_labels) +
+          guides(col=guide_legend(ncol=9, override.aes=list(size=3)))
     } 
     if (i == "by_sample") { 
-      plist[[i]][[j]] = plist[[i]][[j]] + scale_color_manual(values=ScColours(sc, "orig.ident"), labels=sample_labels)
+      plist[[i]][[j]] = plist[[i]][[j]] + scale_color_manual(values=ScColours(sc, "orig.ident"), labels=sample_labels) +
+          guides(col=guide_legend(ncol=7, override.aes=list(size=3)))
     }
   }
 }
