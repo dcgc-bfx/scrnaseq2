@@ -52,7 +52,7 @@ options(ggrastr.default.dpi=300)
 options(bitmapType='cairo')
 
 # ggrepel: maximum number of overlaps
-options(ggrepel.max.overlaps=50)
+options(ggrepel.max.overlaps=100)
 
 ###################
 # Colour palettes #

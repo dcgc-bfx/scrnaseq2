@@ -302,6 +302,19 @@ EnsemblFetchOrthologues = function(ids, symbols=FALSE, species1, species2, ensem
   
 }  
 
+#' Makes names syntactically valid, i.e., it replaces all invalid characters with underscores.
+#' 
+#' @param x A vector of names.
+#' @return A vector with syntactically valid names.
+MakeNamesValid = function(x) {
+   x = make.names(x) %>%  
+        gsub("\\.\\.+", ".", .) %>% 
+        gsub("\\.$", "", .) %>% 
+        gsub("^\\.", "", .) %>% 
+        gsub("\\.", "_", .)
+   return(x)
+}
+
 #' Adds feature metadata to an Seurat object or an Assay object.
 #' 
 #' Note: Seurat::AddMetaData does not seem to work for features in Seurat v5.
@@ -576,9 +589,11 @@ GitRepositoryVersion = function(path_to_git) {
 #' Get container information (if available)
 #' 
 #' @return A string with container git name, container git commit id and container build date.
-ContainerVersion = function(path_to_git) {
-  if (nchar(Sys.getenv("CONTAINER_GIT_NAME")) > 0) {
-    container_info = paste(Sys.getenv("CONTAINER_GIT_NAME"), Sys.getenv("CONTAINER_GIT_COMMIT_ID"), Sys.getenv("CONTAINER_BUILD_DATE"), sep=", ")
+ContainerVersion = function(path_to_git) {#
+  container_info = c(Sys.getenv("CONTAINER_GIT_NAME"), Sys.getenv("CONTAINER_VERSION"), Sys.getenv("CONTAINER_GIT_COMMIT_ID"), Sys.getenv("CONTAINER_BUILD_DATE"))
+  container_info = container_info[nchar(container_info)>0]
+  if (length(container_info) > 0) {
+    container_info = paste(container_info, collapse=", ")
   } else {
     container_info = c("NA")
   }
