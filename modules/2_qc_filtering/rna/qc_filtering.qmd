@@ -329,17 +329,13 @@ if (length(SeuratObject::Images(sc)) > 0) {
         # For each QC metric
         cat("::: panel-tabset\n\n")
         for(q in barcode_qc) {
-            cat ("##### ", q, "\n\n")
+            cat ("#####", q, "\n\n")
             
             # Make spatial plots split by sample
-            plist = FeaturePlotSpatial(sc, features=q, combine=FALSE)
+            plist = FeaturePlotSpatial(sc, features=q, combine=FALSE)  %>% purrr::flatten()
             plist = purrr::map(plist, function(p) {
                 p =  p + theme(legend.title=element_blank())
-                if (grepl(pattern="nCount", q)) {
-                    p = p + viridis::scale_fill_viridis(trans="log10") + ggtitle(paste(q, "(log10)"))
-                } else {
-                    p = p + viridis::scale_fill_viridis()
-                }
+                p = p + viridis::scale_fill_viridis(trans=ifelse(grepl(pattern="nCount", q), "log10", "identity"))
                 return(p)
             })
             
@@ -545,7 +541,7 @@ plist = purrr::map(orig_idents, function(s) {
     scale_y_continuous("% of total counts") +
     scale_fill_manual(values=rev(Seurat::DiscretePalette(n=20, "stepped"))) +
     AddPlotStyle() +
-    theme(axis.title.x=element_blank(), legend.position="none") +
+    theme(axis.title.y=element_blank(),legend.position="none") +
     coord_flip()
   
   return(p)
@@ -1151,6 +1147,130 @@ gt(cell_cycle_summary_tbl, rowname_col="orig.ident")
 
 plist = PlotBarcodeQC(sc, qc=c("S.Score", "G2M.Score"))
 plist[[1]] + plist[[2]]
+```
+
+Alternatively, the expression of MKI67 (a common G2M phase marker) and PCNA (a common S phase marker), if available, can be used to get an impression of possible cell-cycle effects in the data. However, these scores cannot be used for correcting these effects in later computations.
+
+```{r}
+#| label: qc_filtering_rna_cell_cycle_mki67_pcna
+#| results: asis
+
+# Get rownames for MKI67 (G2M phase) and PCNA (S phase)
+# Note: we use the human symbols that - in case of another species - get mapped to the orthologues
+idx = match("MKI67", names(seurat_g2m_genes))
+if (!is.na(idx)) {
+  mki67 = seurat_g2m_genes[[idx[1]]]
+} else {
+  mki67 = NULL
+  CalloutBox(x="Could not find 'MKI67' or its orthologue in the data!", type="warning")
+}
+
+idx = match("PCNA", names(seurat_g2m_genes))
+if (!is.na(idx)) {
+  pcna = seurat_s_genes[[idx[1]]]
+} else {
+  pcna = NULL
+  CalloutBox(x="Could not find 'PCNA' or its orthologue in the data!", type="warning")
+}
+cell_cycle_markers = c(mki67, pcna)
+
+# If available
+if (length(cell_cycle_markers) > 0) {
+  # Plot MKI67 and PCNA (or their orthologues) - if available - as violin plots
+  plist = Seurat::VlnPlot(sc, features=cell_cycle_markers, combine=FALSE, pt.size=0, layer="data")
+  plist = purrr::map(plist, function(p) {
+    p = p + AddPlotStyle(fill=ScColours(sc, "orig.ident"), xlab="", legend_position="none") +
+      theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))
+    return(p)
+  })
+  p = patchwork::wrap_plots(plist, ncol=2)
+  
+  # Set up layout and automatically generate chunk
+  chunk_template = "
+\`\`\`{r}
+#| label: fig-qc_filtering_rna_cell_cycle_mki67_pcna
+#| fig-cap: {{caption}}
+#| fig-height: 3
+
+p
+\`\`\`
+"
+  chunk_filled =  knitr::knit_expand(text=chunk_template, caption=FormatString("Expression of common cell-cycle markers"))
+  if(interactive()) {
+    print(EvalKnitrChunk(chunk_filled))
+  } else {
+    chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+    cat(chunk_filled, sep='\n')
+  }
+}
+```
+
+```{r}
+#| label: qc_filtering_rna_cell_cycle_spatial_mki67_pcna
+#| eval: !expr length(SeuratObject::Images(sc)) > 0
+#| include: !expr length(SeuratObject::Images(sc)) > 0
+#| results: asis
+
+# Get rownames for MKI67 (G2M phase) and PCNA (S phase)
+# Note: we use the human symbols that - in case of another species - get mapped to the orthologues
+idx = match("MKI67", names(seurat_g2m_genes))
+if (!is.na(idx)) {
+  mki67 = seurat_g2m_genes[[idx[1]]]
+} else {
+  mki67 = NULL
+}
+
+idx = match("PCNA", names(seurat_g2m_genes))
+if (!is.na(idx)) {
+  pcna = seurat_s_genes[[idx[1]]]
+} else {
+  pcna = NULL
+}
+cell_cycle_markers = c(mki67, pcna)
+
+# If available
+if (length(cell_cycle_markers) > 0) {
+  
+  # Set up layout for generating chunks
+  chunk_template = "
+\`\`\`{r}
+#| label: fig-qc_filtering_rna_cell_cycle_spatial_{{gene}}_dataset_{{dataset}}
+#| fig-cap: {{caption}}
+
+plist[['{{dataset}}']]
+\`\`\`
+"
+  
+  # Iterate over MKI67 and PCNA
+  cat("::: panel-tabset\n\n")
+  for(gene in cell_cycle_markers) {
+    cat("#####", gene, "\n\n")
+
+    # Plot as spatial plots
+    plist = FeaturePlotSpatial(sc, features=gene, combine=FALSE) %>% purrr::flatten()
+    plist = purrr::map(plist, function(p) {
+      p =  p + theme(legend.title=element_blank())
+      p = p + viridis::scale_fill_viridis()
+      return(p)
+    })
+    names(plist) = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
+    
+    # Fill out and print spatial plots
+    cat("::: panel-tabset\n\n")
+    for(dataset in names(plist)) {
+      cat ("#####", dataset, "\n\n")
+      chunk_filled =  knitr::knit_expand(text=chunk_template, gene=gene, dataset=dataset, caption=FormatString("Expression of cell-cycle marker {gene} for dataset {dataset}"))
+      if(interactive()) {
+        print(EvalKnitrChunk(chunk_filled))
+      } else {
+        chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+        cat(chunk_filled, '\n')
+      }
+    }
+    cat(":::\n\n")
+  }
+  cat(":::\n\n")
+}
 ```
 
 ## Output
