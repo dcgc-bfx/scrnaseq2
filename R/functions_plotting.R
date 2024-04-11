@@ -219,8 +219,7 @@ PlotBarcodeQC = function(sc, qc, filter=NULL, log10=FALSE) {
     # Add style
     p = plist_numeric[[n]] + 
       AddPlotStyle(legend_position="none", xlab="", fill=ScColours(sc, "orig.ident")) +
-      theme(axis.text.x=element_text(angle=45, hjust=1)) +
-      scale_y_continuous(labels=scales::comma)
+      theme(axis.text.x=element_text(angle=45, hjust=1))
     
     # Add filter thresholds
     qc_threshold_segments = purrr::pmap(qc_thresholds_numeric[[n]], function(qc_feature, ident, threshold, value) {
@@ -229,11 +228,10 @@ PlotBarcodeQC = function(sc, qc, filter=NULL, log10=FALSE) {
     p = p + qc_threshold_segments
     
     
-    # Add log10 if requested
+    # Add log10 transformation if requested
     if (!is.null(log10)) {
       if ( (is.logical(log10) & log10==TRUE) | (is.character(log10) & grepl(pattern=log10, x=n)) ) {
-          p = p + scale_y_log10()
-          p = p + ggtitle(paste0(n, " (log10)"))
+          p = p + scale_y_continuous(trans="log10")
       }
     }
     return(p)
