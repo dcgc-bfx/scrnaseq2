@@ -167,7 +167,7 @@ if (length(qc_features) > 0) {
         AddPlotStyle(title=q, xlab="", ylab="") +
         viridis::scale_color_viridis(trans=ifelse(grepl(pattern="nCount", q), "log10", "identity")) +
         theme(legend.key.width = unit(0.01, "npc"), legend.position=ifelse(optimise_plots, "none", "right"))
-    plist1[[i]] = Seurat::LabelClusters(plist1[[i]], id="ident", box=TRUE, fill="white", label.padding=0.05)
+    plist1[[i]] = Seurat::LabelClusters(plist1[[i]], id="ident", box=TRUE, fill="white", label.padding=unit(0.05, "lines"))
   }
   names(plist1) = qc_features
   
@@ -296,14 +296,14 @@ plist[["Phase"]] = Seurat::DimPlot(sc, group.by="Phase", pt.size=1, cols=ScColou
 # Hack to colour by phase but label by
 barcodes = rownames(plist[["Phase"]]$data)
 plist[["Phase"]]$data$ident = sc[["seurat_clusters"]][barcodes,]
-plist[["Phase"]] = LabelClusters(plist[["Phase"]], id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
+plist[["Phase"]] = LabelClusters(plist[["Phase"]], id="ident", box=TRUE, fill="white", colour="black", label.padding=unit(0.05, "lines"))
 
 
 for (i in c("S.Score", "G2M.Score", "CC.Difference")) {
   plist[[i]] = FeaturePlot(sc, features=i, pt.size=1, order=TRUE) +
     AddPlotStyle(title="") + 
     viridis::scale_color_viridis()
-  plist[[i]] = LabelClusters(plist[[i]], id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
+  plist[[i]] = LabelClusters(plist[[i]], id="ident", box=TRUE, fill="white", colour="black", label.padding=unit(0.05, "lines"))
 }
 
 captions = paste("UMAP coloured by", names(plist))
