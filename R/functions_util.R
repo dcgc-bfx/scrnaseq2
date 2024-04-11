@@ -37,7 +37,7 @@ GlueTransformer_quote_collapse = function(sep=", ", quote=TRUE, ...) {
 #' @param sep When a variable contains multiple values and is marked with a '*', which separator to use to collapse the values
 #' @return The formatted message
 FormatString = function(x, quote=TRUE, sep=", ") {
-  return(glue::glue(x, .transformer=GlueTransformer_quote_collapse(), .envir=parent.frame()))
+  return(glue::glue(x, .transformer=GlueTransformer_quote_collapse(quote=quote, sep=sep), .envir=parent.frame()))
 }
 
 #' Generates a callout box for showing notes, tips or warnings
@@ -465,9 +465,9 @@ ScAddLists = function(sc, lists, lists_slot='gene_lists', add_to_list=FALSE, mak
 ScLists = function(sc, lists, lists_slot=NULL) {
   stored_lists = Seurat::Misc(sc, slot=lists_slot)
   assertthat::assert_that(!is.null(stored_lists), 
-                          msg=FormatString("No lists found in misc slot of Seurat object (list slot: {{lists_slot}})."))
+                          msg=FormatString("No lists found in misc slot of Seurat object (list slot: {lists_slot})."))
   assertthat::assert_that(all(lists %in% names(stored_lists)), 
-                          msg=FormatString("List(s) {{lists}} not found in misc slot of Seurat object (list slot: {{lists_slot}})."))
+                          msg=FormatString("List(s) {lists} not found in misc slot of Seurat object (list slot: {lists_slot})."))
   
   if (length(lists) > 1) {
     return(stored_lists[lists])
