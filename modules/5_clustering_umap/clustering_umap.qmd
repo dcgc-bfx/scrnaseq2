@@ -483,7 +483,7 @@ for (i in names(plist)) {
     # Repel? 
     repel = ifelse((j == "per_sample") & length(unique(sc$orig.ident)) > 5, FALSE, TRUE)
     plist[[i]][[j]] = LabelClusters(plist[[i]][[j]], 
-                                    id="seurat_clusters", box=TRUE, fill="white", repel=repel, label.padding=0.05)
+                                    id="seurat_clusters", box=TRUE, fill="white", repel=repel, label.padding=unit(0.05, "lines"))
     
     # Add color; increase the number of rows in legend to use tzhe full width of the plot
     if (i == "by_cluster") { 
