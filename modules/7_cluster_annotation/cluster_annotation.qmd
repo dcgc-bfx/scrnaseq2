@@ -295,7 +295,7 @@ p
                     p = p + viridis::scale_color_viridis() + 
                         AddPlotStyle(legend_position="right", xlab="", ylab="") +
                         theme(legend.key.width = unit(0.02, "npc"))
-                    p = Seurat::LabelClusters(p, id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
+                    p = Seurat::LabelClusters(p, id="ident", box=TRUE, fill="white", colour="black", label.padding=unit(0.05, "lines"))
                     return(p)
                 })
                 
@@ -388,7 +388,8 @@ if (!is.null(file_known_markers)) {
     known_markers_list = lapply(colnames(known_markers), function(x) {
         known_markers[,x] %>% na.exclude() %>% 
             gsub(pattern=" ", replacement="", fixed=TRUE) %>% 
-            as.character()
+            as.character() %>%
+            unique()
     })
     names(known_markers_list) = colnames(known_markers)
     
@@ -410,7 +411,7 @@ if (!is.null(file_known_markers)) {
             }
             
             idx = match(known_markers_list[[n]][x], annot$ensembl_id)
-            known_markers_list[[n]] = rownames(annot)[idx]
+            known_markers_list[[n]] = rownames(annot)[idx] %>% unique()
         }
     } 
     
@@ -483,8 +484,10 @@ plist[['{{name}}']]
   cat("::: panel-tabset\n")
 
   # Loop through plots
-  for (i in seq(plist)) {
+  for (i in seq(known_markers_list)) {
     name = names(plist)[i]
+    if (!name %in% names(known_markers_dotplot)) next
+
     cat("#####", name, "\n")
     
     chunk_filled =  knitr::knit_expand(text=chunk_template, name=name, i=i)
@@ -522,7 +525,7 @@ if (markers_found > 0) {
           viridis::scale_color_viridis() + 
           AddPlotStyle(title=name, xlab="", ylab="") +
           theme(legend.key.width = unit(0.02, "npc"))
-      p1 = Seurat::LabelClusters(p1, id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
+      p1 = Seurat::LabelClusters(p1, id="ident", box=TRUE, fill="white", colour="black", label.padding=unit(0.05, "lines"))
       
       p2 = Seurat::VlnPlot(sc, features=paste0("UCell_", MakeNamesValid(name)), pt.size=0, cols=ScColours(sc, "seurat_clusters"), flip=TRUE) +
           AddPlotStyle(title="", legend_position="none", xlab="Cluster", ylab="") +
@@ -582,7 +585,8 @@ plist[['{{gene}}']]
     
     cat("::: panel-tabset\n")
     # Loop through lists
-    for (lst in names(known_markers_list)) {
+    for (i in seq(known_markers_list)) {
+        lst = names(known_markers_list)[i]
         cat("#####", lst, "\n")
         
         # Produce plots
@@ -590,7 +594,7 @@ plist[['{{gene}}']]
         plist = purrr::map(plist, function(p) {
             p = p + viridis::scale_color_viridis() + AddPlotStyle(xlab="", ylab="") +
                 theme(legend.key.width = unit(0.02, "npc"))
-            p = Seurat::LabelClusters(p, id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
+            p = Seurat::LabelClusters(p, id="ident", box=TRUE, fill="white", colour="black", label.padding=unit(0.05, "lines"))
             return(p)
         })
         names(plist) = known_markers_list[[lst]]
