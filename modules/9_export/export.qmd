@@ -308,6 +308,10 @@ if (export_cellxgene) {
   # Set up correct colours (see https://chanzuckerberg.github.io/cellxgene/posts/prepare) so that colours match
   colour_lists = SeuratObject::Misc(sc, "colour_lists")
   colour_lists = purrr::map(colour_lists, function(l) {
+    # Port color names to hex color codes
+    is_color_name = l %in% colors()
+    if (any(is_color_name)) l[is_color_name] = gplots::col2hex(l[is_color_name])
+    
     l = reticulate::np_array(unname(l), dtype="<U7")
     return(l)
   })
