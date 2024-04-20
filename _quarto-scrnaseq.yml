@@ -14,14 +14,14 @@ book:
   chapters:
   - "index.qmd"
   - "modules/1_read_data/read_data.qmd"
-  - "modules/2_qc_filtering/rna/qc_filtering.qmd"
-  - "modules/3_normalization/rna/normalization.qmd"
-  - "modules/4_dimensionality_reduction/rna/dimensionality_reduction.qmd"
-  - "modules/5_clustering_umap/clustering_umap.qmd"
-  - "modules/6_clusterqc/clusterqc.qmd"
-  - "modules/7_cluster_annotation/cluster_annotation.qmd"
-  - "modules/8_cluster_composition/cluster_composition.qmd"
-  - "modules/9_export/export.qmd"
+  #- "modules/2_qc_filtering/rna/qc_filtering.qmd"
+  #- "modules/3_normalization/rna/normalization.qmd"
+  #- "modules/4_dimensionality_reduction/rna/dimensionality_reduction.qmd"
+  #- "modules/5_clustering_umap/clustering_umap.qmd"
+  #- "modules/6_clusterqc/clusterqc.qmd"
+  #- "modules/7_cluster_annotation/cluster_annotation.qmd"
+  #- "modules/8_cluster_composition/cluster_composition.qmd"
+  #- "modules/9_export/export.qmd"
   - "references.qmd"
 
 ####################
@@ -44,70 +44,232 @@ params:
     verbose: true
     
     # Project ID
-    project_id: "pbmc"
+    project_id: "bfx2445"
     
     # Species
     species: "homo_sapiens"
     
     # Ensembl version
-    ensembl: 98
+    ensembl: 104
+    
+    # Default assay. All cells must have this assay. Leave to null here and set in the modules if necessary.
+    default_assay: null
+    
+     # For large datasets: Do not keep counts in memory but store on disk in matrix directories. Computations will access only the relevant parts of the data. Once done, matrix directories will be saved together with the Seurat object in the module directory.
+    on_disk_counts: true
+  
+    # For large datasets: Copy matrix directories to a temporary directory for computations. This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). Once done, matrix directories will be copied back to the module directory. The temporary directory will be deleted once the R session exists.
+    on_disk_use_tmp: true
+    
+    # Number of cores to use for computations
+    cores: 4
     
   modules:
     read_data:
-      paramB: "E"
+      # Default assay. All cells must have this assay.
+      default_assay: "RNA"
+    
+      # Path to a csv or Excel file containing a table with single-cell datasets.
+      datasets_file: "datasets/10x_pbmc_datasets.xlsx"
+  
+      # Downsample data to at most n barcodes per sample
+      downsample_barcodes_n: null
+  
+      # Downsample all samples equally according to the smallest sample. Overwritten by downsample_cells_n.
+      downsample_barcodes_equally: false
+  
+      # Downsample data to at most n features per assay
+      #   null to deactivate
+      downsample_features_n: null
+  
+      # Parse plate information and add to barcode metadata. 
+      parse_plate_information: false
+  
+      # For parsing plate information, regular expression that captures the plate information part of the name. Plate, row and col will be recorded and the plate information will be removed from the name.
+      plate_information_regex: "_(\\d+)_([A-Z])(\\d+)$"
+  
+      # When parsing plate information, set the name of the single-cell experiment (orig.ident) for each cell to the cell name after having removed the plate information
+      plate_information_update_identity: false
 
-# params:
-#   # Author
-#   author: !r Sys.info()[["user"]]
-# 
-#   
-#   project_id: pbmc
-#    
-#   # Path to input data
-#   path_data: !r data.frame(name=c("pbmc_10x","pbmc_smartseq2"), 
-#                            type=c("10x","smartseq2"), 
-#                            path=c("test_datasets/10x_SmartSeq2_pbmc_GSE132044/counts/10x/", "test_datasets/10x_SmartSeq2_pbmc_GSE132044/counts/smartseq2/counts_table.tsv.gz"), 
-#                            stats=c(NA, NA))
-# 
-#   # Data type ("RNA", "Spatial")
-#   assay_raw: "RNA"
-#   
-#   # Downsample data to at most n cells per sample AFTER filtering (mainly for tests)
-#   #   NULL to deactivate
-#   downsample_cells_n: NULL
-#   
-#   # Downsample all samples equally according to the smallest sample
-#   #   TRUE/FALSE
-#   #   Overwritten by downsample_cells_n
-#   downsample_cells_equally: FALSE
-# 
-#   # Path to output directory
-#   path_out: test_datasets/10x_SmartSeq2_pbmc_GSE132044/results/
-# 
-#   # Marker genes based on literature, translated to Ensembl IDs
-#   #   xlsx file, one list per column, first row as header and Ensembl IDs below
-#   #   NULL if no known marker genes should be plotted
-#   file_known_markers: test_datasets/10x_SmartSeq2_pbmc_GSE132044/known_markers.xlsx
-# 
-#   # Contaminant cells
-#   #   NULL if not cells are to be excluded
-#   #   Otherwise a file with one column, one cell name per line
-#   file_contam_cells: NULL
-# 
-#   # Annotation via biomaRt
-#   mart_dataset: hsapiens_gene_ensembl
-#   annot_version: 98
-#   annot_main: !r c(ensembl="ensembl_gene_id", symbol="external_gene_name", entrez="entrezgene_accession")
-#   mart_attributes: !r c(c(ensembl="ensembl_gene_id", symbol="external_gene_name", entrez="entrezgene_accession"), 
-#                         c("chromosome_name", "start_position", "end_position", "percentage_gene_gc_content", "gene_biotype", "strand", "description"))
-#   biomart_mirror: NULL
-# 
-#   # Prefix for mitochondrial genes 
-#   mt: "^MT-"
-#   
-#   # Name for doublet scores
-#   # Doublet scores can be provided automatically via metadata.tsv.gz in path_data
-#   # NULL if no doublet scores are provided in metadata
-#   doublets: NULL
-#   doublets_prediction: NULL
+      # For 10x Xenium in situ data: Load cell "centroids", cell "segmentations" or both (default).
+      spatial_coordinate_type:
+        - "centroids"
+        #- "segmentations"
+        
+    qc_filtering_rna:
+      barcode_qc:
+      - "nCount_RNA"
+      - "nFeature_RNA"
+      #- "pCountsTop5_RNA"
+      #- "nCount_ControlProbe"
+      #- "nFeature_ControlProbe"
+      #- "nCount_ControlCodeword"
+      #- "nFeature_ControlCodeword"
+      #- "nCount_BlankCodeword"
+      #- "nFeature_BlankCodeword"
+      #- "nucleus_area"
+      #- "cell_area"
+    
+      # Which pairs of barcode QC should be should be plotted in scatter plots. 
+      # Separate QC by space character. Can only be numeric barcode metadata columns.
+      # Set to 'null' to deacivate.
+      barcode_qc_cor:
+      - "nFeature_RNA nCount_RNA"
+      #- "nFeature_RNA pCountsTop5_RNA"
+      #- "cell_area nucleus_area"
+    
+      # Filter for barcodes. Set to 'null' to deactivate.
+      barcode_filter: !expr list(
+        nCount_RNA = c(30, NA),
+        nFeature_RNA = c(10, NA))
+    
+    
+      # Filter for features. Set to 'null' to deactivate.
+      feature_filter: !expr list(
+        min_counts = 1,
+        min_cells = 3)
+        
+      # List of samples to drop after initial QC. Set to 'null' to deactivate.
+      # Example:
+      #  - sampleA
+      #  - sampleB
+      samples_to_drop: null
+    
+      # Drop samples with too few cells
+      samples_min_cells: 10
+      
+    normalization_rna:
+      # Which normalization should be used for analysis?
+      # lognorm (Seurat), scran or SCT
+      normalization_method: "lognorm"
+      
+       # Whether or not to remove cell cycle effects
+      cellcycle_remove: false
+    
+      # Should all cell cycle effects be removed, or only the difference between profilerating cells (G2M and S phase)?
+      # Read https://satijalab.org/seurat/v3.1/cell_cycle_vignette.html, for an explanation
+      cellcycle_remove_all: true
+       
+      # Whether or not to re-score cell cycle effects after data
+      #   from different samples have been merged/integrated
+      # cc_rescore_after_merge: !r TRUE
+      # NOT POSSIBLE ANYMORE HOWEVER SCALING WILL ALWAYS BE DONE ON THE SEPARATE DATASETS
+      # BUT IT MAY BE POSSIBLE WHEN DOING PCA INTEGRATION
+    
+      # Additional (unwanted) variables that will be regressed out for visualisation and clustering.
+      # Set to 'null' to deactivate.
+      vars_to_regress: null
+      
+      # Which method should be used for feature selection?
+      # vst (Seurat), scran or SCT
+      feature_selection_method: "vst"
+      
+      # Number of variable features to use
+      num_variable_features: 3000
+      
+      # Use sketch-based methods for further analyses
+      use_sketching: false
+      
+      # Number of barcodes in sketch
+      num_barcodes_for_sketching: 50000
+      
+    dimensionality_reduction_rna:
+      # Which dimensionality reduction to use: only PCA supported
+      dimensionality_reduction_method: "PCA"
+      
+      # Number of dimensions (e.g. principal components) to compute
+      dim_n_compute: 50
+      
+      # Number of dimensions (e.g. principal components) to use
+      dim_n: 30
+    
+      # Use sketch-based integration methods for analysis
+      use_sketching: false
+      
+      # One or more integration method(s) to use. 
+      # The following methods are available: null (just merge), CCAIntegration, RPCAIntegration, HarmonyIntegration , FastMNNIntegration, scVIIntegration.
+      integration_methods: null
+    
+      # Parameters for CCAIntegration
+      CCAIntegration: null
+      
+      # Parameters for RPCAIntegration
+      RPCAIntegration: null
+      
+      # Parameters for HarmonyIntegration
+      HarmonyIntegration: null
+      
+      # Parameters for FastMNNIntegration
+      FastMNNIntegration: null
+      
+      # Parameters for scVIIntegration.
+      scVIIntegration: null
+      
+    clustering_umap:
+      # Which dimensionality reduction(s) to use. If null, will be set to the default reduction of the default assay of the input Seurat object.
+      # If multiple are specified, the first one will be used as default.
+      dimensionality_reduction_method: "pca"
+    
+      # Number of dimensions to use. 
+      dim_n: 10
+      
+      # Cluster resolution(s) to use. 
+      # If multiple are specified, the first one will be used as default.
+      cluster_resolution:
+      - 8
+      
+      # Number of neighbors to look at for clustering
+      cluster_k: 30
+      
+      # Number of neighbors to look at for umap calculation
+      umap_k: 30
+
+      # Limit cores
+      cores: 2
+      
+    clusterqc:
+      # QC measures to look at
+      qc_features:
+      - "nCount_RNA"
+      - "nFeature_RNA"
+      #- "pCountsTop5_RNA"
+      #- "nCount_ControlProbe"
+      #- "nFeature_ControlProbe"
+      #- "nCount_ControlCodeword"
+      #- "nFeature_ControlCodeword"
+      #- "nCount_BlankCodeword"
+      #- "nFeature_BlankCodeword"
+      #- "nucleus_area"
+      #- "cell_area"
+    
+    cluster_annotation:
+      # Thresholds to define marker genes; only genes expressed in at least N%% of cells in each group are tested
+      marker_pct: 0.25
+    
+      # Thresholds to define marker genes; fold change
+      marker_log2FC: 0.25
+      
+      # Additional (unwanted) variables to account for in statistical tests 
+      latent_vars: null 
+      
+      # Known markger genes
+      file_known_markers: "datasets/10x_xenium_mouse_brain/selected_markers.xlsx"
+      
+    export:
+      # Export results into Loupe Cell Browser format. Only the default assay will be used.
+      export_loupe: true
+      
+      # When exporting into Loupe Cell Browser format, write normalized counts instead of raw counts.
+      # If true raw counts are written else normalized counts are written.
+      export_loupe_normalized: true
+      
+      # Export results into h5ad format for cellxgene. Only the default assay will be used.
+      export_cellxgene: true
+      
+      # Export Seurat object.
+      export_sc: true
+      
+      # When exporting the Seurat object, convert on-disk layers to in-memory layers.
+      # If true on-disk layers are included into the Seurat object else they are kept on-disk.
+      export_sc_on_disk: false
 

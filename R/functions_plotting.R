@@ -533,25 +533,15 @@ PlotRLE = function(sc, assay=NULL, layer="counts", nbarcodes=500, is_log=FALSE) 
 DimPlotSpatial = function(sc, images=NULL, ...) {
     if (is.null(images)) images = SeuratObject::Images(sc) 
     
-    if (length(images) > 1) {
-        plist = purrr::map(images, function(i) {
-            if (grepl("^fov\\.", i)) {
-                # Xenium FOV plot
-                return(Seurat::ImageDimPlot(sc, fov=i, ...))
-            } else {
-                # Visium image plot
-                return(Seurat::SpatialDimPlot(sc, image=i, ...))
-            }
-        })
-    } else {
-        if (grepl("^fov\\.", images[1])) {
+    plist = purrr::map(images, function(i) {
+        if (grepl("^fov\\.", i)) {
             # Xenium FOV plot
-            plist = Seurat::ImageDimPlot(sc, fov=images[1], ...)
+            return(Seurat::ImageDimPlot(sc, fov=i, ...))
         } else {
             # Visium image plot
-            plist = Seurat::SpatialDimPlot(sc, image=images[1], ...)
+            return(Seurat::SpatialDimPlot(sc, image=i, ...))
         }
-    }
+    })
     return(plist)
 }
 
@@ -564,25 +554,15 @@ DimPlotSpatial = function(sc, images=NULL, ...) {
 FeaturePlotSpatial = function(sc, images=NULL, ...) {
     if (is.null(images)) images = SeuratObject::Images(sc) 
     
-    if (length(images) > 1) {
-        plist = purrr::map(images, function(i) {
-            if (grepl("^fov\\.", i)) {
-                # Xenium FOV plot
-                return(Seurat::ImageFeaturePlot(sc, fov=i, ...))
-            } else {
-                # Visium image plot
-                return(Seurat::SpatialFeaturePlot(sc, image=i, ...))
-            }
-        })
-    } else {
-        if (grepl("^fov\\.", images[1])) {
+    plist = purrr::map(images, function(i) {
+        if (grepl("^fov\\.", i)) {
             # Xenium FOV plot
-            plist = Seurat::ImageFeaturePlot(sc, fov=images[1], ...)
+            return(Seurat::ImageFeaturePlot(sc, fov=i, ...))
         } else {
             # Visium image plot
-            plist = Seurat::SpatialFeaturePlot(sc, image=images[1], ...)
+            return(Seurat::SpatialFeaturePlot(sc, image=i, ...))
         }
-    }
+    })
     return(plist)
 }
 
