@@ -447,12 +447,52 @@ CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
   return(sc)
 }
 
+#' Apply identity or log transformation to the data and save it as data layers ("normalised data").
+#' 
+#' @param sc Seurat v5 object.
+#' @param assay Assay to apply transformation to. If NULL, will be default assay of the Seurat object.
+#' @param layer Layer to apply transformation to. Default is "counts" meaning all raw counts layers.
+#' @param save Name of the new layers. Default is "data" meaning new layers will be named data.X, data.Y, ...
+#' @param log Apply log transformation instead of just identity transformation.
+#' @return Seurat v5 object with new layers data.X, data.Y, ...
+TransformData = function(sc, assay=NULL, layer="counts", save="data", log=FALSE) {
+    if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
+    
+    # Iterate over layers (datasets) and get size factors
+    olayers = layers = unique(layer)
+    layers = SeuratObject::Layers(sc[[assay]], layer)
+    if (length(save) != length(layers)) {
+        save = make.unique(names=gsub(pattern=olayers, replacement=save, x=layers))
+    }
+    
+    for (i in seq_along(layers)) {
+        l = layers[i]
+        
+        # Get counts
+        counts = SeuratObject::LayerData(sc[[assay]], layer=l, fast=NA)
+        
+        # If requested apply log transformation, else it is just identity
+        if (log) counts = log1p(counts)
+        
+        LayerData(sc[[assay]], 
+                  layer=save[i], 
+                  features=SeuratObject::Features(sc[[assay]], layer=l),
+                  cells=SeuratObject::Cells(sc[[assay]], layer=l)) = counts
+        
+    }
+    
+    # Log command
+    sc = Seurat::LogSeuratCommand(sc)
+    
+    return(sc)
+}
+
 #' Apply scran normalization (using pooled size factors) to counts data.
 #' 
 #' @param sc Seurat v5 object.
 #' @param assay Assay to normalize. If NULL, will be default assay of the Seurat object.
 #' @param layer Layer to normalize. Default is "counts" meaning all raw counts layers.
-#' @param save Name of the normalized layers. Default is "data" meaning new layers will be named data.X, data.Y, ...
+#' @param save Name of the new layers. Default is "data" meaning new layers will be named data.X, data.Y, ...
 #' @param chunk_size Maximum number of barcodes for which to compute size factors at once. Large counts matrices will be split into chunks to save memory.
 #' @return Seurat v5 object with new layers data.X, data.Y, ...
 NormalizeDataScran = function(sc, assay=NULL, layer="counts", save="data", chunk_size=50000) {
