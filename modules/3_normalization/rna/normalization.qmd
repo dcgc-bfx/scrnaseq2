@@ -20,8 +20,8 @@ params:
   on_disk_use_tmp: true
   
   # Which normalization should be used for analysis?
-  # lognorm (Seurat), scran or SCT
-  normalization_method: "SCT"
+  # lognorm (Seurat), scran, SCT, log (just log-transformation), identity (use raw counts)
+  normalization_method: "lognorm"
   
    # Whether or not to remove cell cycle effects
   cellcycle_remove: false
@@ -42,7 +42,7 @@ params:
   
   # Which method should be used for feature selection?
   # vst (Seurat), scran or SCT
-  feature_selection_method: "SCT"
+  feature_selection_method: "vst"
   
   # Number of variable features to use
   num_variable_features: 3000
@@ -289,7 +289,7 @@ if (normalization_method == "lognorm") {
 if (on_disk_counts) {
   
   if (normalization_method != "SCT") {
-    # For lognorm and scran, we just need to write all 'data' layers to disk
+    # For methods lognorm, scran, log and identity we need to write all 'data' layers to disk
   
     layers = SeuratObject::Layers(sc, search="^counts") %>% 
       gsub(pattern="counts", replacement="data", x=.)

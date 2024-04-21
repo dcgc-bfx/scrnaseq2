@@ -539,7 +539,7 @@ DimPlotSpatial = function(sc, images=NULL, ...) {
             return(Seurat::ImageDimPlot(sc, fov=i, ...))
         } else {
             # Visium image plot
-            return(Seurat::SpatialDimPlot(sc, image=i, ...))
+            return(Seurat::SpatialDimPlot(sc, images=i, ...))
         }
     })
     return(plist)
@@ -560,7 +560,7 @@ FeaturePlotSpatial = function(sc, images=NULL, ...) {
             return(Seurat::ImageFeaturePlot(sc, fov=i, ...))
         } else {
             # Visium image plot
-            return(Seurat::SpatialFeaturePlot(sc, image=i, ...))
+            return(Seurat::SpatialFeaturePlot(sc, images=i, ...))
         }
     })
     return(plist)

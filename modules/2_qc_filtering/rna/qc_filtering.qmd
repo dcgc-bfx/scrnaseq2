@@ -49,13 +49,13 @@ params:
     min_counts = 1,
     min_cells = 3)
     
-  # List of samples to drop after initial QC. Set to 'null' to deactivate.
-  # Example:
-  #  - sampleA
-  #  - sampleB
-  samples_to_drop: null
+  # File with list of cells to remove after initial QC. Set to 'null' to deactivate.
+  cells_to_remove: null
+    
+  # List of samples to remove after initial QC. Set to 'null' to deactivate.
+  samples_to_remove: null
 
-  # Drop samples with too few cells
+  # Remove samples with too few cells
   samples_min_cells: 10
   
   # Number of cores to use for computations
@@ -738,13 +738,23 @@ barcodes_to_exclude = purrr::map(orig_idents, function(s) {
   })
   names(filter_result) = names(barcode_filter[[s]])
   
-  # Samples to drop
-  samples_to_drop = param("samples_to_drop")
-  if (s %in% samples_to_drop) {
-    idx_exclude = which(barcode_metadata[["orig.ident"]] == s)
-    filter_result[["samples_to_drop"]] = rownames(barcode_metadata)[idx_exclude]
+  # Cells to drop
+  cells_to_remove = param("cells_to_remove")
+  if (!is.null(cells_to_remove)) {
+    cells_to_remove = readLines(cells_to_remove)
+    idx_exclude = which(rownames(barcode_metadata) %in% cells_to_remove)
+    filter_result[["cells_to_remove"]] = rownames(barcode_metadata)[idx_exclude]
   } else {
-    filter_result[["samples_to_drop"]] = as.character(c())
+    filter_result[["cells_to_remove"]] = as.character(c())
+  }
+  
+  # Samples to drop
+  samples_to_remove = param("samples_to_remove")
+  if (s %in% samples_to_remove) {
+    idx_exclude = which(barcode_metadata[["orig.ident"]] == s)
+    filter_result[["samples_to_remove"]] = rownames(barcode_metadata)[idx_exclude]
+  } else {
+    filter_result[["samples_to_remove"]] = as.character(c())
   }
   
   # Minimum number of cells for a sample to keep
@@ -1114,14 +1124,17 @@ sc = CCScoring(sc, genes_s=unname(seurat_s_genes), genes_g2m=unname(seurat_g2m_g
 # Warn if there not enough genes for cell cycle scoring
 if (length(seurat_s_genes) < 20 | length(seurat_g2m_genes) < 20) {
   CalloutBox(x="Cannot not find enough known S or G2M phase genes to be used cell cycle scoring. Phases and scores will be NA!", type="warning")
+  have_cell_cycle_scores = FALSE
+} else {
+    have_cell_cycle_scores = TRUE
 }
 ```
 
 ```{r}
 #| label: tbl-qc_filtering_rna_cell_cycle_summary
 #| tbl-cap: "Cell cycle summary"
-#| eval: !expr sc$Phase %>% is.na() %>% all() %>% not()
-#| include: !expr sc$Phase %>% is.na() %>% all() %>% not()
+#| eval: !expr have_cell_cycle_scores
+#| include: !expr have_cell_cycle_scores
 
 # Summarize cell cycle states for barcodes (cells, nuclei or spots)
 
@@ -1138,16 +1151,53 @@ gt(cell_cycle_summary_tbl, rowname_col="orig.ident")
 ```{r}
 #| label: fig-qc_filtering_rna_cell_cycle_S
 #| fig-cap: !expr paste(GeneratePlotCaptions(c("S.Score", "G2M.Score")), collapse=" and ")
-#| eval: !expr sc$Phase %>% is.na() %>% all() %>% not()
-#| include: !expr sc$Phase %>% is.na() %>% all() %>% not()
+#| eval: !expr have_cell_cycle_scores
+#| include: !expr have_cell_cycle_scores
 #| echo: false
 #| fig-height: 4
 
 # Plot S.Score and G2.Score distributions
 
 plist = PlotBarcodeQC(sc, qc=c("S.Score", "G2M.Score"))
+plist[[1]] = 
 plist[[1]] + plist[[2]]
 ```
+
+```{r}
+#| label: qc_filtering_rna_cell_cycle_spatial
+#| eval: !expr have_cell_cycle_scores & length(SeuratObject::Images(sc)) > 0
+#| include: !expr have_cell_cycle_scores & length(SeuratObject::Images(sc)) > 0
+#| results: asis
+
+# Plot as spatial plots
+plist = DimPlotSpatial(sc, group.by="Phase", combine=FALSE, cols=ScColours(sc, "Phase")) %>% purrr::flatten()
+names(plist) = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
+
+
+# Set up layout for generating chunks
+chunk_template = "
+\`\`\`{r}
+#| label: fig-qc_filtering_rna_cell_cycle_spatial_dataset_{{dataset}}
+#| fig-cap: {{caption}}
+
+plist[['{{dataset}}']]
+\`\`\`
+"
+
+# Fill out and print spatial plots
+cat("::: panel-tabset\n\n")
+for(dataset in names(plist)) {
+  cat ("#####", dataset, "\n\n")
+  chunk_filled =  knitr::knit_expand(text=chunk_template, dataset=dataset, caption=FormatString("Cell cycle phases for dataset {dataset}"))
+  if(interactive()) {
+    print(EvalKnitrChunk(chunk_filled))
+  } else {
+      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+      cat(chunk_filled, '\n')
+  }
+}
+```
+
 
 Alternatively, the expression of MKI67 (a common G2M phase marker) and PCNA (a common S phase marker), if available, can be used to get an impression of possible cell-cycle effects in the data. However, these scores cannot be used for correcting these effects in later computations.
 

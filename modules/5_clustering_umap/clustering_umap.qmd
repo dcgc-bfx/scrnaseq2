@@ -354,7 +354,7 @@ for (method in dimensionality_reduction_methods) {
       name = paste0(DefaultAssay(sc), "_", method, "_", "snn", res)
     }
     chunk_filled =  knitr::knit_expand(text=chunk_template, name=name, caption=FormatString("UMAP coloured by clustering with resolution {res} based on reduction {toupper(method)}"))
-    if(interactive()) {
+    if (interactive()) {
       print(EvalKnitrChunk(chunk_filled))
     } else {
       chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
@@ -381,7 +381,7 @@ clusterings_to_plot = purrr::map(dimensionality_reduction_methods, function(meth
 
 # Generate plots and captions
 plist = purrr::map(SeuratObject::Images(sc), function(i) {
-    pl = DimPlotSpatial(sc, images=i, group.by=clusterings_to_plot, combine=FALSE)
+    pl = DimPlotSpatial(sc, images=i, group.by=clusterings_to_plot, combine=FALSE) %>% purrr::flatten()
     pl = purrr::map(seq(pl), function(i) {
         p = pl[[i]] + theme(legend.title=element_blank()) + ggtitle(clusterings_to_plot[i]) + scale_fill_manual(values=ScColours(sc, clusterings_to_plot[i]))
         return(p)
