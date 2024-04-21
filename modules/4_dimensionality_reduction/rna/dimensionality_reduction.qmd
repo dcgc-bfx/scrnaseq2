@@ -264,7 +264,6 @@ if (use_sketching) {
 #| fig-width: 2.6
 
 # When sketching is used, not available for the full dataset
-
 dim_n_compute = param("dim_n_compute")
 
 # Plot loading for the top 20 dimensions
@@ -286,6 +285,60 @@ for (i in seq(plist)) {
 
   print(plist[[i]])
 }
+```
+
+```{r}
+#| label: dimensionality_reduction_rna_loadings_spatial
+#| eval: !expr length(SeuratObject::Images(sc)) > 0
+#| include: !expr length(SeuratObject::Images(sc)) > 0
+#| results: asis
+
+# When sketching is used, not available for the full dataset
+dimensionality_reduction_method = param("dimensionality_reduction_method")
+dim_n_compute = param("dim_n_compute")
+dim_features = stringr::str_to_title(dimensionality_reduction_method) %>% 
+    paste0("_", 1:min(min(20, dim_n_compute), ncol(sc)))
+
+# Set up layout for generating chunks
+chunk_template = "
+\`\`\`{r}
+#| label: fig-dimensionality_reduction_rna_loadings_spatial_dim{{dim}}_dataset_{{dataset}}
+#| fig-cap: {{caption}}
+
+plist[['{{dataset}}']]
+\`\`\`
+"
+  
+# Iterate over dimensions
+cat("::: panel-tabset\n\n")
+for(dim in 1:min(min(20, dim_n_compute), ncol(sc))) {
+  dim_feature = stringr::str_to_title(dimensionality_reduction_method) %>% paste0("_", dim)
+  cat("##### Dim", dim, "\n\n")
+
+  # Plot as spatial plots
+  plist = FeaturePlotSpatial(sc, features=dim_feature, combine=FALSE) %>% purrr::flatten()
+  plist = purrr::map(plist, function(p) {
+    p =  p + theme(legend.title=element_blank())
+    p = p + viridis::scale_fill_viridis()
+    return(p)
+  })
+  names(plist) = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
+    
+  # Fill out and print spatial plots
+  cat("::: panel-tabset\n\n")
+  for(dataset in names(plist)) {
+    cat ("#####", dataset, "\n\n")
+    chunk_filled =  knitr::knit_expand(text=chunk_template, dim=dim, dataset=dataset, caption=FormatString("Loadings for dimension {dim} for dataset {dataset}"))
+    if(interactive()) {
+      print(EvalKnitrChunk(chunk_filled))
+    } else {
+      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+      cat(chunk_filled, '\n')
+    }
+  }
+  cat(":::\n\n")
+}
+cat(":::\n\n")
 ```
 
 ## Dimensionality of the dataset
