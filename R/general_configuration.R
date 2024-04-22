@@ -19,7 +19,6 @@ options(Seurat.object.assay.version="v5")
 
 # Python3 path needed for clustering, umap, other python packages
 reticulate_python3_path = unname(Sys.which("python3"))
-reticulate_python3_path = "C:\\Users\\andpe\\AppData\\Local\\Programs\\Python\\Python310/python.exe"
 Sys.setenv(RETICULATE_PYTHON=reticulate_python3_path)
 assertthat::assert_that(reticulate::py_available(initialize = TRUE) && !is.null(reticulate::py_config()), msg="Python3 not available")
 python_modules = c("leidenalg", "anndata", "scipy")
