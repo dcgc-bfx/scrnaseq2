@@ -1159,7 +1159,6 @@ gt(cell_cycle_summary_tbl, rowname_col="orig.ident")
 # Plot S.Score and G2.Score distributions
 
 plist = PlotBarcodeQC(sc, qc=c("S.Score", "G2M.Score"))
-plist[[1]] = 
 plist[[1]] + plist[[2]]
 ```
 
