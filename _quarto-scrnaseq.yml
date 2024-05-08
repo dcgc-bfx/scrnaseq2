@@ -14,14 +14,14 @@ book:
   chapters:
   - "index.qmd"
   - "modules/1_read_data/read_data.qmd"
-  #- "modules/2_qc_filtering/rna/qc_filtering.qmd"
-  #- "modules/3_normalization/rna/normalization.qmd"
-  #- "modules/4_dimensionality_reduction/rna/dimensionality_reduction.qmd"
-  #- "modules/5_clustering_umap/clustering_umap.qmd"
-  #- "modules/6_clusterqc/clusterqc.qmd"
-  #- "modules/7_cluster_annotation/cluster_annotation.qmd"
-  #- "modules/8_cluster_composition/cluster_composition.qmd"
-  #- "modules/9_export/export.qmd"
+  - "modules/2_qc_filtering/rna/qc_filtering.qmd"
+  - "modules/3_normalization/rna/normalization.qmd"
+  - "modules/4_dimensionality_reduction/rna/dimensionality_reduction.qmd"
+  - "modules/5_clustering_umap/clustering_umap.qmd"
+  - "modules/6_clusterqc/clusterqc.qmd"
+  - "modules/7_cluster_annotation/cluster_annotation.qmd"
+  - "modules/8_cluster_composition/cluster_composition.qmd"
+  - "modules/9_export/export.qmd"
   - "references.qmd"
 
 ####################
@@ -44,7 +44,7 @@ params:
     verbose: true
     
     # Project ID
-    project_id: "bfx2445"
+    project_id: "bfx1234"
     
     # Species
     species: "homo_sapiens"
@@ -56,10 +56,10 @@ params:
     default_assay: null
     
      # For large datasets: Do not keep counts in memory but store on disk in matrix directories. Computations will access only the relevant parts of the data. Once done, matrix directories will be saved together with the Seurat object in the module directory.
-    on_disk_counts: true
+    on_disk_counts: false
   
     # For large datasets: Copy matrix directories to a temporary directory for computations. This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). Once done, matrix directories will be copied back to the module directory. The temporary directory will be deleted once the R session exists.
-    on_disk_use_tmp: true
+    on_disk_use_tmp: false
     
     # Number of cores to use for computations
     cores: 4
@@ -97,32 +97,29 @@ params:
         #- "segmentations"
         
     qc_filtering_rna:
+      # Available QC metrics: 
+      # nCount (number of counts), nFeature (number of features), pCountsTop5 and pCountsTop50 (percent counts in top 5 and 50 features)
+      # pMito (percent mitochondrial), pRibosomal (percent ribosomal), pGlobin (percent globin), pERCC (percent ERCC)
       barcode_qc:
       - "nCount_RNA"
       - "nFeature_RNA"
-      #- "pCountsTop5_RNA"
-      #- "nCount_ControlProbe"
-      #- "nFeature_ControlProbe"
-      #- "nCount_ControlCodeword"
-      #- "nFeature_ControlCodeword"
-      #- "nCount_BlankCodeword"
-      #- "nFeature_BlankCodeword"
-      #- "nucleus_area"
-      #- "cell_area"
+      - "pCountsTop50_RNA"
+      - "pMito_RNA"
+      - "pRibosomal_RNA"
+      - "pGlobin_RNA"
     
       # Which pairs of barcode QC should be should be plotted in scatter plots. 
       # Separate QC by space character. Can only be numeric barcode metadata columns.
       # Set to 'null' to deacivate.
       barcode_qc_cor:
       - "nFeature_RNA nCount_RNA"
-      #- "nFeature_RNA pCountsTop5_RNA"
-      #- "cell_area nucleus_area"
+      - "nFeature_RNA pCountsTop50_RNA"
+      - "nFeature_RNA pMito_RNA"
     
       # Filter for barcodes. Set to 'null' to deactivate.
       barcode_filter: !expr list(
-        nCount_RNA = c(30, NA),
-        nFeature_RNA = c(10, NA))
-    
+        nCount_RNA = c(1000, NA),
+        nFeature_RNA = c(300, NA))
     
       # Filter for features. Set to 'null' to deactivate.
       feature_filter: !expr list(
@@ -181,7 +178,7 @@ params:
       dim_n_compute: 50
       
       # Number of dimensions (e.g. principal components) to use
-      dim_n: 30
+      dim_n: 20
     
       # Use sketch-based integration methods for analysis
       use_sketching: false
@@ -211,12 +208,13 @@ params:
       dimensionality_reduction_method: "pca"
     
       # Number of dimensions to use. 
-      dim_n: 10
+      dim_n: 20
       
       # Cluster resolution(s) to use. 
       # If multiple are specified, the first one will be used as default.
       cluster_resolution:
-      - 8
+      - 0.5
+      - 1
       
       # Number of neighbors to look at for clustering
       cluster_k: 30
@@ -232,15 +230,12 @@ params:
       qc_features:
       - "nCount_RNA"
       - "nFeature_RNA"
-      #- "pCountsTop5_RNA"
-      #- "nCount_ControlProbe"
-      #- "nFeature_ControlProbe"
-      #- "nCount_ControlCodeword"
-      #- "nFeature_ControlCodeword"
-      #- "nCount_BlankCodeword"
-      #- "nFeature_BlankCodeword"
-      #- "nucleus_area"
-      #- "cell_area"
+      - "nCount_RNA"
+      - "nFeature_RNA"
+      - "pCountsTop50_RNA"
+      - "pMito_RNA"
+      - "pRibosomal_RNA"
+      - "pGlobin_RNA"
     
     cluster_annotation:
       # Thresholds to define marker genes; only genes expressed in at least N%% of cells in each group are tested
