@@ -177,7 +177,7 @@ if (length(qc_features) > 0) {
                aes(x=seurat_clusters, y=qc, fill=seurat_clusters, group=seurat_clusters)) + 
       geom_violin(scale="width", linewidth=ifelse(optimise_plots, 0.1, 0.5)) + 
       scale_x_discrete(guide=guide_axis(n.dodge=ifelse(optimise_plots, 2, 1))) +
-      scale_y_continuous(trans=ifelse(grepl(pattern="nCount", x), "log10", "identity")) +
+      # scale_y_continuous(trans=ifelse(grepl(pattern="nCount", x), "log10", "identity")) +
       AddPlotStyle(fill=ScColours(sc, "seurat_clusters"), xlab="", legend_position="none", title="") +
       theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))
     return(p)

@@ -791,6 +791,11 @@ gt(barcodes_to_exclude_tbl, rownames_to_stub=TRUE) %>%
     tab_spanner("Original", columns = c(N)) %>%
     tab_spanner("Filtered by", columns = c(-N, -Excluded, -PercKept)) %>%
     tab_spanner("Total", columns = c(Excluded, PercKept))
+
+# Update orig.ident
+levels_to_drop = table(sc$orig.ident)
+levels_to_drop = names(levels_to_drop)[levels_to_drop==0]
+sc$orig.ident = factor(sc$orig.ident, levels=setdiff(levels(sc$orig.ident), levels_to_drop))
 ```
 
 ```{r}
@@ -816,7 +821,7 @@ features_to_exclude = purrr::map(orig_idents, function(s) {
   if (!is.null(feature_filter) & 
       s %in% names(feature_filter) &
       "min_counts" %in% names(feature_filter[[s]])) {
-    exclude = metadata[[paste("nBcsThreshold", s, sep="_")]] < feature_filter[[s]][["min_counts"]]
+    exclude = metadata[[paste("nBcsThreshold", s, sep="_")]] < feature_filter[[s]][["min_cells"]] # before: counts
   } else {
     exclude = rep(FALSE, nrow(metadata))
   }
@@ -833,10 +838,11 @@ features_to_exclude_all = purrr::map(features_to_exclude, function(x) return(nam
 features_to_exclude_tbl = purrr::map_dfr(names(features_to_exclude), function(n) {
   # Boolean vector for all features in dataset
   features = features_to_exclude[[n]]
-  df = data.frame(N=length(features), FailThreshold=sum(features))
+  df = data.frame(N=length(features), Fail=sum(features))
   
-  df$Excluded = length(setdiff(names(features), features_to_exclude_all))
-  df$PercKept = round( (df$N - df$FailThreshold) / df$N * 100, 2)
+  df$FailAll = length(features_to_exclude_all)
+  df$Kept = length(setdiff(names(features), features_to_exclude_all))
+  df$PercKept = round(df$Kept / df$N * 100, 2)
   return(df)
 })
 rownames(features_to_exclude_tbl) = names(features_to_exclude)
@@ -852,8 +858,8 @@ sc[[default_assay]]@meta.data = feature_metadata[features_to_keep, ]
 # Print table
 gt(features_to_exclude_tbl, rownames_to_stub=TRUE) %>%
     tab_spanner("Original", columns = c(N)) %>%
-    tab_spanner("Filtered by", columns = c(-N, -Excluded, -PercKept)) %>%
-    tab_spanner("Total", columns = c(Excluded, PercKept))
+    tab_spanner("Filtered by", columns = c(-N, -FailAll, -Kept, -PercKept)) %>%
+    tab_spanner("Total", columns = c(FailAll, Kept, PercKept))
 ```
 
 After filtering, the size of the Seurat object is:

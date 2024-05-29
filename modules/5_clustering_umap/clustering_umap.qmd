@@ -347,7 +347,7 @@ plist[['{{name}}']]
 cat("::: {layout-ncol=3}\n", sep="")
 
 for (method in dimensionality_reduction_methods) {
-  for (res in cluster_resolutions) {
+  for (res in sort(unlist(cluster_resolutions))) {
     if (use_sketching) {
       name = paste0(DefaultAssay(sc), "_", method, "_", "snn", res, "_full")
     } else {
