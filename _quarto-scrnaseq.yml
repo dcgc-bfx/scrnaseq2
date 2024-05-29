@@ -42,8 +42,8 @@ params:
   general:
 
     # General
-    project_id: "bfx2383"
-    species: "danio_rerio"
+    project_id: "bfx1234"
+    species: "homo_sapiens"
     ensembl: 104
 
     # Technical
@@ -69,7 +69,7 @@ params:
   
     read_data:
       default_assay: RNA
-      datasets_file: "datasets/bfx2383.xlsx"
+      datasets_file: "datasets/bfx1234.xlsx"
       downsample_barcodes_n: null
       downsample_barcodes_equally: false
       downsample_features_n: null
@@ -84,14 +84,11 @@ params:
       barcode_qc_cor:
       - "nFeature_RNA nCount_RNA"
       - "nFeature_RNA pMito_RNA"
-      barcode_filter: !expr list(
-        nCount_RNA = c(25000, NA),
-        nFeature_RNA = c(500, NA),
-        pMito_RNA = c(NA, 30))
+      barcode_filter: null
       feature_filter: !expr list(
         min_counts = 1,
         min_cells = 3)
-      samples_to_drop: c("B30GFP", "PC", "NC")
+      samples_to_drop: null
       samples_min_cells: 10
 
     normalization_rna:
@@ -105,8 +102,8 @@ params:
 
     dimensionality_reduction_rna:
       dimensionality_reduction_method: "PCA"
-      dim_n_compute: 70
-      dim_n: 50
+      dim_n_compute: 50
+      dim_n: 20
       integration_methods: null
       CCAIntegration: null
       RPCAIntegration: null
@@ -115,22 +112,20 @@ params:
       scVIIntegration: null
 
     clustering_umap:
-      dim_n: 30
+      dim_n: 20
       cluster_resolution:
-      - 1
-      - 0.25
       - 0.5
+      - 0.25
       - 0.75
-      - 1.25
-      - 1.5
-      cluster_k: 15
-      umap_k: 15
+      - 1
+      cluster_k: 30
+      umap_k: 30
 
     cluster_annotation:
       marker_pct: 0.25
       marker_log2FC: 0.25
       latent_vars: null
-      file_known_markers: "datasets/bfx2383_knownMarkers.xlsx"
+      file_known_markers: null
 
     export:
       export_loupe: true
