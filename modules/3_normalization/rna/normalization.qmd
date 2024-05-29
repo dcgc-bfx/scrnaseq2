@@ -20,8 +20,8 @@ params:
   on_disk_use_tmp: true
   
   # Which normalization should be used for analysis?
-  # lognorm (Seurat), scran or SCT
-  normalization_method: "SCT"
+  # lognorm (Seurat), scran, SCT, log (just log-transformation), identity (use raw counts)
+  normalization_method: "lognorm"
   
    # Whether or not to remove cell cycle effects
   cellcycle_remove: false
@@ -42,7 +42,7 @@ params:
   
   # Which method should be used for feature selection?
   # vst (Seurat), scran or SCT
-  feature_selection_method: "SCT"
+  feature_selection_method: "vst"
   
   # Number of variable features to use
   num_variable_features: 3000
@@ -126,7 +126,7 @@ if (!is.null(param("prev_module_dir"))) {
 }
 prev_sc_obj = file.path(prev_module_dir, "sc", "sc.rds")
 if(!file.exists(prev_sc_obj)) {
-  stop(FormatString("Could not find a sc.rds file in {{prev_module_dir}}. Was the respective module already run?"))
+  stop(FormatString("Could not find a sc.rds file in {prev_module_dir}. Was the respective module already run?"))
 }
 sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
 
@@ -266,13 +266,30 @@ if (normalization_method == "lognorm") {
   Seurat::DefaultAssay(sc) = sct_assay_name
 
   CalloutBox("SCTransform normalization was applied.", type="note")
+} else if (normalization_method == "log") {
+  # Run log transformation (just log, no size factors)
+  sc = TransformData(sc, 
+                     log=TRUE, 
+                     layer=layer_counts,
+                     save=layer_data)
+  
+  CalloutBox("Log transformation was applied.", type="note")
+} else if (normalization_method == "identity") {
+  # Run identity transformation (keep raw counts)
+  sc = TransformData(sc,
+                     log=FALSE,
+                     layer=layer_counts,
+                     save=layer_data)
+  
+  CalloutBox("No normalization/transformation was applied.", type="note")
 }
+
 
 # Convert queued operations into real data and write to disk
 if (on_disk_counts) {
   
   if (normalization_method != "SCT") {
-    # For lognorm and scran, we just need to write all 'data' layers to disk
+    # For methods lognorm, scran, log and identity we need to write all 'data' layers to disk
   
     layers = SeuratObject::Layers(sc, search="^counts") %>% 
       gsub(pattern="counts", replacement="data", x=.)
@@ -290,8 +307,8 @@ if (on_disk_counts) {
     }
     
   } else {
-    # The SCT assay is not Seurat v5 compatible and therefore does not support on-disk counts. Furthermore,
-    # it produces no layers but only a 'counts', a 'data' and a 'scale.data' slot.
+    # The SCT assay is not Seurat v5 compatible and therefore does not support on-disk counts.
+    # It produces no layers but only a 'counts', a 'data' and a 'scale.data' slot.
   }
 }
 ```

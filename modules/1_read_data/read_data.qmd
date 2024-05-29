@@ -1138,14 +1138,10 @@ p
     for(q in barcode_qc) {
       
       # Make spatial plots split by sample
-      plist = FeaturePlotSpatial(sc, features=q, combine=FALSE)
+      plist = FeaturePlotSpatial(sc, features=q, combine=FALSE) %>% purrr::flatten()
       plist = purrr::map(plist, function(p) {
         p =  p + theme(legend.title=element_blank())
-        if (grepl(pattern="nCount", q)) {
-            p = p + viridis::scale_fill_viridis(trans="log10") + ggtitle(paste(q, "(log10)"))
-        } else {
-            p = p + viridis::scale_fill_viridis()
-        }
+        p = p + viridis::scale_fill_viridis(trans=ifelse(grepl(pattern="nCount", q), "log10", "identity"))
         return(p)
       })
       
