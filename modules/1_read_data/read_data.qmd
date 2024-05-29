@@ -284,6 +284,7 @@ In addition to the count matrix, the workflow stores additional information in t
 
 ```{r}
 #| label: read_data_read_counts
+#| results: asis
 
 # Read counts of barcodes (cells, nuclei or spots) and features (genes, peaks or proteins) for each dataset
 
@@ -679,6 +680,7 @@ Next, we create the Seurat object. This is a summary representation of the objec
 
 ```{r}
 #| label: read_data_seurat_object
+#| results: asis
 
 # Create Seurat object with assays and metadata for barcodes (cells, nuclei or spots) and features (genes, peaks or proteins)
 
@@ -841,11 +843,34 @@ if (parse_plate_information) {
     have_plate_information = !is.na(plate_information$PlateRow) & !is.na(plate_information$PlateCol)
     sc$orig.ident = ifelse(have_plate_information, rest, as.character(sc$orig.ident))
     sc$orig.ident = factor(sc$orig.ident, levels=unique(sc$orig.ident))
+    
+    # Join layers and then split again
+    # First, join layers to "counts"
+    layer_orig = SeuratObject::Layers(sc)
+    sc[["RNA"]] = SeuratObject::JoinLayers(object=sc[["RNA"]])
+    
+    # If the original data had just one layer, remove it 
+    if (length(layer_orig) == 1) SeuratObject::LayerData(sc, layer=layer_orig) = NULL
+
+    # Split the "counts" layer according to samples
+    sc[["RNA"]] <- split(sc[["RNA"]], f=sc$orig.ident)
   }
 }
 
 # Set default identity
 Seurat::Idents(sc) = "orig.ident"
+
+# Remove cells with zero counts
+names_nonzero_cells = names(which(sc$nCount_RNA > 0))
+n_zero_cells = length(which(sc$nCount_RNA == 0))
+if (n_zero_cells > 0) {
+  sc = subset(sc, cells=names_nonzero_cells)
+  CalloutBox("Removed {n_zero_cells} cells with zero counts.", type="note")
+}
+```
+
+```{r}
+#| label: read_data_seurat_object_print
 
 # Print sc
 sc
@@ -930,6 +955,8 @@ for (i in seq_along(counts_lst)) {
   sc
 }
 ```
+
+## Basic statistics
 
 Finally, we calculate some basic statistics such as the precentage of counts in the top n features.
 
@@ -1060,7 +1087,7 @@ for (a in Seurat::Assays(sc)) {
 cat(":::\n")
 ```
 
-## Basic summary of the data
+## Preliminary QC of the data
 
 ```{r}
 #| label: read_data_basic_summary

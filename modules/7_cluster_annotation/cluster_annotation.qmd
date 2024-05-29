@@ -582,18 +582,19 @@ plist[['{{gene}}']]
     
     cat("::: panel-tabset\n")
     # Loop through lists
-    for (lst in names(known_markers_list)) {
-        cat("#####", lst, "\n")
+    for (i in 1:length(known_markers_list)) {
+        list_name = names(known_markers_list)[i]
+        cat("#####", list_name, "\n")
         
         # Produce plots
-        plist = Seurat::FeaturePlot(sc, features=known_markers_list[[lst]], combine=FALSE, order=TRUE)
+        plist = Seurat::FeaturePlot(sc, features=known_markers_list[[i]], combine=FALSE, order=TRUE)
         plist = purrr::map(plist, function(p) {
             p = p + viridis::scale_color_viridis() + AddPlotStyle(xlab="", ylab="") +
                 theme(legend.key.width = unit(0.02, "npc"))
             p = Seurat::LabelClusters(p, id="ident", box=TRUE, fill="white", colour="black", label.padding=0.05)
             return(p)
         })
-        names(plist) = known_markers_list[[lst]]
+        names(plist) = known_markers_list[[i]]
         
         # Plot in two column layout
         cat("::: {layout-ncol=2}\n")
