@@ -30,7 +30,7 @@ params:
   - "pERCC_RNA"
   - "pXIST_RNA"
   - "pChrY_RNA"
-  - "DoubletScore_RNA"
+  - "scrublet_doublet_scores"
   
   # Which pairs of barcode QC should be should be plotted in scatter plots. 
   # Separate QC by space character. Can only be numeric barcode metadata columns.
@@ -152,9 +152,9 @@ if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
 Seurat::DefaultAssay(sc) = default_assay
 ```
 
-The steps below represent a standard pre-processing workflow for single-cell RNA-seq data, including quality control, the respective filtering of cells and genes, data normalization and scaling, and the detection of highly variable genes.
+The steps below represent a standard pre-processing workflow for single-cell data, including quality control, the respective filtering of barcodes and features, data normalization and scaling, and the detection of highly variable features.
 
-::: {.callout-tip title="Why is pre-processing so important?" collapse="true"}
+::: {.callout-tip title="Why is pre-processing so important? (example scRNA-seq)" collapse="true"}
 
 Cells may have been damaged during sample preparation and might be only partially captured in the sequencing. In addition, free-floating mRNA from damaged cells can be encapsulated, adding to the background noise. The low-quality cells and free-floating mRNA interfere with downstream analyses. Therefore, cells and genes are filtered based on defined quality metrics. Data normalization eliminates cell-specific biases such as the absolute number of reads per cell, allowing us to systematically compare cells afterwards. Subsequent scaling corrects for the fact that genes have different lengths, allowing us to compare genes afterwards. Lastly, highly variable genes are determined, reducing computational overhead and noise from genes that are not interesting.
 
