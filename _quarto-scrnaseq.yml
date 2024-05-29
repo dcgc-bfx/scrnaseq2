@@ -118,7 +118,7 @@ params:
       - 0.25
       - 0.75
       - 1
-      cluster_k: 30
+      cluster_k: 20
       umap_k: 30
 
     cluster_annotation:
