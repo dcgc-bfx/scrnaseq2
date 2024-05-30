@@ -25,7 +25,7 @@ params:
   - "pERCC_RNA"
   - "pXIST_RNA"
   - "pChrY_RNA"
-  - "DoubletScore_RNA"
+  - "scrublet_doublet_score"
     
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. 
   # Computations will access only the relevant parts of the data. 
