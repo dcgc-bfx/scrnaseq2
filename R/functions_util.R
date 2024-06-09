@@ -459,13 +459,15 @@ ScAddLists = function(sc, lists, lists_slot='gene_lists', add_to_list=FALSE, mak
 #' Get one or more lists from the misc slot of the Seurat object.
 #' 
 #' @param sc A Seurat sc object.
-#' @param lists One or more list names.
+#' @param lists One or more list names. If NULL, return all lists defined in the misc slot.
 #' @param lists_slot From which slot of the Seurat misc slot should the lists be pulled. If NULL, pull from the top level of the Seurat misc slot.
 #' @return Lists saved in the misc slot of the Seurat object.
-ScLists = function(sc, lists, lists_slot=NULL) {
+ScLists = function(sc, lists=NULL, lists_slot=NULL) {
   stored_lists = Seurat::Misc(sc, slot=lists_slot)
   assertthat::assert_that(!is.null(stored_lists), 
                           msg=FormatString("No lists found in misc slot of Seurat object (list slot: {lists_slot})."))
+  
+  if (is.null(lists)) lists = names(stored_lists)
   assertthat::assert_that(all(lists %in% names(stored_lists)), 
                           msg=FormatString("List(s) {lists} not found in misc slot of Seurat object (list slot: {lists_slot})."))
   
@@ -491,11 +493,11 @@ ScAddColours = function(sc, colours, colours_slot='colour_lists', add_to_list=FA
 #' Gets colours for one or more categories from the misc slot of the Seurat object.
 #' 
 #' @param sc A Seurat sc object.
-#' @param categories One or more category names.
+#' @param categories One or more category names. If NULL, return all categories defined in the colours slot.
 #' @param colours_slot Name of the misc slot which stores the colours. Default is 'colour_lists'.
 #' @return Colour lists for categories.
-ScColours = function(sc, categories, colours_slot="colour_lists") {
-  return(ScLists(sc, categories, lists_slot=colours_slot))
+ScColours = function(sc, categories=NULL, colours_slot="colour_lists") {
+  return(ScLists(sc, lists=categories, lists_slot=colours_slot))
 }
 
 #' Gets the name of the default dimensionality reduction for an assay.
