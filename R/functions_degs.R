@@ -1,3 +1,456 @@
+#' Given the DEG contrasts table, prepares a list with DEG contrasts to do.
+#' 
+#' @param sc A Seurat single cell object.
+#' @param degs_contrasts_list A list of contrasts. Must at least contain 'name', condition_column', 'condition_group1' and 'condition_group2'.
+#' @return A list with contrasts to be analysed.
+DegsSetupContrastsList = function(sc, degs_contrasts_list) {
+    barcode_metadata = sc[[]]
+    
+    # If empty, return empty list
+    if (length(degs_contrasts_list) == 0) return(list())
+    
+    # Convert into list, do checks and set up defaults
+    degs_contrasts_list = purrr::map(seq(degs_contrasts_list), function(i) {
+        contrast = degs_contrasts_list[[i]]
+        
+        # Trim whitespace
+        contrast = purrr::map(contrast, trimws)
+        
+        #
+        # name
+        #
+        assertthat::assert_that("name" %in% names(contrast), 
+                                msg=FormatString("The name ('name') is missing (for comparison {i})."))
+        name = contrast[["name"]]
+        
+        #
+        # condition_column
+        #
+        assertthat::assert_that("condition_column" %in% names(contrast),
+                                msg=FormatString("The condition column ('condition_column') is missing (for comparison {i}/{name})."))
+        condition_column = contrast[["condition_column"]]
+        
+        #
+        # condition_group1 and condition_group2
+        #
+        assertthat::assert_that("condition_group1" %in% names(contrast),
+                                msg=FormatString("The condition group 1 ('condition_group1') is missing or empty (for comparison {i}/{name})."))
+        
+        assertthat::assert_that("condition_group1" %in% names(contrast),
+                                msg=FormatString("The condition group 1 ('condition_group1') is missing or empty (for comparison {i}/{name})."))
+        # If at least one of the condition groups is not a file, check if condition_column is part of the barcode metadata
+        if (!file.exists(contrast[["condition_group1"]]) | !file.exists(contrast[["condition_group2"]])) {
+            assertthat::assert_that(condition_column %in% colnames(barcode_metadata),
+                                    msg=FormatString("The condition column ('condition_column') must be part of the barcode metadata if at least one of the condition groups is not a file (for comparison {i}/{name})."))
+            
+            assertthat::assert_that(is.factor(barcode_metadata[, condition_column]),
+                                    msg=FormatString("The condition column ('condition_column') of the barcode metadata must be a factor (for comparison {i}/{name})."))
+        }
+        
+        if (!file.exists(contrast[["condition_group1"]])) {
+            condition_group1 = contrast[["condition_group1"]]
+            
+            # Parse condition_group1 string
+            negate = grepl("^!", condition_group1)
+            condition_group1 = gsub("^!", "", condition_group1) %>%
+                strsplit(split="\\+") %>%
+                unlist() %>%
+                trimws() %>%
+                unique()
+            
+            # If negate, get complement of condition_group1
+            if (negate) {
+                condition_group1 = setdiff(levels(barcode_metadata[, condition_column]), condition_group1)
+            }
+            
+            # Make sure all levels are valid
+            purrr::walk(condition_group1, function(c) {
+                assertthat::assert_that(c %in% levels(barcode_metadata[, condition_column]),
+                                        msg=FormatString("The condition group 1 value {c} is not level of the condition column {condition_column} of the barcode metadata (for comparison {i}/{name})."))
+            })
+            
+            contrast[["condition_group1"]] = condition_group1
+            
+            # Get indices of condition_group1
+            contrast[["condition_group1_idx"]] = which(barcode_metadata[, condition_column] %in% condition_group1)
+        } else {
+            condition_group1 = contrast[["condition_group1"]]
+            
+            # Sheet number appended?
+            sheet = 1
+            if (grepl(":\\d+$", condition_group1)) {
+                sheet = gsub(pattern=".+:(\\d+)$", replacement="\\1", x=condition_group1)
+                condition_group1 = gsub(pattern=":\\d+$", replacement="", x=condition_group1)
+            }
+            
+            # Make sure file exists
+            assertthat::assert_that(file.exists(condition_group1),
+                                    msg=FormatString("The condition group 1 barcode file {condition_group1} does not exist (for comparison {i}/{name})."))
+            
+            # Decide whether it is a valid file type
+            extension = tools::file_ext(gsub(pattern="\\.gz$", replacement="", x=condition_group1))
+            valid_extensions = c("csv", "tsv", "xls", "xlsx")
+            assertthat::assert_that(extension %in% valid_extensions,
+                                    msg=FormatString("The condition group 1 barcode file must be one of: {valid_extensions*} (file can be gzipped) (for comparison {i}/{name})."))
+            
+            # Read file
+            if (extension %in% c("csv", "tsv")) {
+                barcodes = readr::read_tsv(condition_group1)
+            } else if (extension %in% c("xls", "xlsx")) {
+                barcodes = readxl::read_excel(condition_group1, sheet=sheet)
+            }
+            
+            # Make sure file contains data
+            assertthat::assert_that(is.data.frame(barcodes) && nrow(barcodes)>0,
+                                    msg=FormatString("The condition group 1 barcode file does not contain barcodes (for comparison {i}/{name})."))
+            barcodes = barcodes[, 1, drop=TRUE] %>% trimws() %>% unique()
+            barcodes = barcodes[!is.na(barcodes)]
+            
+            # Parse barcodes with sample information
+            idx = grepl("^[^:]+:.+", barcodes) %>% which()
+            if (length(idx) > 0) {
+                samples = gsub("^([^:]+):.+", "\\1", barcodes[idx])
+                idx = idx[samples %in% levels(barcode_metadata[, "orig.ident"])]
+                
+                if (length(idx) > 0) {
+                    orig_ident_orig_barcode = paste(barcode_metadata$orig.ident, barcode_metadata$orig_barcode, sep=":")
+                    jdx = match(barcodes[idx], orig_ident_orig_barcode)
+                    assertthat::assert_that(!any(is.na(jdx)),
+                                            msg=FormatString("The condition group 1 barcode file contains barcodes that cannot be found in the barcode metadata (for comparison {i}/{name})."))
+                    contrast[["condition_group1_idx"]] = jdx
+                }
+            }
+        }
+        
+        if (!file.exists(contrast[["condition_group2"]])) {
+            condition_group2 = contrast[["condition_group2"]]
+            
+            # Parse condition_group2 string
+            negate = grepl("^!", condition_group2)
+            condition_group2 = gsub("^!", "", condition_group2) %>%
+                strsplit(split="\\+") %>%
+                unlist() %>%
+                trimws() %>%
+                unique()
+            
+            # If negate, get complement of condition_group2
+            if (negate) {
+                condition_group2 = setdiff(levels(barcode_metadata[, condition_column]), condition_group2)
+            }
+            
+            # Make sure all levels are valid
+            purrr::walk(condition_group2, function(c) {
+                assertthat::assert_that(c %in% levels(barcode_metadata[, condition_column]),
+                                        msg=FormatString("The condition group 2 value {c} is not level of the condition column {condition_column} of the barcode metadata (for comparison {i}/{name})."))
+            })
+            
+            contrast[["condition_group2"]] = condition_group2
+            
+            # Get indices of condition_group2
+            contrast[["condition_group2_idx"]] = which(barcode_metadata[, condition_column] %in% condition_group2)
+        } else {
+            condition_group2 = contrast[["condition_group2"]]
+            
+            # Sheet number appended?
+            sheet = 1
+            if (grepl(":\\d+$", condition_group2)) {
+                sheet = gsub(pattern=".+:(\\d+)$", replacement="\\1", x=condition_group2)
+                condition_group2 = gsub(pattern=":\\d+$", replacement="", x=condition_group2)
+            }
+            
+            # Make sure file exists
+            assertthat::assert_that(file.exists(condition_group2),
+                                    msg=FormatString("The condition group 2 barcode file {condition_group2} does not exist (for comparison {i}/{name})."))
+            
+            # Decide whether it is a valid file type
+            extension = tools::file_ext(gsub(pattern="\\.gz$", replacement="", x=condition_group2))
+            valid_extensions = c("csv", "tsv", "xls", "xlsx")
+            assertthat::assert_that(extension %in% valid_extensions,
+                                    msg=FormatString("The condition group 2 barcode file must be one of: {valid_extensions*} (file can be gzipped) (for comparison {i}/{name})."))
+            
+            # Read file
+            if (extension %in% c("csv", "tsv")) {
+                barcodes = readr::read_tsv(condition_group2)
+            } else if (extension %in% c("xls", "xlsx")) {
+                barcodes = readxl::read_excel(condition_group2, sheet=sheet)
+            }
+            
+            # Make sure file contains data
+            assertthat::assert_that(is.data.frame(barcodes) && nrow(barcodes)>0,
+                                    msg=FormatString("The condition group 2 barcode file does not contain barcodes (for comparison {i}/{name})."))
+            barcodes = barcodes[, 1, drop=TRUE] %>% trimws() %>% unique()
+            barcodes = barcodes[!is.na(barcodes)]
+            
+            # Parse barcodes with sample information
+            idx = grepl("^[^:]+:.+", barcodes) %>% which()
+            if (length(idx) > 0) {
+                samples = gsub("^([^:]+):.+", "\\1", barcodes[idx])
+                idx = idx[samples %in% levels(barcode_metadata[, "orig.ident"])]
+                
+                if (length(idx) > 0) {
+                    orig_ident_orig_barcode = paste(barcode_metadata$orig.ident, barcode_metadata$orig_barcode, sep=":")
+                    jdx = match(barcodes[idx], orig_ident_orig_barcode)
+                    assertthat::assert_that(!any(is.na(jdx)),
+                                            msg=FormatString("The condition group 2 barcode file contains barcodes that cannot be found in the barcode metadata (for comparison {i}/{name})."))
+                    contrast[["condition_group2_idx"]] = jdx
+                }
+            }
+        }
+        
+        # subset_column
+        if ("subset_column" %in% names(contrast)) {
+            assertthat::assert_that("subset_group" %in% names(contrast),
+                                    msg=FormatString("The 'subset_group' column must be used together with the subset_column column (for comparison {i}/{name})."))
+            subset_column = contrast[["subset_column"]] %>% trimws()
+            subset_group = contrast[["subset_group"]]
+            
+            if (!file.exists(subset_group)) {
+                # Parse subset_group string
+                subset_group = subset_group %>% strsplit(split=",") %>% unlist() %>% trimws() %>% unique()
+                subset_group = purrr::map(subset_group, function(s) {
+                    s = s %>%
+                        strsplit(split="\\+") %>%
+                        unlist() %>%
+                        trimws() %>%
+                        unique()
+                    return(s)
+                })
+                purrr::walk(unlist(subset_group), function(c) {
+                    assertthat::assert_that(c %in% levels(barcode_metadata[, subset_column]),
+                                            msg=FormatString("The subset group value {c} is not level of the subset column {subset_column} of the barcode metadata (for comparison {i}/{name})."))
+                })
+                
+                contrast[["subset_group"]] = subset_group
+                
+                # Get indices of subset_group
+                contrast[["subset_group_idx"]] = purrr::map(subset_group, function(s) {
+                    which(barcode_metadata[, subset_column] %in% s)
+                })
+            } else {
+                # Sheet number appended?
+                sheet = 1
+                if (grepl(":\\d+$", subset_group)) {
+                    sheet = gsub(pattern=".+:(\\d+)$", replacement="\\1", x=subset_group)
+                    subset_group = gsub(pattern=":\\d+$", replacement="", x=subset_group)
+                }
+                
+                # Make sure file exists
+                assertthat::assert_that(file.exists(subset_group),
+                                        msg=FormatString("The subset group barcode file {subset_group} does not exist (for comparison {i}/{name})."))
+                
+                # Decide whether it is a valid file type
+                extension = tools::file_ext(gsub(pattern="\\.gz$", replacement="", x=subset_group))
+                valid_extensions = c("csv", "tsv", "xls", "xlsx")
+                assertthat::assert_that(extension %in% valid_extensions,
+                                        msg=FormatString("The subset group barcode file must be one of: {valid_extensions*} (file can be gzipped) (for comparison {i}/{name})."))
+                
+                # Read file
+                if (extension %in% c("csv", "tsv")) {
+                    barcodes = readr::read_tsv(subset_group)
+                } else if (extension %in% c("xls", "xlsx")) {
+                    barcodes = readxl::read_excel(subset_group, sheet=sheet)
+                }
+                
+                # Make sure file contains data
+                assertthat::assert_that(is.data.frame(barcodes) && nrow(barcodes)>0,
+                                        msg=FormatString("The subset group barcode file does not contain barcodes (for comparison {i}/{name})."))
+                barcodes = barcodes[, 1, drop=TRUE] %>% trimws() %>% unique()
+                barcodes = barcodes[!is.na(barcodes)]
+                
+                # Parse barcodes with sample information
+                idx = grepl("^[^:]+:.+", barcodes) %>% which()
+                if (length(idx) > 0) {
+                    samples = gsub("^([^:]+):.+", "\\1", barcodes[idx])
+                    idx = idx[samples %in% levels(barcode_metadata[, "orig.ident"])]
+                    
+                    if (length(idx) > 0) {
+                        orig_ident_orig_barcode = paste(barcode_metadata$orig.ident, barcode_metadata$orig_barcode, sep=":")
+                        jdx = match(barcodes[idx], orig_ident_orig_barcode)
+                        assertthat::assert_that(!any(is.na(jdx)),
+                                                msg=FormatString("The subset group barcode file contains barcodes that cannot be found in the barcode metadata (for comparison {i}/{name})."))
+                        contrast[["subset_group_idx"]] = list(jdx)
+                    }
+                }
+            }
+        }
+        
+        # bulk_by
+        if ("bulk_by" %in% names(contrast)) {
+            # Parse bulk_by string and make sure that the columns are factors
+            bulk_by = contrast[["bulk_by"]] %>% 
+                strsplit(split="\\+") %>%
+                unlist() %>%
+                trimws() %>%
+                unique()
+            assertthat::assert_that(all(bulk_by %in% colnames(barcode_metadata)),
+                                    msg=FormatString("The bulk by column(s) must be part of the barcode metadata (for comparison {i}/{name})."))
+            purrr::walk(bulk_by, function(c) {
+                assertthat::assert_that(is.factor(barcode_metadata[, c]),
+                                        msg=FormatString("The bulk by column(s) must be factors (for comparison {i}/{name})."))
+            })
+            
+            contrast[["bulk_by"]] = bulk_by
+            
+            # bulk_barcodes
+            if ("bulk_barcodes" %in% names(contrast)) {
+                contrast[["bulk_barcodes"]] = as.numeric(contrast[["bulk_barcodes"]])
+            }
+        }
+        
+        # pseudobulk_samples
+        if ("pseudobulk_samples" %in% names(contrast)) {
+            assertthat::assert_that(contrast[["pseudobulk_samples"]] > 1,
+                                    msg=FormatString("The number of pseudobulk samples ('pseudobulk_samples') must be greater than 1 (for comparison {i}/{name})."))
+            # pseudobulk_barcodes
+            if ("pseudobulk_barcodes" %in% names(contrast)) {
+                contrast[["pseudobulk_barcodes"]] = as.numeric(contrast[["pseudobulk_barcodes"]])
+            }
+        }
+        
+        assertthat::assert_that(!("bulk_by" %in% names(contrast) & "pseudobulk_samples" %in% names(contrast)),
+                                msg=FormatString("Either 'bulk_by' or 'pseudobulk_samples' can be specified (for comparison {i}/{name})."))
+        
+        # test
+        valid_tests = c("wilcox", "bimod", "roc", "t", "negbinom", "poisson", "LR", "MAST", "DESeq2")
+        if (!"test" %in% names(contrast)) contrast[["test"]] = "wilcox"
+        assertthat::assert_that(contrast[["test"]] %in% valid_tests,
+                                msg=FormatString("The test ('test') must be one of: {valid_tests*} (for comparison {i}/{name})."))
+        
+        # padj
+        if (!"padj" %in% names(contrast)) contrast[["padj"]] = 0.05
+        contrast[["padj"]] = as.numeric(contrast[["padj"]])
+        
+        # log2FC
+        if (!"log2FC" %in% names(contrast)) contrast[["log2FC"]] = 0
+        contrast[["log2FC"]] = as.numeric(contrast[["log2FC"]])
+        
+        # min_pct
+        if (!"min_pct" %in% names(contrast)) contrast[["min_pct"]] = 0.05
+        contrast[["min_pct"]] = as.numeric(contrast[["min_pct"]])
+        
+        # assay
+        if (!"assay" %in% names(contrast)) contrast[["assay"]] = Seurat::DefaultAssay(sc)
+        assay = contrast[["assay"]] %>% 
+            strsplit(split="\\,") %>% 
+            unlist() %>% 
+            trimws()
+        valid_assays = Seurat::Assays(sc)
+        valid_reductions = Seurat::Reductions(sc)
+        assertthat::assert_that(contrast[["assay"]] %in% valid_assays | contrast[["assay"]] %in% valid_reductions | all(assay %in% names(barcode_metadata)),
+                                msg=FormatString("The assay ('assay') must be one of the assays {valid_assays*}, one of the reductions {valid_reductions*} or barcode metadata columns (for comparison {i}/{name})."))
+        
+        # slot
+        if (contrast[["assay"]] %in% valid_assays) {
+            if (!"slot" %in% names(contrast)) contrast[["slot"]] = "data"
+            assertthat::assert_that(contrast[["slot"]] %in% c("counts", "data", "scale.data"),
+                                    msg=FormatString("The slot ('slot') must be 'counts', 'data', 'scale.data' (for comparison {i}/{name})."))
+        }
+        
+        # downsample_barcodes
+        if ("downsample_barcodes" %in% names(contrast)) {
+            contrast[["downsample_barcodes"]] = as.numeric(contrast[["downsample_barcodes"]])
+        }
+        
+        # batch
+        if ("batch" %in% names(contrast)) {
+            batch = contrast[["batch"]] %>% 
+                strsplit(split=",") %>% 
+                unlist() %>% 
+                trimws() %>% 
+                unique()
+            assertthat::assert_that(all(batch %in% colnames(barcode_metadata)),
+                                    msg=FormatString("The batch column(s) must be part of the barcode metadata (for comparison {i}/{name})."))
+            purrr::walk(batch, function(c) {
+                assertthat::assert_that(is.factor(barcode_metadata[, c]),
+                                        msg=FormatString("The batch column(s) must be factors (for comparison {i}/{name})."))
+            })
+            contrast[["batch"]] = batch 
+        }
+
+        # Add contrast row number
+        contrast[["contrast_row"]] = i
+        
+        return(contrast)
+    })
+    
+    
+    # Expand subsets list so that there is now one entry per subset
+    # Also get barcode indices per subset
+    degs_contrasts_list = purrr::map(degs_contrasts_list, function(contrast) {
+        if ("subset_group" %in% names(contrast)) {
+            contrasts_expanded = purrr::map(seq(contrast[["subset_group"]]), function(i) {
+                # Set up new contrast with just the subset group and barcodes indices
+                con = contrast
+                con[["subset_group"]] = contrast[["subset_group"]][[i]]
+                con[["subset_group_idx"]] = contrast[["subset_group_idx"]][[i]]
+                
+                # Filter barcodes (condition_group1_idx and condition_group2_idx) so that they are in the subset group
+                subset_group_barcodes = rownames(barcode_metadata[con[["subset_group_idx"]], ]) %>% unique()
+                
+                k = rownames(barcode_metadata[contrast[["condition_group1_idx"]], ]) %in% subset_group_barcodes
+                con[["condition_group1_idx"]] = contrast[["condition_group1_idx"]][k]
+                
+                k = rownames(barcode_metadata[contrast[["condition_group2_idx"]], ]) %in% subset_group_barcodes
+                con[["condition_group2_idx"]] = contrast[["condition_group2_idx"]][k]
+                return(con)
+            })
+        } else {
+            contrasts_expanded = list(contrast)
+        }
+        return(contrasts_expanded)
+    }) %>% purrr::flatten()
+    
+    # Process further
+    degs_contrasts_list = purrr::map(seq(degs_contrasts_list), function(i) {
+        contrast = degs_contrasts_list[[i]]
+    
+        # Downsample barcodes if requested (downsample_barcodes, bulk_barcodes, pseudobulk_barcodes)
+        if ("bulk_by" %in% names(contrast) & "bulk_barcodes" %in% names(contrast)) {
+            # Group by bulk column(s) and sample barcodes per group, sample (at most) x rows per group, then subset
+            set.seed(getOption("random_seed"))
+            sampled_condition_group1_idx = barcode_metadata[contrast[["condition_group1_idx"]], ] %>% 
+                dplyr::mutate(condition_group1_idx=contrast[["condition_group1_idx"]]) %>%
+                dplyr::group_by(dplyr::across(dplyr::all_of(contrast[["bulk_y"]]))) %>%
+                dplyr::slice_sample(n=contrast[["bulk_barcodes"]]) %>%
+                dplyr::pull(condition_group1_idx)
+            k = contrast[["condition_group1_idx"]] %in% sampled_condition_group1_idx
+            contrast[["condition_group1_idx"]] = contrast[["condition_group1_idx"]][k]
+            
+            set.seed(getOption("random_seed"))
+            sampled_condition_group2_idx = barcode_metadata[contrast[["condition_group2_idx"]], ] %>% 
+                dplyr::mutate(condition_group2_idx=contrast[["condition_group2_idx"]]) %>%
+                dplyr::group_by(dplyr::across(dplyr::all_of(contrast[["bulk_y"]]))) %>%
+                dplyr::slice_sample(n=contrast[["bulk_barcodes"]]) %>%
+                dplyr::pull(condition_group2_idx)
+            k = contrast[["condition_group2_idx"]] %in% sampled_condition_group2_idx
+            contrast[["condition_group2_idx"]] = contrast[["condition_group2_idx"]][k]
+            
+        } else if ("pseudobulk_samples" %in% names(contrast) & "pseudobulk_barcodes" %in% names(contrast)) {
+            # Just sample barcodes: number of pseudosamples * barcodes per pseudosample
+            downsample_n = contrast[["pseudobulk_samples"]]*contrast[["pseudobulk_barcodes"]]
+            set.seed(getOption("random_seed"))
+            contrast[["condition_group1_idx"]] = sample(x=contrast[["condition_group1_idx"]], 
+                                                    size=min(downsample_n, length(contrast[["condition_group1_idx"]])))
+            
+            set.seed(getOption("random_seed"))
+            contrast[["condition_group2_idx"]] = sample(x=contrast[["condition_group2_idx"]], 
+                                                    size=min(downsample_n, length(contrast[["condition_group2_idx"]])))
+        } else if ("downsample_n" %in% names(contrast)) {
+            set.seed(getOption("random_seed"))
+            contrast[["condition_group1_idx"]] = sample(x=contrast[["condition_group1_idx"]], 
+                                                    size=min(contrast[["downsample_n"]], length(contrast[["condition_group2_idx"]])))
+            
+            set.seed(getOption("random_seed"))
+            contrast[["condition_group2_idx"]] = sample(x=contrast[["cells_group2_idx"]], 
+                                                    size=min(contrast[["downsample_n"]], length(contrast[["condition_group2_idx"]])))
+        }
+        
+        return(contrast)
+    })
+    
+    return(degs_contrasts_list)
+}
+
 #' Sorts table of differentially expressed genes per performed test. Introduces a signed p-value score calculated as follows:
 #' p_val_adj_score = -log10(p_val_adj) * sign(avg_log2FC).
 #' 
@@ -249,39 +702,6 @@ DegsEmptyMarkerResultsTable = function(clusters) {
   return(empty_table[ c('p_val','avg_log2FC','pct.1','pct.2','p_val_adj','cluster','gene')])
 }
 
-#' Splits a specification string. Multiple levels are specified by semicolons. Combining levels is done with the plus sign. Trims leading and trailing whitespaces.
-#' 
-#' @param spec_string: A specification string.
-#' @first_level_separator: A fixed character string for the first string split. 
-#' @second_level_separator: A fixed character string for the second string split. Applied to the results of the first string split. Can be NULL. 
-#' @return: A list or a list of lists.
-SplitSpecificationString = function(spec_string, first_level_separator=";", second_level_separator=NULL) {
-  # First split
-  spec_list = trimws(unlist(strsplit(spec_string, split=first_level_separator, fixed=TRUE)))
-  
-  # Second split (optional)
-  if (!is.null(second_level_separator)) spec_list = purrr::map(spec_list, function(s) {
-    unlist(purrr::map(strsplit(s, split=second_level_separator, fixed=TRUE), trimws))})
-  return(spec_list)
-}
-
-#' Joins a specification list or a list of lists into a string. Sublists are joined with the plus sign and the resulting strings are joined with semicolons.
-#' 
-#' @param spec_list: A specification list of lists.
-#' @first_level_separator: A fixed character string for the first level string join. 
-#' @second_level_separator: A fixed character string for the second level string join split. Can be NULL in which case the first_level_separator will be used. 
-#' @return: A specification string.
-JoinSpecificationList = function(spec_list, first_level_separator=";", second_level_separator=NULL) {
-  is_list_of_lists = any(purrr::map_lgl(spec_list, function(l) {return(is.vector(l) | is.list(l))} ))
-  
-  if (is_list_of_lists) {
-    if (is.null(second_level_separator)) second_level_separator = first_level_separator
-    return(paste(purrr::map(spec_list, paste, collapse=second_level_separator), collapse=first_level_separator))
-  } else {
-    return(paste(spec_list, collapse=first_level_separator))
-  }
-}
-
 #' Tests two sets of cells for differential expression using Seurat::FindMarkers.
 #' 
 #' @param object A Seurat assay object or a Seurat DimReduc object.
@@ -332,258 +752,6 @@ DegsTestCellSets = function(object, slot="data", cells_1=NULL, cells_2=NULL, is_
   return(deg_results)
 }
 
-#' Given the DEG contrasts table as an R data.frame table or as an Excel file, prepares a list with DEG contrasts to do. Parses test parameter, checks and establishes defaults.
-#' 
-#' @param sc A Seurat single cell object.
-#' @param contrasts_table A table as an R data.frame or as an Excel file. The table must at least contain the columns 'condition_column', 'condition_group1' and 'condition_group2'.
-#' @param latent_vars Global variables to account for when testing. Can be overwritten by table. Can be NULL or empty.
-#' @return A list with contrasts to be analysed with the DegTestCondition function. Will return an empty list if the table/file is empty/not existing. If test parameters fail, then it will an empty result table and an error message to be shown.
-DegsSetupContrastsList = function(sc, contrasts_table, latent_vars=NULL) {
-  contrasts_list = list()
-  cell_metadata = sc[[]]
-  
-  # If parameter is a file, read the table with the contrasts
-  if (is.character(contrasts_table) && file.exists(contrasts_table)) {
-    contrasts_table = openxlsx::read.xlsx(contrasts_table)
-  }
-  
-  # If invalid or null or empty, return empty list
-  if (is.null(contrasts_table) || !is.data.frame(contrasts_table) || nrow(contrasts_table)==0) return(list())
-  
-  
-  # Convert into list, do checks and set up defaults
-  contrasts_list = split(contrasts_table, seq(nrow(contrasts_table)))
-  contrasts_list = purrr::map(seq(contrasts_list), function(i) {
-    # Unlist does not keep the classes of the variables
-    # Hence we do a manual unlisting
-    contrast = list()
-    for (j in colnames(contrasts_list[[i]])) {
-      contrast[[j]] = contrasts_list[[i]][, j, drop=TRUE]
-      if (class(contrast[[j]]) == "character") contrast[[j]] = trimws(contrast[[j]])
-    }
-
-    error_messages = c()
-    
-    # Get condition_column
-    if (contrast[["condition_column"]] %in% colnames(cell_metadata)) {
-      
-      # Get condition_group1; multiple levels can be combined with the plus sign; can be empty string to use all levels not in the condition group2 combined
-      if (nchar(contrast[["condition_group1"]])==0) {
-        contrast[["condition_group1"]] = as.character(NA)
-      } else {
-        
-        condition_group1 = SplitSpecificationString(contrast[["condition_group1"]], first_level_separator="+")
-        if (any(!condition_group1 %in% unique(cell_metadata[, contrast[["condition_column"]], drop=TRUE]))) {
-          error_messages = c(error_messages, paste("At least one value of column 'condition_group1' in row",i,"of the deg contrasts table cannot be found in the column '", contrast[["condition_column"]] , "' of the cell metadata."))
-        }
-        contrast[["condition_group1"]] = JoinSpecificationList(condition_group1, first_level_separator="+")
-        
-      }
-      
-      
-      # Get condition_group2; multiple levels can be combined with the plus sign; can be empty string to use all levels not in the condition group1 combined (see the actual DEG functions)
-      if (nchar(contrast[["condition_group2"]])==0) {
-        contrast[["condition_group2"]] = as.character(NA)
-      } else {
-        
-        condition_group2 = SplitSpecificationString(contrast[["condition_group2"]], first_level_separator="+")
-        if (any(!condition_group2 %in% unique(cell_metadata[, contrast[["condition_column"]], drop=TRUE]))) {
-          error_messages = c(error_messages, paste("At least one value of column 'condition_group2' in row",i,"of the deg contrasts table cannot be found in the column '", contrast[["condition_column"]] , "' of the cell metadata."))
-        }
-        contrast[["condition_group2"]] = paste(condition_group2, collapse="+")
-        
-      }
-    } else {
-      
-      # Error if condition_column not column of cell metadata
-      error_messages = c(error_messages, paste0("The 'condition_column' column value '",contrast[["condition_column"]], "'  in row ", i, " of the deg contrasts table is not part of the cell metadata."))
-    }
-
-    # Get subset_column and subset_group (if available); subsets cells based on this column prior to testing
-    if (!"subset_column" %in% names(contrast)) contrast[["subset_column"]] = as.character(NA)
-    if (!"subset_group" %in% names(contrast)) contrast[["subset_group"]] = as.character(NA)
-    
-    if (!is.na(contrast[["subset_column"]])) {
-      valid = TRUE
-      
-      # Error when subset_column but not subset_group specified
-      if (is.na(contrast[["subset_column"]])) {
-        error_messages = c(error_messages, paste("The 'subset_column' column must be used together with the 'subset_group' column (in row", i ,"of the deg contrasts table)."))
-        valid = FALSE
-      }
-      
-      # Error when subset_column is not a column of cell metadata
-      if (valid && !contrast[["subset_column"]] %in% colnames(cell_metadata)) {
-        error_messages = c(error_messages, paste0("The 'subset_column' column value '",contrast[["subset_column"]], "' in row ", i, " of the deg contrasts table is not part of the cell metadata."))
-        valid = FALSE
-      }
-      
-      if (valid) {
-        if (nchar(contrast[["subset_group"]])==0) {
-          # If subset_group is empty: get all levels or unique values and join them by semicolon 
-          subset_group_values = levels(cell_metadata[, contrast[["subset_column"]], drop=TRUE])
-          if (length(subset_group_values)==0) subset_group_values = unique(sort(cell_metadata[, contrast[["subset_column"]], drop=TRUE])) 
-          contrast[["subset_group"]] = JoinSpecificationList(subset_group_values, first_level_separator=";")
-        } else {
-          # If subset_group is not empty: split by semicolon, then by plus; then validate values 
-          subset_group = SplitSpecificationString(contrast[["subset_group"]], first_level_separator=";", second_level_separator="+")
-          if (any(!unlist(subset_group) %in% unique(cell_metadata[, contrast[["subset_column"]], drop=TRUE]))) {
-            error_messages = c(error_messages, paste("At least one value of column 'subset_group' in row",i,"of the deg contrasts table cannot be found in the column '", contrast[["subset_column"]] , "' of the cell metadata."))
-          }
-          contrast[["subset_group"]] = JoinSpecificationList(subset_group, first_level_separator=";", second_level_separator="+")
-        }
-      }
-    }
-    
-    # Get test method
-    if (!"test" %in% names(contrast) || is.na(contrast[["test"]])) contrast[["test"]] = "wilcox"
-    if (!contrast[["test"]] %in% c("wilcox", "bimod", "roc", "t", "negbinom", "poisson", "LR", "MAST", "DESeq2")) error_messages = c(error_messages, paste0("The 'test' column value '",contrast[["test"]], "' in row ", i, " of the deg contrasts table must be one of: 'wilcox', 'bimod', 'roc', 't', 'negbinom', 'poisson', 'LR', 'MAST', 'DESeq2'."))
-    
-    # Get padj
-    if (!"padj" %in% names(contrast) || is.na(contrast[["padj"]])) contrast[["padj"]] = 0.05
-    contrast[["padj"]] = as.numeric(contrast[["padj"]])
-    
-    # Get log2FC
-    if (!"log2FC" %in% names(contrast) || is.na(contrast[["log2FC"]])) contrast[["log2FC"]] = 0
-    contrast[["log2FC"]] = as.numeric(contrast[["log2FC"]])
-    
-    # Get min_pct
-    if (!"min_pct" %in% names(contrast) || is.na(contrast[["min_pct"]])) contrast[["min_pct"]] = 0.1
-    contrast[["min_pct"]] = as.numeric(contrast[["min_pct"]])
-    
-    # Get assay
-    if (!"assay" %in% names(contrast) || is.na(contrast[["assay"]])) contrast[["assay"]] = "RNA"
-    
-    if (contrast[["assay"]] %in% Assays(sc)) {
-      contrast[["use_reduction"]] = FALSE
-    } else if (contrast[["assay"]] %in% Reductions(sc)) {
-      contrast[["use_reduction"]] = TRUE
-    } else {
-      c(error_messages, paste0("The 'assay' column value '",contrast[["assay"]], "' in row ", i, " of the deg contrasts table is neither a Seurat assay nor a Seurat reduction."))
-    }
-    
-    # Get slot
-    if (!"slot" %in% names(contrast) || is.na(contrast[["slot"]])) contrast[["slot"]] = "data"
-    if (!contrast[["slot"]] %in% c("counts", "data", "scale.data")) c(error_messages, paste0("The 'slot' column value '",contrast[["assay"]], "' in row ", i, " of the deg contrasts table must be 'counts', 'data' or 'scale.data'."))
-    
-    # Get latent_vars
-    if (!"latent_vars" %in% names(contrast) || is.na(contrast[["latent_vars"]])) {
-      contrast[["latent_vars"]] = NULL
-    } else {
-      contrast[["latent_vars"]] = SplitSpecificationString(contrast[["latent_vars"]], first_level_separator=";")
-    }
-    
-    if (!is.null(contrast[["latent_vars"]]) && length(contrast[["latent_vars"]]) > 0) {
-      if (any(!contrast[["latent_vars"]] %in% colnames(cell_metadata))) {
-        error_messages = c(error_messages, paste("At least one value of column 'latent_vars' in row",i,"of the deg contrasts table or a global latent var cannot be found cell metadata column."))
-      }
-    } 
-    
-    # Get number of cells to downsample
-    if (!"downsample_cells_n" %in% names(contrast) || is.na(contrast[["downsample_cells_n"]])) {
-      contrast[["downsample_cells_n"]] = NULL
-    } else {
-      contrast[["downsample_cells_n"]] = as.integer(contrast[["downsample_cells_n"]])
-    }
-    
-    # Add error messages
-    contrast = c(contrast, list(error_messages = error_messages))
-    
-    # Add contrast row number
-    contrast[["contrast_row"]] = i
-    
-    return(contrast)
-  })
-  
-  
-  # Expand subsets so that there is now one row per subset
-  contrasts_list = purrr::map(contrasts_list, function(contrast) {
-    if (!is.na(contrast[["subset_column"]]) && !is.na(contrast[["subset_group"]])) {
-      subset_group = SplitSpecificationString(contrast[["subset_group"]], first_level_separator=";")
-      contrasts_expanded = purrr::map(subset_group, function(g) {
-        con = contrast
-        con[["subset_group"]] = g
-        return(con)
-      })
-    } else {
-      contrasts_expanded = list(contrast)
-    }
-    return(contrasts_expanded)
-  })
-  contrasts_list = purrr::flatten(contrasts_list)
-  names(contrasts_list) = seq(contrasts_list)
-  
-  
-  # Now get cell indices per contrast; this will later be used for more efficient parallelisation 
-  contrasts_list = purrr::map(contrasts_list, function(contrast) {
-    error_messages = c()
-    
-    # If there were already errors, just return
-    if (length(contrast[["error_messages"]]) > 0) return(c(contrast, list(cells_group1_idx=as.integer(), cells_group2_idx=as.integer())))
-    
-    # Do subset
-    if (!is.na(contrast[["subset_column"]]) && !is.na(contrast[["subset_group"]])) {
-      subset_group_values = SplitSpecificationString(contrast[["subset_group"]], first_level_separator="+")
-      is_in_subset_group = cell_metadata[, contrast[["subset_column"]], drop=TRUE] %in% subset_group_values
-    } else {
-      is_in_subset_group = rep(TRUE, nrow(cell_metadata))
-    }
-    
-    # Do condition_group1
-    if (!is.na(contrast[["condition_group1"]])) {
-      condition_group1_values = SplitSpecificationString(contrast[["condition_group1"]], first_level_separator="+")
-      is_in_condition_group1 = cell_metadata[, contrast[["condition_column"]], drop=TRUE] %in% condition_group1_values
-      is_in_condition_group1 = is_in_condition_group1 & is_in_subset_group
-    } else {
-      cells_condition_group1 = as.character(NA)
-    }
-    
-    # Do condition_group2
-    if (!is.na(contrast[["condition_group2"]])) {
-      condition_group2_values = SplitSpecificationString(contrast[["condition_group2"]], first_level_separator="+")
-      is_in_condition_group2 = cell_metadata[, contrast[["condition_column"]], drop=TRUE] %in% condition_group2_values
-      is_in_condition_group2 = is_in_condition_group2 & is_in_subset_group
-    } else {
-      cells_condition_group2 = as.character(NA)
-    }    
-    
-    # If one of the condition groups is NA, set the cell names to the complement of the cells in the other condition group (and potential subset)
-    if (is.na(contrast[["condition_group1"]]) && !is.na(contrast[["condition_group2"]])) {
-      is_in_condition_group2 = !is_in_condition_group1 & is_in_subset_group
-    } else if (!is.na(contrast[["condition_group1"]]) && is.na(contrast[["condition_group2"]])) {
-      is_in_condition_group1 = !is_in_condition_group2 & is_in_subset_group
-    }
-    
-    # If both condition groups are NA, return with an error
-    if (is.na(contrast[["condition_group1"]]) && is.na(contrast[["condition_group2"]])) {
-      error_messages = c(error_messages,  paste("Only one condition group can be empty (to specify the complement of the other group) in row", contrast[["contrast_row"]], "of the deg contrasts table."))
-    }
-    
-    # Get cell indices and also associated latent vars
-    contrast[["cells_group1_idx"]] = as.integer(which(is_in_condition_group1))
-    if (length(contrast[["cells_group1_idx"]]) < 3) {
-      error_messages = c(error_messages,  paste("Condition group 1 in one of the contrasts specified in row", contrast[["contrast_row"]], "of the deg contrasts table has less than three cells."))
-    }
-    
-    contrast[["cells_group2_idx"]] = as.integer(which(is_in_condition_group2))
-    if (length(contrast[["cells_group2_idx"]]) < 3) {
-      error_messages = c(error_messages,  paste("Condition group 2 in one of the contrasts specified in row", contrast[["contrast_row"]], "of the deg contrasts table has less than three cells."))
-    }
-    
-    # Downsample groups if requested
-    if (!is.null(contrast[["downsample_cells_n"]])) {
-      contrast[["cells_group1_idx"]] = sample(x=contrast[["cells_group1_idx"]], 
-                                              size=min(contrast[["downsample_cells_n"]], length(contrast[["cells_group1_idx"]])))
-      contrast[["cells_group2_idx"]] = sample(x=contrast[["cells_group2_idx"]], 
-                                              size=min(contrast[["downsample_cells_n"]], length(contrast[["cells_group2_idx"]])))
-    }
-      
-    contrast = c(contrast, list(error_messages = c(contrast[["error_messages"]], error_messages)))
-    return(contrast)
-  })
-
-  return(contrasts_list)
-}
 
 #' Returns an empty Enrichr results table.
 # '

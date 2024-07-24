@@ -828,7 +828,7 @@ parse_plate_information = param("parse_plate_information")
 plate_information_regex = param("plate_information_regex")
 plate_information_update_identity = param("plate_information_update_identity")
   
-if (parse_plate_information) {
+if (parse_plate_information & any(grepl(pattern=plate_information_regex, sc$orig_barcode))) {
   # Parse plate information
   plate_information = ParsePlateInformation(sc$orig_barcode, pattern=plate_information_regex)
   rownames(plate_information) = colnames(sc)

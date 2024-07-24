@@ -1,0 +1,284 @@
+---
+# Module-specific parameters (that are not already in the profile yaml)
+# Defaults
+params:
+  # Name of the module used in configurations
+  module: "deg_analysis"
+    
+  # Relative path to the module directory (which contains the qmd file)
+  module_dir: "modules/10_deg_analysis"
+
+  # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
+  # NOTE: Change to null if all modules are implemented and sc objects are written
+  prev_module_dir: null
+  
+  # Default assay
+  default_assay: null
+
+  # For large datasets: Do not keep counts in memory but store on disk in matrix directories. 
+  # Computations will access only the relevant parts of the data. 
+  # Once done, matrix directories will be saved together with the Seurat object in the module directory.
+  on_disk_counts: false
+  
+  # For large datasets: Copy matrix directories to a temporary directory for computations. 
+  # This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). 
+  # Once done, matrix directories will be copied back to the module directory. 
+  # The temporary directory will be deleted once the R session exists.
+  on_disk_use_tmp: false
+  
+  # Number of cores to use for computations
+  cores: 4
+  
+  # Contrasts to find differentially expressed genes
+  # Add entries below 'value'.
+  # Each entry has a unique name and the following keys:
+  #
+  #  condition_column: Categorial column in the barcode metadata (required)
+  #  condition_group1: Condition levels in group 1 (required)
+  #                    Use 'level1+level2' to use multiple levels
+  #                    Use '!level1' or '!level1+level2 to use all but these levels (i.e. negate)
+  #                    Can also be a Excel/csv file with barcodes with 'barcode' or 'sample:original_barcode' per line. 
+  #                    Original barcode refers to the one used in the dataset.
+  #  condition_group2: Condition levels in group 2 (required)
+  #                    Use 'level1,level2' to use multiple levels
+  #                    Use '!level1' or '!level1+level2 to use all but these levels (i.e. negate)
+  #                    Can also be a Excel/csv file with barcodes with 'barcode' or 'sample:original_barcode' per line. 
+  #                    Original barcode refers to the one used in the dataset.
+  #
+  # subset_column: Categorial column in the barcode metadata to subset for tests (default: null)
+  #                For example, use 'orig.ident' for sample and 'seurat_clusters' for cluster (default: null)
+  # subset_group: Levels to subset
+  #               Use 'level1+level2' to use multiple levels for one subset
+  #               Use 'level1+level2,level3' to do multiple subsets for testing
+  #                    Can also be a Excel/csv file with barcodes with 'barcode' or 'sample:original_barcode' per line. 
+  #                    Original barcode refers to the one used in the dataset.
+  #
+  # bulk_by: Generate bulk samples by aggregating barcodes by one or more columns (e.g. 'individual' or 'individual+genotype') (default: null)
+  # bulk_barcodes: When generating bulk samples, use at most this number of barcodes (default: null)
+  # pseudobulk_samples: Generate this number of pseudo-bulk samples (default: null)
+  # pseudobulk_barcodes: When generating pseudo-bulk samples, use at most this number of barcodes (default: null)
+  #
+  # assay: Seurat assay, dimensionality reduction or barcode metadata columns ('column1,column2') to test on (default: 'RNA')
+  # slot: In case of Seurat assay, which slot to use (default: 'data'). Should be set specific for the test.
+  # padj: Maximum adjusted p-value (default: 0.05)
+  # log2FC: Minimum absolute log2 fold change (default: 0)
+  # min_pct: Minimum percentage of barcodes expressing a feature in one group (default: 0.05)
+  # test: Type of test. Can be 'wilcox', 'bimod', 'roc', 't', 'negbinom', 'poisson', 'LR', 'MAST', 'DESeq2' (default: 'wilcox').
+  # downsample_barcodes: Downsample each group to at most n barcodes (default: null)
+  # batch: One or two categorial columns to include as covariates (default: null)
+  #
+  deg_contrasts:
+      value:
+          - Comparison1:
+                condition_column: "orig.ident"
+                condition_group1: "pbmc_1k"
+                condition_group2: "pbmc_5k"
+          - Comparison2:
+                condition_column: "orig.ident"
+                condition_group1: "pbmc_1k"
+                condition_group2: "pbmc_5k"
+                subset_column: "seurat_clusters"
+                subset_group: "1,2,3+4"
+    
+  # Excel or csv file with contrasts
+  deg_contrasts_file: null
+    
+# Module execution
+execute:
+  # Should this module be frozen and never re-rendered?
+  # - auto: if the code has not changed (default)
+  # - true/false: freeze/re-render
+  # Does not apply in interactive mode or when explicitly rendering this document via in rstudio
+  freeze: auto
+---
+
+# DEG Analysis
+
+```{r}
+#| label: setup
+
+# If running code interactively in rstudio, set profile here
+# When rendering with quarto, profile is already set and should not be overwritten
+if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "scrnaseq")}
+
+# Load libraries
+library(knitr)
+library(magrittr)
+library(gt)
+library(Seurat)
+library(ggplot2)
+library(future)
+library(patchwork)
+
+# Get module name and directory (needed to access files within the module directory)
+module_name = params$module_name
+module_dir = params$module_dir
+```
+
+```{r}
+#| label: deg_analysis_preparation
+
+# CODE
+# Working directory is automatically back to scrnaseq2 at this point
+# Source general configurations (always)
+source("R/general_configuration.R")
+
+# Source required R functions
+source("R/functions_util.R")
+source("R/functions_io.R")
+source("R/functions_plotting.R")
+source("R/functions_analysis.R")
+
+# Be verbose or not
+verbose = param("verbose")
+
+# Parallelisation plan for all functions that support future
+plan(multisession, workers=param("cores"))
+
+# DIRECTORIES
+# Module directory 'results' contains all output that should be provided together with the final report of the project
+dir.create(file.path(module_dir, "results"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "results"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+# Module directory 'sc' contains the final Seurat object
+dir.create(file.path(module_dir, "sc"), showWarnings=FALSE)
+files = list.files(path=file.path(module_dir, "sc"), full.names=TRUE)
+if (length(files) > 0) unlink(files, recursive=TRUE)
+
+# SEURAT OBJECT
+# Read in seurat object
+if (!is.null(param("prev_module_dir"))) {
+  prev_module_dir = param("prev_module_dir")
+} else {
+  prev_module_dir = PreviousModuleDir(module_dir)
+}
+prev_sc_obj = file.path(prev_module_dir, "sc", "sc.rds")
+if(!file.exists(prev_sc_obj)) {
+  stop(FormatString("Could not find a sc.rds file in {prev_module_dir}. Was the respective module already run?"))
+}
+sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
+
+# Move on-disk layers to faster temp location if requested
+on_disk_counts = param("on_disk_counts")
+on_disk_use_tmp = param("on_disk_use_tmp")
+
+if (on_disk_counts & on_disk_use_tmp) {
+  on_disk_path = tempdir()
+  with_progress({
+    sc = UpdateMatrixDirs(sc, dir=on_disk_path)
+  }, enable=verbose)
+} else {
+  on_disk_path = file.path(module_dir, "sc")
+}
+
+# Set default assay standard
+default_assay = param("default_assay")
+if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
+Seurat::DefaultAssay(sc) = default_assay
+
+# Parse the contrasts information
+deg_contrasts = param("deg_contrasts")
+
+if (is.character(deg_contrasts) && file.exists(deg_contrasts)) {
+  # Read from file
+  deg_contrasts_file = deg_contrasts
+  
+  # Sheet number appended?
+  sheet = 1
+  if (grepl(":\\d+$", deg_contrasts_file)) {
+    sheet = gsub(pattern=".+:(\\d+)$", replacement="\\1", x=deg_contrasts_file)
+    deg_contrasts_file = gsub(pattern=":\\d+$", replacement="", x=deg_contrasts_file)
+  }
+  
+  # Read Excel file and split into list, remove NA entries
+  deg_contrasts = readxl::read_excel(deg_contrasts_file, sheet=1, col_names=TRUE)
+  deg_contrasts = split(deg_contrasts, seq(nrow(deg_contrasts)))
+  
+  deg_contrasts = purrr::map(deg_contrasts, function(contrast) {
+      is_na = is.na(contrast)
+      if (sum(is_na) > 0) contrast[[is_na]] = NULL
+      return(contrast)
+  })
+
+} else {
+  # Read from yaml parameter and prepare list
+  deg_contrasts = purrr::map(seq(deg_contrasts), function(i) {
+      contrast = deg_contrasts[[i]][[1]]
+      contrast$name = names(deg_contrasts[[i]])
+      return(contrast)
+  })
+}
+```
+
+```{r}
+```
+
+```{r}
+param("deg_contrasts")
+```
+
+```{r}
+
+# excel
+#
+#name
+#condition_column
+#condition_group1
+#condition_group2
+#subset_column
+#subset_group
+#test
+#assay
+#slot
+#padj
+#log2FC
+#min_pct
+#latent_vars
+#downsample_n
+#genes
+
+# yaml
+#
+# 
+```
+
+## Software
+
+```{r}
+#| label: deg_analysis_save_software
+
+sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
+gt(sessioninfo)
+```
+
+## Parameter
+
+```{r}
+#| label: deg_analysis_save_parameter  
+
+paraminfo = ScrnaseqParamsInfo(param()) %>% as.data.frame()
+gt(paraminfo)
+```
+
+```{r}
+#| label: deg_analysis_save_seurat
+
+# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
+assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
+
+# Save Seurat object and layer data
+with_progress({
+  SaveSeuratRdsWrapper(sc,
+                       on_disk_layers=on_disk_counts,
+                       outdir=file.path(module_dir, "sc"))
+}, enable=verbose)
+```
+
+```{r}
+#| label: deg_analysis_finish
+
+# Stop multisession workers
+plan(sequential)
+```
+

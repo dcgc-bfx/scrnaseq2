@@ -21,6 +21,7 @@ book:
   - "modules/6_clusterqc/clusterqc.qmd"
   - "modules/7_cluster_annotation/cluster_annotation.qmd"
   - "modules/8_cluster_composition/cluster_composition.qmd"
+  - "modules/10_deg_analysis/deg_analysis.qmd"
   - "modules/9_export/export.qmd"
   - "references.qmd"
 
@@ -69,7 +70,7 @@ params:
   
     read_data:
       default_assay: RNA
-      datasets_file: "datasets/bfx1234.xlsx"
+      datasets_file: "datasets/10x_pbmc_datasets.xlsx"
       downsample_barcodes_n: null
       downsample_barcodes_equally: false
       downsample_features_n: null
