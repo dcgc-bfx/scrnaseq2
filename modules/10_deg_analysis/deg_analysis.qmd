@@ -53,19 +53,17 @@ params:
   #                    Can also be a Excel/csv file with barcodes with 'barcode' or 'sample:original_barcode' per line. 
   #                    Original barcode refers to the one used in the dataset.
   #
-  # bulk_by: Generate bulk samples by aggregating barcodes by one or more columns (e.g. 'individual' or 'individual+genotype') (default: null)
-  # bulk_barcodes: When generating bulk samples, use at most this number of barcodes (default: null)
-  # pseudobulk_samples: Generate this number of pseudo-bulk samples (default: null)
-  # pseudobulk_barcodes: When generating pseudo-bulk samples, use at most this number of barcodes (default: null)
+  # bulk_by: Generate bulk samples by aggregating barcodes by one or more columns (e.g. 'individual' or 'individual+genotype') (default: null). Control the number of barcodes per bulk sample with downsample_n.
+  # pseudobulk_samples: Generate this number of pseudo-bulk samples (default: null). Control the number of barcodes per pseudo-bulk sample with downsample_n.
   #
   # assay: Seurat assay, dimensionality reduction or barcode metadata columns ('column1,column2') to test on (default: 'RNA')
-  # slot: In case of Seurat assay, which slot to use (default: 'data'). Should be set specific for the test.
+  # layer: In case of Seurat assay, which layer/slot to use (default: 'data'). Should be set specific for the test.
   # padj: Maximum adjusted p-value (default: 0.05)
   # log2FC: Minimum absolute log2 fold change (default: 0)
   # min_pct: Minimum percentage of barcodes expressing a feature in one group (default: 0.05)
   # test: Type of test. Can be 'wilcox', 'bimod', 'roc', 't', 'negbinom', 'poisson', 'LR', 'MAST', 'DESeq2' (default: 'wilcox').
   # downsample_barcodes: Downsample each group to at most n barcodes (default: null)
-  # batch: One or two categorial columns to include as covariates (default: null)
+  # covariate: One or two columns (comma-separated) to include as covariates (default: null)
   #
   deg_contrasts:
       value:
@@ -74,6 +72,11 @@ params:
                 condition_group1: "pbmc_1k"
                 condition_group2: "pbmc_5k"
           - Comparison2:
+                condition_column: "orig.ident"
+                condition_group1: "pbmc_1k"
+                condition_group2: "pbmc_5k"
+                bulk_by: "seurat_clusters"
+          - Comparison3:
                 condition_column: "orig.ident"
                 condition_group1: "pbmc_1k"
                 condition_group2: "pbmc_5k"
@@ -128,6 +131,7 @@ source("R/functions_util.R")
 source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
+source("R/functions_degs.R")
 
 # Be verbose or not
 verbose = param("verbose")
@@ -178,11 +182,9 @@ if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
 Seurat::DefaultAssay(sc) = default_assay
 
 # Parse the contrasts information
-deg_contrasts = param("deg_contrasts")
-
-if (is.character(deg_contrasts) && file.exists(deg_contrasts)) {
+if (is.character(param("deg_contrasts")) && file.exists(param("deg_contrasts"))) {
   # Read from file
-  deg_contrasts_file = deg_contrasts
+  deg_contrasts_file = param("deg_contrasts")
   
   # Sheet number appended?
   sheet = 1
@@ -192,30 +194,32 @@ if (is.character(deg_contrasts) && file.exists(deg_contrasts)) {
   }
   
   # Read Excel file and split into list, remove NA entries
-  deg_contrasts = readxl::read_excel(deg_contrasts_file, sheet=1, col_names=TRUE)
-  deg_contrasts = split(deg_contrasts, seq(nrow(deg_contrasts)))
+  deg_contrasts_list = readxl::read_excel(deg_contrasts_file, sheet=1, col_names=TRUE)
+  deg_contrasts_list = split(deg_contrasts_list, seq(nrow(deg_contrasts)))
   
-  deg_contrasts = purrr::map(deg_contrasts, function(contrast) {
+  deg_contrasts_list = purrr::map(deg_contrasts_list, function(contrast) {
       is_na = is.na(contrast)
       if (sum(is_na) > 0) contrast[[is_na]] = NULL
       return(contrast)
   })
 
 } else {
+  deg_contrasts_list = param("deg_contrasts")
+    
   # Read from yaml parameter and prepare list
-  deg_contrasts = purrr::map(seq(deg_contrasts), function(i) {
-      contrast = deg_contrasts[[i]][[1]]
-      contrast$name = names(deg_contrasts[[i]])
+  deg_contrasts_list = purrr::map(seq(deg_contrasts_list), function(i) {
+      contrast = deg_contrasts_list[[i]][[1]]
+      contrast$name = names(deg_contrasts_list[[i]])
       return(contrast)
   })
 }
-```
 
-```{r}
-```
+# Check if contrasts are set up correctly, 
+deg_contrasts_list = SetupContrastsList(sc, deg_contrasts_list)
 
-```{r}
-param("deg_contrasts")
+# Set up objects
+deg_contrasts = PrepareDegContrasts(sc, deg_contrasts_list)
+
 ```
 
 ```{r}

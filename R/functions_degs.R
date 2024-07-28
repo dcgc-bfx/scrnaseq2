@@ -1,38 +1,32 @@
-#' Given the DEG contrasts table, prepares a list with DEG contrasts to do.
+#' Sets up a list with contrasts for analysis. Makes sure that all required information is available. Does basic checks.
 #' 
 #' @param sc A Seurat single cell object.
-#' @param degs_contrasts_list A list of contrasts. Must at least contain 'name', condition_column', 'condition_group1' and 'condition_group2'.
-#' @return A list with contrasts to be analysed.
-DegsSetupContrastsList = function(sc, degs_contrasts_list) {
+#' @param contrasts_list A list of contrasts. Must at least contain 'name', condition_column', 'condition_group1' and 'condition_group2'.
+#' @return A updated list with contrasts.
+SetupContrastsList = function(sc, contrasts_list) {
     barcode_metadata = sc[[]]
     
     # If empty, return empty list
-    if (length(degs_contrasts_list) == 0) return(list())
+    if (length(contrasts_list) == 0) return(list())
     
     # Convert into list, do checks and set up defaults
-    degs_contrasts_list = purrr::map(seq(degs_contrasts_list), function(i) {
-        contrast = degs_contrasts_list[[i]]
+    contrasts_list = purrr::map(seq(contrasts_list), function(i) {
+        contrast = contrasts_list[[i]]
         
         # Trim whitespace
         contrast = purrr::map(contrast, trimws)
         
-        #
         # name
-        #
         assertthat::assert_that("name" %in% names(contrast), 
                                 msg=FormatString("The name ('name') is missing (for comparison {i})."))
         name = contrast[["name"]]
         
-        #
         # condition_column
-        #
         assertthat::assert_that("condition_column" %in% names(contrast),
                                 msg=FormatString("The condition column ('condition_column') is missing (for comparison {i}/{name})."))
         condition_column = contrast[["condition_column"]]
         
-        #
         # condition_group1 and condition_group2
-        #
         assertthat::assert_that("condition_group1" %in% names(contrast),
                                 msg=FormatString("The condition group 1 ('condition_group1') is missing or empty (for comparison {i}/{name})."))
         
@@ -76,11 +70,11 @@ DegsSetupContrastsList = function(sc, degs_contrasts_list) {
         } else {
             condition_group1 = contrast[["condition_group1"]]
             
-            # Sheet number appended?
+            # Sheet number/name appended?
             sheet = 1
-            if (grepl(":\\d+$", condition_group1)) {
-                sheet = gsub(pattern=".+:(\\d+)$", replacement="\\1", x=condition_group1)
-                condition_group1 = gsub(pattern=":\\d+$", replacement="", x=condition_group1)
+            if (grepl(":[^:]+$", condition_group1)) {
+                sheet = gsub(pattern=".+:([^:]+)$", replacement="\\1", x=condition_group1)
+                condition_group1 = gsub(pattern=":[^:]+$", replacement="", x=condition_group1)
             }
             
             # Make sure file exists
@@ -120,6 +114,9 @@ DegsSetupContrastsList = function(sc, degs_contrasts_list) {
                     contrast[["condition_group1_idx"]] = jdx
                 }
             }
+            
+            # Add base file name:sheet number or sheet name as 'condition_group1'
+            contrast[["condition_group1"]] = paste0(basename(contrast[["condition_group1"]]), ", sheet ", sheet)
         }
         
         if (!file.exists(contrast[["condition_group2"]])) {
@@ -195,9 +192,12 @@ DegsSetupContrastsList = function(sc, degs_contrasts_list) {
                     contrast[["condition_group2_idx"]] = jdx
                 }
             }
+            
+            # Add base file name:sheet number or sheet name as 'condition_group1'
+            contrast[["condition_group2"]] = paste0(basename(contrast[["condition_group2"]]), ", sheet ", sheet)
         }
         
-        # subset_column
+        # subset_column and subset_group
         if ("subset_column" %in% names(contrast)) {
             assertthat::assert_that("subset_group" %in% names(contrast),
                                     msg=FormatString("The 'subset_group' column must be used together with the subset_column column (for comparison {i}/{name})."))
@@ -271,6 +271,9 @@ DegsSetupContrastsList = function(sc, degs_contrasts_list) {
                         contrast[["subset_group_idx"]] = list(jdx)
                     }
                 }
+                
+                # Add base file name:sheet number or sheet name as 'condition_group1'
+                contrast[["subset_group"]] = paste0(basename(contrast[["subset_group"]]), ", sheet ", sheet)
             }
         }
         
@@ -290,21 +293,12 @@ DegsSetupContrastsList = function(sc, degs_contrasts_list) {
             })
             
             contrast[["bulk_by"]] = bulk_by
-            
-            # bulk_barcodes
-            if ("bulk_barcodes" %in% names(contrast)) {
-                contrast[["bulk_barcodes"]] = as.numeric(contrast[["bulk_barcodes"]])
-            }
         }
         
         # pseudobulk_samples
         if ("pseudobulk_samples" %in% names(contrast)) {
             assertthat::assert_that(contrast[["pseudobulk_samples"]] > 1,
                                     msg=FormatString("The number of pseudobulk samples ('pseudobulk_samples') must be greater than 1 (for comparison {i}/{name})."))
-            # pseudobulk_barcodes
-            if ("pseudobulk_barcodes" %in% names(contrast)) {
-                contrast[["pseudobulk_barcodes"]] = as.numeric(contrast[["pseudobulk_barcodes"]])
-            }
         }
         
         assertthat::assert_that(!("bulk_by" %in% names(contrast) & "pseudobulk_samples" %in% names(contrast)),
@@ -336,14 +330,14 @@ DegsSetupContrastsList = function(sc, degs_contrasts_list) {
             trimws()
         valid_assays = Seurat::Assays(sc)
         valid_reductions = Seurat::Reductions(sc)
-        assertthat::assert_that(contrast[["assay"]] %in% valid_assays | contrast[["assay"]] %in% valid_reductions | all(assay %in% names(barcode_metadata)),
+        assertthat::assert_that(all(contrast[["assay"]] %in% valid_assays) | all(contrast[["assay"]] %in% valid_reductions) | all(assay %in% names(barcode_metadata)),
                                 msg=FormatString("The assay ('assay') must be one of the assays {valid_assays*}, one of the reductions {valid_reductions*} or barcode metadata columns (for comparison {i}/{name})."))
         
-        # slot
+        # layer
         if (contrast[["assay"]] %in% valid_assays) {
-            if (!"slot" %in% names(contrast)) contrast[["slot"]] = "data"
-            assertthat::assert_that(contrast[["slot"]] %in% c("counts", "data", "scale.data"),
-                                    msg=FormatString("The slot ('slot') must be 'counts', 'data', 'scale.data' (for comparison {i}/{name})."))
+            if (!"layer" %in% names(contrast)) contrast[["layer"]] = "data"
+            assertthat::assert_that(contrast[["layer"]] %in% c("counts", "data", "scale.data"),
+                                    msg=FormatString("The layer ('layer') must be 'counts', 'data', 'scale.data' (for comparison {i}/{name})."))
         }
         
         # downsample_barcodes
@@ -351,20 +345,23 @@ DegsSetupContrastsList = function(sc, degs_contrasts_list) {
             contrast[["downsample_barcodes"]] = as.numeric(contrast[["downsample_barcodes"]])
         }
         
-        # batch
-        if ("batch" %in% names(contrast)) {
-            batch = contrast[["batch"]] %>% 
+        # covariate
+        if ("covariate" %in% names(contrast)) {
+            covariate = contrast[["covariate"]] %>% 
                 strsplit(split=",") %>% 
                 unlist() %>% 
                 trimws() %>% 
                 unique()
-            assertthat::assert_that(all(batch %in% colnames(barcode_metadata)),
-                                    msg=FormatString("The batch column(s) must be part of the barcode metadata (for comparison {i}/{name})."))
-            purrr::walk(batch, function(c) {
-                assertthat::assert_that(is.factor(barcode_metadata[, c]),
-                                        msg=FormatString("The batch column(s) must be factors (for comparison {i}/{name})."))
+            
+            # Check that covariate columns are in the barcode metadata and factors or numeric
+            assertthat::assert_that(all(covariate %in% colnames(barcode_metadata)),
+                                    msg=FormatString("The covariate column(s) must be part of the barcode metadata (for comparison {i}/{name})."))
+            purrr::walk(covariate, function(c) {
+                assertthat::assert_that(is.factor(barcode_metadata[, c]) | is.numeric(barcode_metadata[, c]),
+                                        msg=FormatString("The covariate column(s) must be factors or numeric (for comparison {i}/{name})."))
             })
-            contrast[["batch"]] = batch 
+            
+            contrast[["covariate"]] = covariate 
         }
 
         # Add contrast row number
@@ -376,7 +373,7 @@ DegsSetupContrastsList = function(sc, degs_contrasts_list) {
     
     # Expand subsets list so that there is now one entry per subset
     # Also get barcode indices per subset
-    degs_contrasts_list = purrr::map(degs_contrasts_list, function(contrast) {
+    contrasts_list = purrr::map(contrasts_list, function(contrast) {
         if ("subset_group" %in% names(contrast)) {
             contrasts_expanded = purrr::map(seq(contrast[["subset_group"]]), function(i) {
                 # Set up new contrast with just the subset group and barcodes indices
@@ -400,55 +397,182 @@ DegsSetupContrastsList = function(sc, degs_contrasts_list) {
         return(contrasts_expanded)
     }) %>% purrr::flatten()
     
-    # Process further
-    degs_contrasts_list = purrr::map(seq(degs_contrasts_list), function(i) {
-        contrast = degs_contrasts_list[[i]]
+    return(contrasts_list)
+}
+
+#' Prepares a list with contrasts for DEG analysis. For each contrast, it extracts all relevant data and if requested aggregates 
+#' the barcodes into bulk datasets. When running tests in parallel, this will save a lot of memory since it is not neccessary to
+#' copy the entire Seurat object for each parallel computation.
+#' 
+#' @param sc A Seurat single cell object.
+#' @param contrasts_list A list of contrasts. Must be have been set up with SetupContrastsList.
+#' @return A updated list with contrasts with an 'object' entry (.
+PrepareDegContrasts = function(sc, contrasts_list) {
+    contrasts_list = deg_contrasts_list
+    barcode_metadata = sc[[]]
     
-        # Downsample barcodes if requested (downsample_barcodes, bulk_barcodes, pseudobulk_barcodes)
-        if ("bulk_by" %in% names(contrast) & "bulk_barcodes" %in% names(contrast)) {
-            # Group by bulk column(s) and sample barcodes per group, sample (at most) x rows per group, then subset
-            set.seed(getOption("random_seed"))
-            sampled_condition_group1_idx = barcode_metadata[contrast[["condition_group1_idx"]], ] %>% 
-                dplyr::mutate(condition_group1_idx=contrast[["condition_group1_idx"]]) %>%
-                dplyr::group_by(dplyr::across(dplyr::all_of(contrast[["bulk_y"]]))) %>%
-                dplyr::slice_sample(n=contrast[["bulk_barcodes"]]) %>%
-                dplyr::pull(condition_group1_idx)
-            k = contrast[["condition_group1_idx"]] %in% sampled_condition_group1_idx
-            contrast[["condition_group1_idx"]] = contrast[["condition_group1_idx"]][k]
+    contrasts_list = purrr::map(seq(contrasts_list), function(i){
+        contrast = contrasts_list[[i]]
+        name = contrast[["name"]]
+        
+        # If condition_group1_idx or condition_group2_idx is empty, return
+        if (length(contrast[["condition_group1_idx"]]) == 0 | length(contrast[["condition_group2_idx"]]) == 0) return(contrast)
+        
+        # Get barcodes indices and barcode names
+        condition_group1_idx = contrast[["condition_group1_idx"]]
+        condition_group1 = rownames(barcode_metadata[condition_group1_idx, ])
+        condition_group2_idx = contrast[["condition_group2_idx"]]
+        condition_group2 = rownames(barcode_metadata[condition_group2_idx, ])
+        
+        # When creating a new Seurat, do not calculate nCounts and nFeatures (not needed); restore default on exit
+        op = options(Seurat.object.assay.calcn = FALSE)
+        on.exit(expr = options(op), add = TRUE)
+        
+        # Extract relevant data and save it as
+        if (all(contrast[["assay"]] %in% Seurat::Assays(sc))) {
+            # Get assay
+            assay_obj = suppressWarnings({subset(sc[[contrast[["assay"]]]],
+                               cells=unique(c(condition_group1_idx, condition_group2_idx)))})
             
-            set.seed(getOption("random_seed"))
-            sampled_condition_group2_idx = barcode_metadata[contrast[["condition_group2_idx"]], ] %>% 
-                dplyr::mutate(condition_group2_idx=contrast[["condition_group2_idx"]]) %>%
-                dplyr::group_by(dplyr::across(dplyr::all_of(contrast[["bulk_y"]]))) %>%
-                dplyr::slice_sample(n=contrast[["bulk_barcodes"]]) %>%
-                dplyr::pull(condition_group2_idx)
-            k = contrast[["condition_group2_idx"]] %in% sampled_condition_group2_idx
-            contrast[["condition_group2_idx"]] = contrast[["condition_group2_idx"]][k]
+            # Remove layers not needed
+            if ("bulk_by" %in% names(contrast) | "pseudobulk_samples" %in% names(contrast)) {
+                # For bulking/pseudo-bulking, the layer (slot) 'counts' is used and others are removed
+                SeuratObject::DefaultLayer(assay_obj) = "counts"
+                layer_to_remove = setdiff(SeuratObject::Layers(assay_obj), "counts")
+                
+            } else {
+                # Else the layer (slot) specified by the contrast is used and others are removed
+                SeuratObject::DefaultLayer(assay_obj) = contrast[["layer"]]
+                layer_to_remove = setdiff(SeuratObject::Layers(assay_obj), contrast[["layer"]])
+            }
+            for(l in layer_to_remove) {
+                SeuratObject::LayerData(assay_obj, layer=l) = NULL
+            }
+        } else if (all(contrast[["assay"]] %in% Seurat::Reductions(sc))) {
+            # Convert reduction into assay
+            reduction = Seurat::Embeddings(sc, reduction=contrast[["assay"]])
+            reduction = reduction[unique(c(condition_group1_idx, condition_group2_idx)), , drop=FALSE] %>% 
+                as.matrix() %>%
+                as("dgCMatrix") %>%
+                Matrix::t()
+
+            assay_obj = SeuratObject::CreateAssay5Object(data=reduction)
+            assay_obj = SeuratObject::AddMetaData(assay_obj, metadata=data.frame(feature_name=rownames(reduction), row.names=rownames(assay_obj)))
+        } else {
+            # Use barcode metadata
+            metadata_columns = contrast[["assay"]]
+            metadata = sc[[data_columns]][unique(c(condition_group1_idx, condition_group2_idx)), , drop=FALSE] %>%
+                as.matrix() %>%
+                as("dgCMatrix") %>%
+                Matrix::t()
             
-        } else if ("pseudobulk_samples" %in% names(contrast) & "pseudobulk_barcodes" %in% names(contrast)) {
-            # Just sample barcodes: number of pseudosamples * barcodes per pseudosample
-            downsample_n = contrast[["pseudobulk_samples"]]*contrast[["pseudobulk_barcodes"]]
-            set.seed(getOption("random_seed"))
-            contrast[["condition_group1_idx"]] = sample(x=contrast[["condition_group1_idx"]], 
-                                                    size=min(downsample_n, length(contrast[["condition_group1_idx"]])))
-            
-            set.seed(getOption("random_seed"))
-            contrast[["condition_group2_idx"]] = sample(x=contrast[["condition_group2_idx"]], 
-                                                    size=min(downsample_n, length(contrast[["condition_group2_idx"]])))
-        } else if ("downsample_n" %in% names(contrast)) {
-            set.seed(getOption("random_seed"))
-            contrast[["condition_group1_idx"]] = sample(x=contrast[["condition_group1_idx"]], 
-                                                    size=min(contrast[["downsample_n"]], length(contrast[["condition_group2_idx"]])))
-            
-            set.seed(getOption("random_seed"))
-            contrast[["condition_group2_idx"]] = sample(x=contrast[["cells_group2_idx"]], 
-                                                    size=min(contrast[["downsample_n"]], length(contrast[["condition_group2_idx"]])))
+            assay_obj = SeuratObject::CreateAssay5Object(data=metadata)
+            assay_obj = SeuratObject::AddMetaData(assay_obj, metadata=data.frame(feature_name=rownames(metadata), row.names=rownames(assay_obj)))
         }
         
+        # Get metadata columns
+        metadata_columns = c(contrast[["condition_column"]], contrast[["subset_column"]], contrast[["bulk_by"]], contrast[["covariate"]])
+        metadata_columns = metadata_columns[metadata_columns %in% colnames(barcode_metadata)]
+
+        # Create subsetted Seurat object
+        sc_subset = SeuratObject::CreateSeuratObject(assay_obj, meta.data=barcode_metadata[unique(c(condition_group1_idx, condition_group2_idx)), metadata_columns, drop=FALSE])
+        
+        # Add a condition column and update idents
+        conditions = dplyr::case_when(
+            SeuratObject::Cells(sc_subset) %in% condition_group1 ~ "condition1",
+            SeuratObject::Cells(sc_subset) %in% condition_group2 ~ "condition2",
+            TRUE ~ NA
+        ) %>% factor(levels=c("condition1", "condition2"))
+        
+        assertthat::assert_that(!"condition_groups" %in% names(sc_subset[[]]),
+                                msg=FormatString("The column 'condition_groups' is reserved, please use another column name (for comparison {i}/{name})."))
+        sc_subset[["condition_groups"]] = conditions
+        Seurat::Idents(sc_subset) = "condition_groups"
+        
+        # Bulk/pseudo-bulk if requested
+        if ("bulk_by" %in% names(contrast) | "pseudobulk_samples" %in% names(contrast)) {
+            categorial_covariates = contrast[["covariate"]] %>% purrr::keep(function(c) is.factor(barcode_metadata[, c]))
+            numeric_covariates = contrast[["covariate"]] %>% purrr::keep(function(c) is.numeric(barcode_metadata[, c]))
+            barcode_metadata = sc_subset[[]]
+            
+            if ("bulk_by" %in% names(contrast)) {
+                # These columns will be aggregated
+                bulk_by = unique(c("condition_groups", contrast[["bulk_by"]], categorial_covariates))
+                
+                # Downsample by groups (if requested by 'downsample_n')
+                if ("downsample_n" %in% names(contrast)) {
+                    sampled_barcodes = barcode_metadata %>% 
+                        dplyr::group_by(dplyr::across(dplyr::all_of(bulk_by))) %>% 
+                        dplyr::slice_sample(n=contrast[["downsample_n"]]) %>% 
+                        rownames()
+                    sc_subset = subset(sc_subset, cells=sampled_barcodes)
+                    barcode_metadata = sc_subset[[]]
+                }
+                
+            } else if ("pseudobulk_samples" %in% names(contrast)) {
+                # Group by condition column ('condition_groups') and categorial covariate columns
+                # Then divide each group into pseudobulk_samples subgroups
+                num_pseudobulk_samples = contrast[["pseudobulk_samples"]]
+                bulk_by = unique(c("condition_groups", categorial_covariates))
+                
+                # Add a column for the pseudo-bulk sample
+                barcode_metadata = barcode_metadata %>%
+                    dplyr::mutate(pseudobulk_sample=((1:dplyr::n()) %% num_pseudobulk_samples) + 1) %>%
+                    dplyr::mutate(pseudobulk_sample=paste0("s", pseudobulk_sample))
+                barcode_metadata$pseudobulk_sample = factor(barcode_metadata$pseudobulk_sample, levels=paste0("s", 1:num_pseudobulk_samples))
+                sc_subset = SeuratObject::AddMetaData(sc_subset, metadata=barcode_metadata$pseudobulk_sample, col.name="pseudobulk_sample")
+                barcode_metadata = sc_subset[[]]
+                
+                # These columns will be aggregated
+                bulk_by = unique(c("condition_groups", categorial_covariates, "pseudobulk_sample"))
+                
+                # Downsample by groups (if requested by 'downsample_n')
+                if ("downsample_n" %in% names(contrast)) {
+                    bulk_by = unique(c("condition_groups", categorial_covariates), "pseudobulk_sample")
+                    sampled_barcodes = barcode_metadata %>% 
+                        dplyr::group_by(dplyr::across(dplyr::all_of(bulk_by))) %>%
+                        dplyr::slice_sample(n=contrast[["downsample_n"]]) %>%
+                        rownames()
+                        
+                    sc_subset = subset(sc_subset, cells=rownames(sampled_barcodes))
+                    barcode_metadata = sc_subset[[]]
+                }
+            }
+            
+            # Add the bulk name each barcode is assigned
+            bulk_name = barcode_metadata %>% 
+                dplyr::select(dplyr::all_of(bulk_by)) %>%
+                dplyr::mutate(dplyr::across(dplyr::everything(), ~ gsub(pattern="_", replacement="-", x=.))) %>%
+                tidyr::unite(col="bulk_name", dplyr::all_of(bulk_by), sep="_") %>%
+                dplyr::pull(bulk_name)
+            
+            
+            # Then aggregate expression
+            sc_subset_agg = Seurat::AggregateExpression(sc_subset, group.by=bulk_by, return.seurat=TRUE)
+            for(c in bulk_by) {
+                sc_subset_agg[[]][, c] = factor(sc_subset_agg[[]][, c], levels=levels(barcode_metadata[, c]))
+            }
+            Seurat::Idents(sc_subset_agg) = "condition_groups"
+            
+            # Numeric covariates need to be aggregated for each group by averaging, then added
+            if (length(numeric_covariates) > 0) {
+                numeric_covariate_data = barcode_metadata %>%
+                    dplyr::group_by(dplyr::across(dplyr::all_of(bulk_by))) %>%
+                    dplyr::summarise(dplyr::across(dplyr::all_of(numeric_covariates), ~ mean(., na.rm=TRUE)))
+                
+                numeric_covariate_data = dplyr::left_join(sc_subset_agg[[]], numeric_covariate_data, by=bulk_by)
+                rownames(numeric_covariate_data) = numeric_covariate_data$orig.ident
+                sc_subset_agg = SeuratObject::AddMetaData(sc_subset_agg, metadata=numeric_covariate_data[, numeric_covariates, drop=FALSE])
+            }
+            
+            sc_subset = sc_subset_agg
+        }
+        
+        contrast[["sc_subset"]] = sc_subset
         return(contrast)
     })
     
-    return(degs_contrasts_list)
+    return(contrasts_list)
 }
 
 #' Sorts table of differentially expressed genes per performed test. Introduces a signed p-value score calculated as follows:
