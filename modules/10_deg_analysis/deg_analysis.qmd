@@ -65,7 +65,7 @@ params:
   # downsample_barcodes: Downsample each group to at most n barcodes (default: null)
   # covariate: One or two columns (comma-separated) to include as covariates (default: null)
   #
-  deg_contrasts:
+  contrasts:
       value:
           - Comparison1:
                 condition_column: "orig.ident"
@@ -182,69 +182,53 @@ if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
 Seurat::DefaultAssay(sc) = default_assay
 
 # Parse the contrasts information
-if (is.character(param("deg_contrasts")) && file.exists(param("deg_contrasts"))) {
+if (is.character(param("constrasts")) && file.exists(param("contrasts"))) {
   # Read from file
-  deg_contrasts_file = param("deg_contrasts")
+  contrasts_file = param("contrasts")
   
   # Sheet number appended?
   sheet = 1
   if (grepl(":\\d+$", deg_contrasts_file)) {
-    sheet = gsub(pattern=".+:(\\d+)$", replacement="\\1", x=deg_contrasts_file)
-    deg_contrasts_file = gsub(pattern=":\\d+$", replacement="", x=deg_contrasts_file)
+    sheet = gsub(pattern=".+:(\\d+)$", replacement="\\1", x=contrasts_file)
+    contrasts_file = gsub(pattern=":\\d+$", replacement="", x=contrasts_file)
   }
   
   # Read Excel file and split into list, remove NA entries
-  deg_contrasts_list = readxl::read_excel(deg_contrasts_file, sheet=1, col_names=TRUE)
-  deg_contrasts_list = split(deg_contrasts_list, seq(nrow(deg_contrasts)))
+  contrasts_list = readxl::read_excel(contrasts_file, sheet=1, col_names=TRUE)
+  contrasts_list = split(contrasts_list, seq(nrow(contrasts)))
   
-  deg_contrasts_list = purrr::map(deg_contrasts_list, function(contrast) {
+  contrasts_list = purrr::map(contrasts_list, function(contrast) {
       is_na = is.na(contrast)
       if (sum(is_na) > 0) contrast[[is_na]] = NULL
       return(contrast)
   })
 
 } else {
-  deg_contrasts_list = param("deg_contrasts")
+  contrasts_list = param("contrasts")
     
   # Read from yaml parameter and prepare list
-  deg_contrasts_list = purrr::map(seq(deg_contrasts_list), function(i) {
-      contrast = deg_contrasts_list[[i]][[1]]
-      contrast$name = names(deg_contrasts_list[[i]])
+  contrasts_list = purrr::map(seq(contrasts_list), function(i) {
+      contrast = contrasts_list[[i]][[1]]
+      contrast$name = names(contrasts_list[[i]])
       return(contrast)
   })
 }
 
-# Check if contrasts are set up correctly, 
-deg_contrasts_list = SetupContrastsList(sc, deg_contrasts_list)
+# Set up a contrasts list. 
+# Check if there is enough information for each contrast and if contrasts are valid. 
+contrasts_list = NewContrastsList(sc, contrasts_list)
 
-# Set up objects
-deg_contrasts = PrepareDegContrasts(sc, deg_contrasts_list)
-
+# Prepare (subset) Seurat objects for each contrast. Bulk-aggregate if requested. Downsample if requested.
+contrasts_list = PrepareContrastsListObjects(sc, contrasts_list)
 ```
 
+## DEG Analysis
+
 ```{r}
+#| label: deg_analysis_compute_degs
 
-# excel
-#
-#name
-#condition_column
-#condition_group1
-#condition_group2
-#subset_column
-#subset_group
-#test
-#assay
-#slot
-#padj
-#log2FC
-#min_pct
-#latent_vars
-#downsample_n
-#genes
 
-# yaml
-#
-# 
+
 ```
 
 ## Software

@@ -3,7 +3,7 @@
 #' @param sc A Seurat single cell object.
 #' @param contrasts_list A list of contrasts. Must at least contain 'name', condition_column', 'condition_group1' and 'condition_group2'.
 #' @return A updated list with contrasts.
-SetupContrastsList = function(sc, contrasts_list) {
+NewContrastsList = function(sc, contrasts_list) {
     barcode_metadata = sc[[]]
     
     # If empty, return empty list
@@ -334,12 +334,22 @@ SetupContrastsList = function(sc, contrasts_list) {
                                 msg=FormatString("The assay ('assay') must be one of the assays {valid_assays*}, one of the reductions {valid_reductions*} or barcode metadata columns (for comparison {i}/{name})."))
         
         # layer
-        if (contrast[["assay"]] %in% valid_assays) {
-            if (!"layer" %in% names(contrast)) contrast[["layer"]] = "data"
-            assertthat::assert_that(contrast[["layer"]] %in% c("counts", "data", "scale.data"),
-                                    msg=FormatString("The layer ('layer') must be 'counts', 'data', 'scale.data' (for comparison {i}/{name})."))
+        if (!"layer" %in% names(contrast)) {
+            if (contrast[["assay"]] %in% valid_assays) {
+                if (contrast[["test"]] %in% c("negbinom", "poisson", "DESeq2")) {
+                    contrast[["layer"]] = "counts"
+                } else{
+                    contrast[["layer"]] = "data"
+                }
+            } else if(contrast[["assay"]] %in% valid_reductions) {
+                contrast[["layer"]] = "counts"
+            } else {
+                contrast[["layer"]] = "counts"
+            }
         }
-        
+        assertthat::assert_that(contrast[["layer"]] %in% c("counts", "data", "scale.data"),
+                                msg=FormatString("The layer ('layer') must be 'counts', 'data', 'scale.data' (for comparison {i}/{name})."))
+
         # downsample_barcodes
         if ("downsample_barcodes" %in% names(contrast)) {
             contrast[["downsample_barcodes"]] = as.numeric(contrast[["downsample_barcodes"]])
@@ -400,15 +410,13 @@ SetupContrastsList = function(sc, contrasts_list) {
     return(contrasts_list)
 }
 
-#' Prepares a list with contrasts for DEG analysis. For each contrast, it extracts all relevant data and if requested aggregates 
-#' the barcodes into bulk datasets. When running tests in parallel, this will save a lot of memory since it is not neccessary to
-#' copy the entire Seurat object for each parallel computation.
+#' Given a list with contrasts, prepares Seurat objects. For each contrast, it extracts all relevant data and if requested bulk-aggregates and downsamples barcodes.
+#' When running tests in parallel, this will save a lot of memory since it is not neccessary to copy the entire Seurat object for each parallel computation.
 #' 
 #' @param sc A Seurat single cell object.
-#' @param contrasts_list A list of contrasts. Must be have been set up with SetupContrastsList.
+#' @param contrasts_list A list of contrasts. Must have been set up with NewContrastsList.
 #' @return A updated list with contrasts with an 'object' entry (.
-PrepareDegContrasts = function(sc, contrasts_list) {
-    contrasts_list = deg_contrasts_list
+PrepareContrastsListObjects = function(sc, contrasts_list) {
     barcode_metadata = sc[[]]
     
     contrasts_list = purrr::map(seq(contrasts_list), function(i){
@@ -574,6 +582,117 @@ PrepareDegContrasts = function(sc, contrasts_list) {
     
     return(contrasts_list)
 }
+
+#' Given a list with contrasts, run DEG tests for each contrast.
+#' 
+#' @param contrasts_list A list of contrasts. Must have been set up with NewContrastsList followed by PrepareContrastsListObjects.
+#' @return A updated list.
+
+RunDEGTests = function(contrasts_list) {
+    contrasts_list = contrasts_list1
+    #contrasts_list1 = contrasts_list
+    
+    # Set up a progress bar
+    msg = paste("Run DEG test for each contrast")
+    progr = progressr::progressor(along=contrasts_list, message=msg)
+
+    contrasts_list = furrr::future_map(contrasts_list, function(contrast) {
+        contrast = contrasts_list[[1]]
+        progr()
+        name = contrast[["name"]]
+        
+        empty_deg_table = data.frame(p_val=as.numeric(), avg_log2FC=as.numeric(), pct.1=as.numeric(), pct.2=as.numeric(), p_val_adj=as.numeric(), gene=as.character())
+        
+        # Check that there are enough samples in each group (>=2), if not, add an error message and skip
+        condition_counts = SeuratObject::Idents(contrast[["sc_subset"]]) %>% table()
+        if (condition_counts["condition1"] < 2 | condition_counts["condition2"] < 2) {
+            contrast[["error"]] = FormatString("There are fewer than two samples in at least one group for comparison {name}.")
+            contrast[["results"]] = empty_deg_table
+            return(contrast)
+        }
+        
+        # Set up arguments list for FindMarkers
+        arguments = list(object=contrast[["sc_subset"]],
+                         test.use=contrast[["test"]], 
+                         logfc.threshold=contrast[["log2FC"]], 
+                         min.pct=contrast[["min_pct"]], 
+                         pval.threshold=contrast[["padj"]],
+                         ident.1="condition1",
+                         ident.2="condition2",
+                         slot=contrast[["layer"]],
+                         random.seed=getOption("random_seed"))
+        if ("bulk_by" %in% names(contrast)) arguments[["densify"]] = TRUE
+        if ("covariate" %in% names(contrast)) arguments[["latent.vars"]] = contrast[["covariate"]]
+        
+        # Run FindMarkers
+        deg_results = do.call(Seurat::FindMarkers, arguments)
+        
+        # If no results, create empty dataframe. Add gene column.
+        if (nrow(deg_results) > 0) {
+            deg_results$gene = rownames(deg_results)
+        } else {
+            degs_results = empty_deg_table
+        }
+        
+        # Expression values: When bulking, add the expression values for the bulk samples and the group, else just for the group
+        
+        contrast[["results"]] = empty_deg_table
+        return(contrast)
+    }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c()))
+}
+    
+
+
+#' Tests two sets of cells for differential expression using Seurat::FindMarkers.
+#' 
+#' @param object A Seurat assay object or a Seurat DimReduc object.
+#' @param slot If object is a Seurat assay object, which slot to use.
+#' @param cells_1 The cell names in set1.
+#' @param cells_2 The cell names in set2.
+#' @param is_reduction Object is a Seurat DimReduc object. 
+#' @param ... Additional parameters passed on to FindMarkers.
+#' @return A table with the columns p_val, avg_log2FC, pct.1, pct.2, p_val_adj and gene.
+DegsTestCellSets = function(object, slot="data", cells_1=NULL, cells_2=NULL, is_reduction=FALSE, ...){
+    # Additional arguments for FindMarkers in the three-dots construct
+    additional_arguments = list(...)
+    
+    # Make sure that object, assay, slot, reduction, cells.1 and cells.2 are not in the additional_arguments list
+    additional_arguments[["object"]] = NULL
+    additional_arguments[["slot"]] = NULL
+    additional_arguments[["cells.1"]] = NULL
+    additional_arguments[["cells.2"]] = NULL
+    
+    # Create empty table to return when there are no results
+    no_degs_results = DegsEmptyResultsTable()
+    
+    # Check that there are at least 3 cell names and that all cell names are part of the Seurat object
+    if (is.null(cells_1) || length(cells_1) < 3 || any(!cells_1 %in% colnames(object))) return(no_degs_results)
+    if (is.null(cells_2) || length(cells_2) < 3 || any(!cells_2 %in% colnames(object))) return(no_degs_results)
+    
+    # Run Seurat::FindMarkers
+    if (!is_reduction) {
+        arguments = c(list(object=object, slot=slot, cells.1=cells_1, cells.2=cells_2), additional_arguments)
+    } else {
+        arguments = c(list(object=object, cells.1=cells_1, cells.2=cells_2), additional_arguments)
+    }
+    
+    deg_results = suppressMessages(do.call(Seurat::FindMarkers, arguments))
+    if (nrow(deg_results)==0) return(no_degs_results)
+    
+    # Fix base 2 for log fold change
+    if (!"avg_log2FC" %in% colnames(deg_results)) {
+        lfc_idx = grep("avg_log\\S*FC", colnames(deg_results))
+        deg_results[,lfc_idx] = deg_results[,lfc_idx] / log(2)
+        col_nms = colnames(deg_results)
+        col_nms[2] = "avg_log2FC"
+        colnames(deg_results) = col_nms
+    }
+    
+    # Add column gene
+    deg_results$gene = rownames(deg_results)
+    return(deg_results)
+}
+
 
 #' Sorts table of differentially expressed genes per performed test. Introduces a signed p-value score calculated as follows:
 #' p_val_adj_score = -log10(p_val_adj) * sign(avg_log2FC).
@@ -825,57 +944,6 @@ DegsEmptyMarkerResultsTable = function(clusters) {
   empty_table$cluster = factor(as.character(), levels=clusters)
   return(empty_table[ c('p_val','avg_log2FC','pct.1','pct.2','p_val_adj','cluster','gene')])
 }
-
-#' Tests two sets of cells for differential expression using Seurat::FindMarkers.
-#' 
-#' @param object A Seurat assay object or a Seurat DimReduc object.
-#' @param slot If object is a Seurat assay object, which slot to use.
-#' @param cells_1 The cell names in set1.
-#' @param cells_2 The cell names in set2.
-#' @param is_reduction Object is a Seurat DimReduc object. 
-#' @param ... Additional parameters passed on to FindMarkers.
-#' @return A table with the columns p_val, avg_log2FC, pct.1, pct.2, p_val_adj and gene.
-DegsTestCellSets = function(object, slot="data", cells_1=NULL, cells_2=NULL, is_reduction=FALSE, ...){
-  # Additional arguments for FindMarkers in the three-dots construct
-  additional_arguments = list(...)
-  
-  # Make sure that object, assay, slot, reduction, cells.1 and cells.2 are not in the additional_arguments list
-  additional_arguments[["object"]] = NULL
-  additional_arguments[["slot"]] = NULL
-  additional_arguments[["cells.1"]] = NULL
-  additional_arguments[["cells.2"]] = NULL
-
-  # Create empty table to return when there are no results
-  no_degs_results = DegsEmptyResultsTable()
-  
-  # Check that there are at least 3 cell names and that all cell names are part of the Seurat object
-  if (is.null(cells_1) || length(cells_1) < 3 || any(!cells_1 %in% colnames(object))) return(no_degs_results)
-  if (is.null(cells_2) || length(cells_2) < 3 || any(!cells_2 %in% colnames(object))) return(no_degs_results)
-  
-  # Run Seurat::FindMarkers
-  if (!is_reduction) {
-    arguments = c(list(object=object, slot=slot, cells.1=cells_1, cells.2=cells_2), additional_arguments)
-  } else {
-    arguments = c(list(object=object, cells.1=cells_1, cells.2=cells_2), additional_arguments)
-  }
-  
-  deg_results = suppressMessages(do.call(Seurat::FindMarkers, arguments))
-  if (nrow(deg_results)==0) return(no_degs_results)
-  
-  # Fix base 2 for log fold change
-  if (!"avg_log2FC" %in% colnames(deg_results)) {
-    lfc_idx = grep("avg_log\\S*FC", colnames(deg_results))
-    deg_results[,lfc_idx] = deg_results[,lfc_idx] / log(2)
-    col_nms = colnames(deg_results)
-    col_nms[2] = "avg_log2FC"
-    colnames(deg_results) = col_nms
-  }
-  
-  # Add column gene
-  deg_results$gene = rownames(deg_results)
-  return(deg_results)
-}
-
 
 #' Returns an empty Enrichr results table.
 # '
