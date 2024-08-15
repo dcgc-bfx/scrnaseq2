@@ -322,7 +322,7 @@ NewContrastsList = function(sc, contrasts_list) {
         if (!"min_pct" %in% names(contrast)) contrast[["min_pct"]] = 0.05
         contrast[["min_pct"]] = as.numeric(contrast[["min_pct"]])
         
-        # assay
+        # assay, also decide on method to bulk if bulk_by or pseudobulk_samples is set
         if (!"assay" %in% names(contrast)) contrast[["assay"]] = Seurat::DefaultAssay(sc)
         assay = contrast[["assay"]] %>% 
             strsplit(split="\\,") %>% 
@@ -333,6 +333,14 @@ NewContrastsList = function(sc, contrasts_list) {
         assertthat::assert_that(all(contrast[["assay"]] %in% valid_assays) | all(contrast[["assay"]] %in% valid_reductions) | all(assay %in% names(barcode_metadata)),
                                 msg=FormatString("The assay ('assay') must be one of the assays {valid_assays*}, one of the reductions {valid_reductions*} or barcode metadata columns (for comparison {i}/{name})."))
         
+        if ("bulk_by" %in% names(contrast) | "pseudobulk_samples" %in% names(contrast)) {
+            contrast[["bulk_method"]] = dplyr::case_when(
+                all(assay %in% valid_assays) ~ "aggregate",
+                all(assay %in% valid_reductions) ~ "average",
+                all(assay %in% names(barcode_metadata)) ~ "average",
+                TRUE ~ "average")
+        }
+            
         # layer
         if (!"layer" %in% names(contrast)) {
             if (contrast[["assay"]] %in% valid_assays) {
@@ -442,20 +450,8 @@ PrepareContrastsListObjects = function(sc, contrasts_list) {
             assay_obj = suppressWarnings({subset(sc[[contrast[["assay"]]]],
                                cells=unique(c(condition_group1_idx, condition_group2_idx)))})
             
-            # Remove layers not needed
-            if ("bulk_by" %in% names(contrast) | "pseudobulk_samples" %in% names(contrast)) {
-                # For bulking/pseudo-bulking, the layer (slot) 'counts' is used and others are removed
-                SeuratObject::DefaultLayer(assay_obj) = "counts"
-                layer_to_remove = setdiff(SeuratObject::Layers(assay_obj), "counts")
-                
-            } else {
-                # Else the layer (slot) specified by the contrast is used and others are removed
-                SeuratObject::DefaultLayer(assay_obj) = contrast[["layer"]]
-                layer_to_remove = setdiff(SeuratObject::Layers(assay_obj), contrast[["layer"]])
-            }
-            for(l in layer_to_remove) {
-                SeuratObject::LayerData(assay_obj, layer=l) = NULL
-            }
+            # Remove scale.data layer (never needed and saves a lot of memory)
+            SeuratObject::LayerData(assay_obj, layer="scale.data") = NULL
         } else if (all(contrast[["assay"]] %in% Seurat::Reductions(sc))) {
             # Convert reduction into assay
             reduction = Seurat::Embeddings(sc, reduction=contrast[["assay"]])
@@ -547,16 +543,14 @@ PrepareContrastsListObjects = function(sc, contrasts_list) {
                 }
             }
             
-            # Add the bulk name each barcode is assigned
-            bulk_name = barcode_metadata %>% 
-                dplyr::select(dplyr::all_of(bulk_by)) %>%
-                dplyr::mutate(dplyr::across(dplyr::everything(), ~ gsub(pattern="_", replacement="-", x=.))) %>%
-                tidyr::unite(col="bulk_name", dplyr::all_of(bulk_by), sep="_") %>%
-                dplyr::pull(bulk_name)
-            
-            
             # Then aggregate expression
-            sc_subset_agg = Seurat::AggregateExpression(sc_subset, group.by=bulk_by, return.seurat=TRUE)
+            sc_subset_agg = Seurat::PseudobulkExpression(object=sc_subset, 
+                                                         return.seurat=TRUE, 
+                                                         group.by=bulk_by,
+                                                         layer="counts",
+                                                         method=contrast[["bulk_method"]],
+                                                         normalization.method="LogNormalize",
+                                                         verbose=FALSE)
             for(c in bulk_by) {
                 sc_subset_agg[[]][, c] = factor(sc_subset_agg[[]][, c], levels=levels(barcode_metadata[, c]))
             }
@@ -573,6 +567,9 @@ PrepareContrastsListObjects = function(sc, contrasts_list) {
                 sc_subset_agg = SeuratObject::AddMetaData(sc_subset_agg, metadata=numeric_covariate_data[, numeric_covariates, drop=FALSE])
             }
             
+            # Remove scale.data layer (never needed and saves a lot of memory)
+            SeuratObject::LayerData(sc_subset_agg, assay=SeuratObject::DefaultAssay(sc_subset_agg), layer="scale.data") = NULL
+            
             sc_subset = sc_subset_agg
         }
         
@@ -587,36 +584,24 @@ PrepareContrastsListObjects = function(sc, contrasts_list) {
 #' 
 #' @param contrasts_list A list of contrasts. Must have been set up with NewContrastsList followed by PrepareContrastsListObjects.
 #' @return A updated list.
-
 RunDEGTests = function(contrasts_list) {
-    contrasts_list = contrasts_list1
-    #contrasts_list1 = contrasts_list
-    
     # Set up a progress bar
     msg = paste("Run DEG test for each contrast")
     progr = progressr::progressor(along=contrasts_list, message=msg)
 
-    contrasts_list = furrr::future_map(contrasts_list, function(contrast) {
-        contrast = contrasts_list[[1]]
+    deg_results_list = purrr::map(contrasts_list, function(contrast) {
+    # deg_results_list = furrr::future_map(contrasts_list, function(contrast) {
         progr()
+        
+        op = options(Seurat.object.assay.calcn=FALSE)
+        on.exit(expr = options(op), add = TRUE)
         name = contrast[["name"]]
-        
-        empty_deg_table = data.frame(p_val=as.numeric(), avg_log2FC=as.numeric(), pct.1=as.numeric(), pct.2=as.numeric(), p_val_adj=as.numeric(), gene=as.character())
-        
-        # Check that there are enough samples in each group (>=2), if not, add an error message and skip
-        condition_counts = SeuratObject::Idents(contrast[["sc_subset"]]) %>% table()
-        if (condition_counts["condition1"] < 2 | condition_counts["condition2"] < 2) {
-            contrast[["error"]] = FormatString("There are fewer than two samples in at least one group for comparison {name}.")
-            contrast[["results"]] = empty_deg_table
-            return(contrast)
-        }
         
         # Set up arguments list for FindMarkers
         arguments = list(object=contrast[["sc_subset"]],
                          test.use=contrast[["test"]], 
                          logfc.threshold=contrast[["log2FC"]], 
                          min.pct=contrast[["min_pct"]], 
-                         pval.threshold=contrast[["padj"]],
                          ident.1="condition1",
                          ident.2="condition2",
                          slot=contrast[["layer"]],
@@ -625,75 +610,47 @@ RunDEGTests = function(contrasts_list) {
         if ("covariate" %in% names(contrast)) arguments[["latent.vars"]] = contrast[["covariate"]]
         
         # Run FindMarkers
-        deg_results = do.call(Seurat::FindMarkers, arguments)
-        
-        # If no results, create empty dataframe. Add gene column.
-        if (nrow(deg_results) > 0) {
+        # Check that there are enough samples in each group (>=2), if not, add an error message and skip
+        # Seurat object in contrast[["sc_subset"]]
+        condition_counts = SeuratObject::Idents(contrast[["sc_subset"]]) %>% table()
+        if (condition_counts["condition1"] >= 2 & condition_counts["condition2"] >= 2) {
+            deg_results = do.call(Seurat::FindMarkers, arguments)
             deg_results$gene = rownames(deg_results)
         } else {
-            degs_results = empty_deg_table
+            deg_results = data.frame(p_val=as.numeric(), avg_log2FC=as.numeric(), pct.1=as.numeric(), pct.2=as.numeric(), p_val_adj=as.numeric(), gene=as.character())
+            contrast[["message"]] = FormatString("There are fewer than two samples in at least one group for comparison {name}.")
         }
         
-        # Expression values: When bulking, add the expression values for the bulk samples and the group, else just for the group
+        # Filter and sort results
+        deg_results = deg_results %>% 
+            DegsSort() %>% 
+            DegsFilter(contrast[["log2FC"]], contrast[["padj"]], split_by_dir=FALSE)
         
-        contrast[["results"]] = empty_deg_table
+        if (nrow(deg_results) == 0) {
+            contrast[["message"]] = FormatString("No differentially expressed genes found for comparison {name}.")
+        }
+        
+        # Add normalised expression values
+        avg_df = Seurat::AggregateExpression(object=contrast[["sc_subset"]], verbose=FALSE, return.seurat=TRUE) %>%
+            SeuratObject::LayerData(layer="data") %>% 
+            as.data.frame() %>%
+            tibble::rownames_to_column(var="gene")
+        colnames(avg_df) = c("gene", contrast[["condition_group1"]], contrast[["condition_group2"]])
+        deg_results = dplyr::inner_join(deg_results, avg_df, by="gene")
+        
+        # Remove Seurat object
+        contrast[["sc_subset"]] = NULL
+        
+        # Add results to contrast
+        contrast[["deg_results"]] = deg_results
+        
         return(contrast)
-    }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c()))
+    })#, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c()))
+    progr(type='finish')
+    
+    return(deg_results_list)
 }
     
-
-
-#' Tests two sets of cells for differential expression using Seurat::FindMarkers.
-#' 
-#' @param object A Seurat assay object or a Seurat DimReduc object.
-#' @param slot If object is a Seurat assay object, which slot to use.
-#' @param cells_1 The cell names in set1.
-#' @param cells_2 The cell names in set2.
-#' @param is_reduction Object is a Seurat DimReduc object. 
-#' @param ... Additional parameters passed on to FindMarkers.
-#' @return A table with the columns p_val, avg_log2FC, pct.1, pct.2, p_val_adj and gene.
-DegsTestCellSets = function(object, slot="data", cells_1=NULL, cells_2=NULL, is_reduction=FALSE, ...){
-    # Additional arguments for FindMarkers in the three-dots construct
-    additional_arguments = list(...)
-    
-    # Make sure that object, assay, slot, reduction, cells.1 and cells.2 are not in the additional_arguments list
-    additional_arguments[["object"]] = NULL
-    additional_arguments[["slot"]] = NULL
-    additional_arguments[["cells.1"]] = NULL
-    additional_arguments[["cells.2"]] = NULL
-    
-    # Create empty table to return when there are no results
-    no_degs_results = DegsEmptyResultsTable()
-    
-    # Check that there are at least 3 cell names and that all cell names are part of the Seurat object
-    if (is.null(cells_1) || length(cells_1) < 3 || any(!cells_1 %in% colnames(object))) return(no_degs_results)
-    if (is.null(cells_2) || length(cells_2) < 3 || any(!cells_2 %in% colnames(object))) return(no_degs_results)
-    
-    # Run Seurat::FindMarkers
-    if (!is_reduction) {
-        arguments = c(list(object=object, slot=slot, cells.1=cells_1, cells.2=cells_2), additional_arguments)
-    } else {
-        arguments = c(list(object=object, cells.1=cells_1, cells.2=cells_2), additional_arguments)
-    }
-    
-    deg_results = suppressMessages(do.call(Seurat::FindMarkers, arguments))
-    if (nrow(deg_results)==0) return(no_degs_results)
-    
-    # Fix base 2 for log fold change
-    if (!"avg_log2FC" %in% colnames(deg_results)) {
-        lfc_idx = grep("avg_log\\S*FC", colnames(deg_results))
-        deg_results[,lfc_idx] = deg_results[,lfc_idx] / log(2)
-        col_nms = colnames(deg_results)
-        col_nms[2] = "avg_log2FC"
-        colnames(deg_results) = col_nms
-    }
-    
-    # Add column gene
-    deg_results$gene = rownames(deg_results)
-    return(deg_results)
-}
-
-
 #' Sorts table of differentially expressed genes per performed test. Introduces a signed p-value score calculated as follows:
 #' p_val_adj_score = -log10(p_val_adj) * sign(avg_log2FC).
 #' 

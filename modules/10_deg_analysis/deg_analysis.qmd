@@ -84,7 +84,18 @@ params:
                 subset_group: "1,2,3+4"
     
   # Excel or csv file with contrasts
-  deg_contrasts_file: null
+  contrasts_file: null
+  
+  # Run DEG tests: True, false or a list with contrast names
+  run_deg_tests:
+      - Comparison1
+      - Comparison3
+  
+  # Run over-representation analysis (ORA) for DEG results: True, false or a list with contrast names
+  run_deg_ora: true
+  
+  # Run gene set enrichment analysis (GSEA): True, false or a list with contrast names
+  run_gsea: true
     
 # Module execution
 execute:
@@ -214,12 +225,48 @@ if (is.character(param("constrasts")) && file.exists(param("contrasts"))) {
   })
 }
 
-# Set up a contrasts list. 
-# Check if there is enough information for each contrast and if contrasts are valid. 
+# Set up a contrasts list. Check if there is enough information for each contrast and if contrasts are valid. 
 contrasts_list = NewContrastsList(sc, contrasts_list)
 
 # Prepare (subset) Seurat objects for each contrast. Bulk-aggregate if requested. Downsample if requested.
 contrasts_list = PrepareContrastsListObjects(sc, contrasts_list)
+
+# Which contrasts should be DEG tested?
+run_deg_tests = param("run_deg_tests")
+if (is.logical(run_deg_tests) && run_deg_tests) {
+  deg_tests_idx = seq(contrasts_list)
+} else if (is.logical(run_deg_tests) && !run_deg_tests) {
+  deg_tests_idx = c()
+} else if (is.character(run_deg_tests)) {
+  deg_tests_idx = seq(contrasts_list) %>% 
+      purrr::keep(function(i) return(contrasts_list[[i]]$name %in% run_deg_tests))
+}
+
+# For the contrasts that are DEG tested: for which should also over-representation analysis be run?
+run_deg_ora = param("run_deg_ora")
+if (is.logical(run_deg_ora) && run_deg_ora) {
+  deg_ora_idx = seq(contrasts_list)
+} else if (is.logical(run_deg_ora) && !run_deg_ora) {
+  deg_ora_idx = c()
+} else if (is.character(run_deg_ora)) {
+  deg_ora_idx = seq(contrasts_list) %>% 
+      purrr::keep(function(i) return(contrasts_list[[i]]$name %in% run_deg_ora))
+}
+if (!all(deg_ora_idx %in% deg_tests_idx)) {
+  stop("Not all contrasts for over-representation analysis are also tested for DEGs.")
+}
+
+# Which contrasts should be analysed with GSEA?
+run_gsea = param("run_gsea")
+if (is.logical(run_gsea) && run_gsea) {
+  gsea_idx = seq(contrasts_list)
+} else if (is.logical(run_gsea) && !run_gsea) {
+  gsea_idx = c()
+} else if (is.character(run_gsea)) {
+  gsea_idx = seq(contrasts_list) %>% 
+      purrr::keep(function(i) return(contrasts_list[[i]]$name %in% run_gsea))
+}
+
 ```
 
 ## DEG Analysis
@@ -227,7 +274,10 @@ contrasts_list = PrepareContrastsListObjects(sc, contrasts_list)
 ```{r}
 #| label: deg_analysis_compute_degs
 
-
+if (length(deg_tests_idx) > 0) {
+  # Run DEG tests (sequential for now)
+  deg_results_list = RunDEGTests(contrasts_list[deg_tests_idx])
+}
 
 ```
 
