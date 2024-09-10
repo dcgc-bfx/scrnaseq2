@@ -393,6 +393,14 @@ PrepareBarcodeFilter = function(filter, orig_idents) {
   # Apply sample_specific filter (overwrite or add)
   filter = purrr::list_modify(filter, !!!sample_specific_filter)
   
+  # Deal with filter that are all NA - assume that they are numeric
+  filter = purrr::map_depth(filter, -1, function(f) {
+    if (all(is.na(f))) {
+      f = as.numeric(f)
+    }
+    return(f)
+  })
+  
   return(filter)
 }
 
@@ -418,6 +426,14 @@ PrepareFeatureFilter = function(filter, orig_idents) {
   
   # Apply sample_specific filter (overwrite or add)
   filter = purrr::list_modify(filter, !!!sample_specific_filter)
+  
+  # Deal with filter that are all NA - assume that they are numeric
+  filter = purrr::map_depth(filter, -1, function(f) {
+    if (all(is.na(f))) {
+      f = as.numeric(f)
+    }
+    return(f)
+  })
   
   return(filter)
 }

@@ -630,7 +630,7 @@ barcode_filter_tbl = purrr::map_dfr(names(barcode_filter), function(s) {
   tbl = purrr::map(barcode_filter[[s]], function(f) {
     if (is.numeric(f) & length(f)==2) {
         r = dplyr::case_when(
-            is.na(f[1]) & is.na(f[2]) ~ "",
+            is.na(f[1]) & is.na(f[2]) ~ "none",
             is.na(f[1]) & !is.na(f[2]) ~ paste0("<=", f[2]),
             !is.na(f[1]) & is.na(f[2]) ~ paste0(">=", f[1]),
             !is.na(f[1]) & !is.na(f[2]) ~ paste0(f[1], "-", f[2])
