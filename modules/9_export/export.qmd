@@ -188,7 +188,12 @@ if (export_loupe & all(grepl("10x", sc$technology))) {
     # Replace NA with "NA" in barcode metadata
     # Convert character columns to factors
     categorial_data = purrr::map(categories_to_export, function(x) {
-        return(forcats::fct_na_value_to_level(sc[[]][, x], level="NA"))
+        v = sc[[]][, x]
+        if (!is.factor(v)) {
+          v = factor(as.character(v))
+        }
+        v = forcats::fct_na_value_to_level(v, level="NA")
+        return(v)
     })
     names(categorial_data) = categories_to_export
     categorial_data[["active_cluster"]] = Seurat::Idents(sc)

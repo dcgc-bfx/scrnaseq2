@@ -42,7 +42,7 @@ params:
   general:
 
     # General
-    project_id: "bfx1234"
+    project_id: "nobfx"
     species: "homo_sapiens"
     ensembl: 104
 
