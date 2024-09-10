@@ -69,7 +69,7 @@ params:
   
     read_data:
       default_assay: RNA
-      datasets_file: "datasets/bfx1234.xlsx"
+      datasets_file: "datasets/10x_pbmc_datasets.xlsx"
       downsample_barcodes_n: null
       downsample_barcodes_equally: false
       downsample_features_n: null
