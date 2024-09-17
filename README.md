@@ -8,7 +8,7 @@ The workflow is written in R  and is largely based on the [Seurat v5](https://sa
 
 ## Documentation 
 
-https://dcgc-bfx.github.io/scrnaseq2/
+https://dcgc-bfx.github.io/scrnaseq2_doc/
 
 ## Credits
 
