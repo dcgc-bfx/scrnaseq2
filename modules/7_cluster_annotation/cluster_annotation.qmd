@@ -71,6 +71,12 @@ library(ggplot2)
 library(future)
 library(patchwork)
 
+library(clusterProfiler)
+library(msigdbr)
+library(stringr)
+library(dplyr)
+library(scales)
+
 # Get module name and directory (needed to access files within the module directory)
 module_name = params$module_name
 module_dir = params$module_dir
@@ -90,6 +96,7 @@ source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
 source("R/functions_degs.R")
+source("R/functions_enrichment.R")
 
 # Be verbose or not
 verbose = param("verbose")
@@ -365,6 +372,79 @@ p
     cat(":::\n")
 }
 ```
+### Over representation analysis of marker genes
+
+This section presents the results of the over representation analysis (ORA) performed on the marker genes identified for each cluster, focusing specifically on the [C8 collection](https://www.gsea-msigdb.org/gsea/msigdb/human/collections.jsp#C8) (cell type signature gene sets) of the Molecular Signatures Database (MSigDB). ORA is a statistical method that determines whether a set of genes is enriched in a particular biological process or pathway. The analysis helps to identify cell type signatures that are significantly over-represented in the marker genes of each cluster, providing insights into the cell annotation of clusters.
+
+
+```{r}
+#| label: cluster_annotation_markers_ora
+#| echo: false
+#| results: asis
+#| fig-cap: "Over representation analysis of marker genes"
+
+species <- gsub("_", " ", stringr::str_to_title(param("species")))
+species_tibble <- msigdbr_species()
+
+if(any(species_tibble$species_name == species)) {
+  geneset_msigdb <- msigdbr(species = species, category = "C8")
+  term2gene <- geneset_msigdb %>% 
+    dplyr::select(gs_name, gene_symbol) %>% 
+    as.data.frame()
+
+  # Get marker genes per cluster
+  markers_up_per_cluster <- split(markers_filt$up$gene, markers_filt$up$cluster)
+  markers_down_per_cluster <- split(markers_filt$down$gene, 
+                                    markers_filt$down$cluster)
+
+
+  # Perform ORA for each cluster
+  ora_up_results <- lapply(names(markers_up_per_cluster), function(cluster) {
+    perform_ora(genes = markers_up_per_cluster[[cluster]], 
+    universe = rownames(sc), 
+    cluster = cluster, 
+    term2gene = term2gene)
+  })
+
+  # Combine results
+  ora_up_results_combined <- do.call(rbind, ora_up_results)
+
+   # Plot results
+  if (!is.null(ora_up_results_combined) && nrow(ora_up_results_combined) > 0) {
+    top_terms <- ora_up_results_combined %>%
+      group_by(Cluster) %>%
+      top_n(2, wt = -p.adjust) %>%
+      ungroup() %>%
+      mutate(Cluster = factor(as.numeric(Cluster))) %>%
+      mutate(Description = factor(Description, levels = 
+                                    unique(Description[order(Cluster)])))
+    
+    p <- ggplot(top_terms, aes(x = Cluster, y = Description, size = Count, 
+                               color = p.adjust)) +
+      geom_point() +
+      scale_color_viridis_c(direction = -1, 
+                            labels = label_scientific(digits = 3)) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 75, hjust = 1)) +
+      labs(x = "Cluster", y = "GO Term", size = "Gene Count", 
+           color = "Adjusted p-value") +
+      theme(legend.position = "right") +
+      scale_y_discrete(labels = function(y) str_wrap(gsub("_", " ", y), 
+                                                     width = 30)) + 
+      coord_flip()
+
+    print(p)
+  } else {
+    CalloutBox("No significant up-regulated terms found for any cluster.", 
+               type="note")
+  }
+
+} else {
+  CalloutBox("ORA skipped; provided species not in MSigdbr.", type="note")
+}
+
+```
+
 ## Known marker genes {.tabset}
 
 Do cells in individual clusters express provided known marker genes?
