@@ -459,7 +459,9 @@ if(any(species_tibble$species_name == species)) {
     }
     
     # Save the workbook
-    saveWorkbook(wb, "marker_annotation_C8_ora.xlsx", overwrite = TRUE)
+    saveWorkbook(wb, file.path(module_dir, "results", 
+                               "marker_annotation_C8_ora.xlsx"), 
+                 overwrite = TRUE)
   } else {
     CalloutBox("No significant up-regulated terms found for any cluster.", 
                type="note")

@@ -77,6 +77,7 @@ library(Seurat)
 library(ggplot2)
 library(future)
 library(patchwork)
+library(clustree)
 
 # Get module name and directory (needed to access files within the module directory)
 module_name = params$module_name
@@ -365,7 +366,7 @@ for (method in dimensionality_reduction_methods) {
 
 cat(":::\n")
 
-CalloutBox("Default clustering is set to the dimensionality reduction {dimensionality_reduction_methods[1]} with the resolution parameter {cluster_resolutions[1]}.", type="note")
+#CalloutBox("Default clustering is set to the dimensionality reduction {dimensionality_reduction_methods[1]} with the resolution parameter {cluster_resolutions[1]}.", type="note")
 ```
 
 ```{r}
@@ -426,6 +427,31 @@ for(ident in names(plist)) {
 }
 
 cat(":::\n")
+```
+
+## Clustering Tree
+
+Clustering trees help in understanding how clusters split or merge as the resolution changes in the single-cell RNA-sequencing analysis. Each node represents a cluster at a given resolution, and edges between nodes indicate how clusters from one resolution relate to clusters at another resolution. This makes it easier to track cluster stability or transitions, aiding in the selection of an appropriate resolution for downstream analysis.
+
+::: {.callout-tip title="What is the best resolution for my experiment?" collapse="true"}
+While making a choice for the best resolution for your experiment, it is important to check at what point the cluster tree is getting messier; which means that there are nodes with multiple incoming edges.
+:::
+
+```{r}
+#| label: clustree
+#| results: asis
+#| fig-cap: 'Clustering tree based on clusters derived from various resolutions'
+## #| fig-height: 8
+
+clust_tree_plot = clustree(sc, prefix = "RNA_pca_snn") +
+  theme(legend.box = "vertical") +
+  guides(color = guide_legend(title = "Resolution", position = "bottom"),
+         size = "none")
+
+clust_tree_plot + ylim(layer_scales(clust_tree_plot)$y$range$range[1] - 0.2, 
+                       layer_scales(clust_tree_plot)$y$range$range[2] + 0.5)
+
+CalloutBox("Default clustering is set to the dimensionality reduction {dimensionality_reduction_methods[1]} with the resolution parameter {cluster_resolutions[1]}.", type="note")
 ```
 
 ## Visualization with UMAP
