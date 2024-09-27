@@ -379,7 +379,7 @@ This section presents the results of the over representation analysis (ORA) perf
 
 ::: {.callout-note}
 
-The gene sets present in C8 collection covers various cell types from Heart, GI Tract, Pancreas, Kidney, Liver, the Immune system, Retina, Olfactory tissue, and the Brain. So don't be surprised if you see a cell type annotated here that should not be in your data.
+The gene sets present in C8 collection covers various cell types from Heart, GI Tract, Pancreas, Kidney, Liver, the Immune system, Retina, Olfactory tissue, and the Brain. So do not be surprised if you see a cell type annotated here that should not be in your data.
 
 :::
 
@@ -390,7 +390,7 @@ The C8 collection contains the genesets for <i>Homo sapiens</i>. Using MSigDbr R
 :::
 
 ```{r}
-#| label: cluster_annotation_markers_ora
+#| label: fig-cluster_annotation_markers_ora
 #| echo: false
 #| results: asis
 #| fig-cap: "Over representation analysis of marker genes"
