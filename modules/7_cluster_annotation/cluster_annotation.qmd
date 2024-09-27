@@ -449,19 +449,19 @@ if(any(species_tibble$species_name == species)) {
     
     names(ora_up_results) <- names(markers_up_per_cluster)
     
-    # Create a new Excel workbook
-    wb <- createWorkbook()
-    
-    # Loop through the list and add each data frame as a sheet
-    for (name in names(ora_up_results)) {
-      addWorksheet(wb, name)  # Use the list name as sheet name
-      writeData(wb, name, ora_up_results[[name]])  # Write the data frame
-    }
-    
-    # Save the workbook
-    saveWorkbook(wb, file.path(module_dir, "results", 
-                               "marker_annotation_C8_ora.xlsx"), 
-                 overwrite = TRUE)
+    # # Create a new Excel workbook
+    # wb <- createWorkbook()
+    # 
+    # # Loop through the list and add each data frame as a sheet
+    # for (name in names(ora_up_results)) {
+    #   addWorksheet(wb, name)  # Use the list name as sheet name
+    #   writeData(wb, name, ora_up_results[[name]])  # Write the data frame
+    # }
+    # 
+    # # Save the workbook
+    # saveWorkbook(wb, file.path(module_dir, "results", 
+    #                            "marker_annotation_C8_ora.xlsx"), 
+    #              overwrite = TRUE)
   } else {
     CalloutBox("No significant up-regulated terms found for any cluster.", 
                type="note")
@@ -758,6 +758,35 @@ invisible(DegsWriteToFile(split(markers_out, markers_out$cluster),
 CalloutBox("Marker features are written to {outfile}.", type="note")
 ```
 
+
+### ORA
+
+```{r}
+#| label: cluster_annotation_save_ora
+#| results: asis
+
+if (length(ora_up_results) > 0) {
+  # Save ORA results
+  outfile <- file.path(module_dir, "results", "marker_annotation_C8_ora.xlsx")
+  
+  # Create a new Excel workbook
+  wb <- createWorkbook()
+  
+  # Loop through the list and add each data frame as a sheet
+  for (name in names(ora_up_results)) {
+    addWorksheet(wb, name)  # Use the list name as sheet name
+    writeData(wb, name, ora_up_results[[name]])  # Write the data frame
+  }
+  
+  # Save the workbook
+  invisible(saveWorkbook(wb, outfile, overwrite = TRUE))
+  
+  # Note
+  CalloutBox("ORA results are written to {outfile}.", type="note")
+}
+
+```
+    
 ### Software
 
 ```{r}
