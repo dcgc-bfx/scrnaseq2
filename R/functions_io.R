@@ -575,7 +575,12 @@ ReadCounts_10x_h5 = function(h5_file, strip_suffix=NULL) {
     feature_id, feature_name, feature_type
   )
   
-  non_standard_features = hdf5_features[["_all_tag_keys"]][]
+  if ("_all_tag_keys" %in% names(hdf5_features)) {
+    non_standard_features = hdf5_features[["_all_tag_keys"]][]
+  } else {
+    non_standard_features = c()
+  }
+
   if (length(non_standard_features) > 0) {
     non_standard_features_data = purrr::map(non_standard_features, function(f) {
       return(hdf5_features[[f]][])
