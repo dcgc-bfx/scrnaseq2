@@ -584,7 +584,7 @@ PrepareContrastsListObjects = function(sc, contrasts_list) {
 #' 
 #' @param contrasts_list A list of contrasts. Must have been set up with NewContrastsList followed by PrepareContrastsListObjects.
 #' @return A updated list.
-RunDEGTests = function(contrasts_list) {
+DegsRunTests = function(contrasts_list) {
     # Set up a progress bar
     msg = paste("Run DEG test for each contrast")
     progr = progressr::progressor(along=contrasts_list, message=msg)
@@ -621,28 +621,31 @@ RunDEGTests = function(contrasts_list) {
             contrast[["message"]] = FormatString("There are fewer than two samples in at least one group for comparison {name}.")
         }
         
-        # Filter and sort results
+        # Sort results
         deg_results = deg_results %>% 
-            DegsSort() %>% 
-            DegsFilter(contrast[["log2FC"]], contrast[["padj"]], split_by_dir=FALSE)
-        
-        if (nrow(deg_results) == 0) {
-            contrast[["message"]] = FormatString("No differentially expressed genes found for comparison {name}.")
-        }
+            DegsSort()
         
         # Add normalised expression values
         avg_df = Seurat::AggregateExpression(object=contrast[["sc_subset"]], verbose=FALSE, return.seurat=TRUE) %>%
             SeuratObject::LayerData(layer="data") %>% 
             as.data.frame() %>%
             tibble::rownames_to_column(var="gene")
-        colnames(avg_df) = c("gene", contrast[["condition_group1"]], contrast[["condition_group2"]])
+        #colnames(avg_df) = c("gene", contrast[["condition_group1"]], contrast[["condition_group2"]])
+        colnames(avg_df) = c("gene", "condition1", "condition2")
         deg_results = dplyr::inner_join(deg_results, avg_df, by="gene")
         
         # Remove Seurat object
         contrast[["sc_subset"]] = NULL
         
+        # Add rownames
+        rownames(deg_results) = deg_results$gene
+        
+        # Reorder the columns
+        deg_results = deg_results %>% 
+            dplyr::select(gene, p_val, p_val_adj, avg_log2FC, pct.1, pct.2, condition1, condition2)
+        
         # Add results to contrast
-        contrast[["deg_results"]] = deg_results
+        contrast[["results"]] = deg_results
         
         return(contrast)
     })#, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c()))
@@ -729,6 +732,102 @@ DegsUpDisplayTop = function(degs, n=5, column_1="p_val_adj_score", column_2="pct
   return(top)
 }
 
+#' Creates a DEG scatterplot.
+#' 
+#' @param result A list entry with DEG results obtained with RunDEGTests
+#' @return A ggplot scatterplot
+DegsScatterPlot = function(result) {
+    # Get condition names. If multiple, join by '+'.
+    group1 = paste(result[["condition_group1"]], collapse="+")
+    group2 = paste(result[["condition_group2"]], collapse="+")
+    
+    # Get DEG table and add DEG status for significant up- and down-regulated (include log2 foldchange threshold)
+    deg_table = result[["results"]]
+    padj = result[["padj"]]
+    log2FC = result[["log2FC"]]
+    deg_table$deg_status = dplyr::case_when(
+        deg_table$p_val_adj < padj & abs(deg_table$avg_log2FC) >= log2FC & deg_table$avg_log2FC > 0 ~ "up",
+        deg_table$p_val_adj < padj & abs(deg_table$avg_log2FC) >= log2FC & deg_table$avg_log2FC < 0 ~ "down",
+        TRUE ~ "none"
+    )
+    deg_table$deg_status = factor(deg_table$deg_status, levels=c("none", "up", "down"))
+    lims = c(min(c(deg_table$condition1, deg_table$condition2)), max(deg_table$condition1, deg_table$condition2))
+    
+    # Get the top 5 up- and down-regulated DEGs
+    top10_deg_table = deg_table %>% 
+        dplyr::filter(deg_status %in% c("up", "down")) %>%
+        dplyr::group_by(deg_status) %>%
+        dplyr::slice_min(order_by=abs(p_val ), n=5)
+    
+    # Make plot
+    p = ggplot(deg_table, aes(x=condition1, y=condition2, col=deg_status)) + 
+        geom_abline(slope=1, intercept=0, col="lightgrey") +
+        geom_point() +
+        ggrepel::geom_text_repel(data=top10_deg_table, aes(x=condition1, y=condition2, col=deg_status, label=gene)) +
+        scale_color_manual("Gene status", values=c(none="grey", up="darkgoldenrod1", down="steelblue"), 
+                           labels=c(none='none', up='up', down='down')) +
+        xlim(lims) + 
+        ylim(lims) +
+        AddPlotStyle(ylab=group1, xlab=group2, legend_position="bottom")
+    
+    # If there is a log2 threshold > 0, add lines
+    if (log2FC > 0) {
+        p = p + geom_abline(slope=1, intercept=c(-log2FC, log2FC), col="lightgrey", lty=2)
+    }
+    
+    
+    return(p)
+}
+
+#' Creates a DEG volcano plot
+#' 
+#' @param result A list entry with DEG results obtained with RunDEGTests
+#' @return A ggplot volcano plot
+DegsVolcanoPlot = function(result) {
+    # Get condition names. If multiple, join by '+'.
+    group1 = paste(result[["condition_group1"]], collapse="+")
+    group2 = paste(result[["condition_group2"]], collapse="+")
+    
+    # Get DEG table and add DEG status for significant up- and down-regulated (include log2 foldchange threshold)
+    deg_table = result[["results"]]
+    padj = result[["padj"]]
+    log2FC = result[["log2FC"]]
+    deg_table$deg_status = dplyr::case_when(
+        deg_table$p_val_adj < padj & abs(deg_table$avg_log2FC) >= log2FC & deg_table$avg_log2FC > 0 ~ "up",
+        deg_table$p_val_adj < padj & abs(deg_table$avg_log2FC) >= log2FC & deg_table$avg_log2FC < 0 ~ "down",
+        TRUE ~ "none"
+    )
+    deg_table$deg_status = factor(deg_table$deg_status, levels=c("none", "up", "down"))
+    
+    # Add -10log10(p_val) for plotting. Make sure that infinite values are replaced with 300 and negative infinite with 0
+    deg_table$p_val_log10_n = -log10(deg_table$p_val)
+    i = which(is.infinite(deg_table$p_val_log10_n) & deg_table$p_val_log10_n > 0)
+    deg_table$p_val_log10_n[i] = 300
+    i = which(is.infinite(deg_table$p_val_log10_n) & deg_table$p_val_log10_n < 0)
+    deg_table$p_val_log10_n[i] = 0
+    
+    # Get the top 5 up- and down-regulated DEGs
+    top10_deg_table = deg_table %>% 
+        dplyr::filter(deg_status %in% c("up", "down")) %>%
+        dplyr::group_by(deg_status) %>%
+        dplyr::slice_min(order_by=abs(p_val ), n=5)
+    
+    # Make plot
+    p = ggplot(deg_table, aes(x=avg_log2FC, y=p_val_log10_n, col=deg_status)) + 
+        geom_point() +
+        ggrepel::geom_text_repel(data=top10_deg_table, aes(x=avg_log2FC, y=p_val_log10_n, col=deg_status, label=gene)) +
+        scale_color_manual("Gene status", values=c(none="grey", up="darkgoldenrod1", down="steelblue"), 
+                           labels=c(none='none', up='up', down='down')) +
+        AddPlotStyle(xlab="log2FoldChange", ylab="-log10(pvalue)", legend_position="bottom")
+    
+    # If there is a log2 threshold > 0, add vertical lines
+    if (log2FC > 0) {
+        p = p + geom_vline(xintercept=c(-log2FC, log2FC), linetype="dashed", color="grey")
+    }
+    
+    return(p)
+}
+
 #' Compute average gene expression data per identity class for a set of genes.
 #' 
 #' @param sc Seurat object.
@@ -812,44 +911,47 @@ DegsAvgData = function(object, cells=NULL, genes=NULL, slot="data") {
 
 #' Write differentially expressed genes or markers to an Excel file.
 #' 
-#' @param degs Result table of the "Seurat::FindMarkers" or "Seurat::FindAllMarkers" functions. Can also be a list of tables so that each table is written into an extra Excel tab. 
-#' @param annot_ensembl Ensembl annotation for all genes with Ensembl IDs as rownames.
-#' @param gene_to_ensembl Named vector for translating the Seurat gene names of the result table(s) to Ensembl IDs.
+#' @param degs Table with DEG analysis results. Can also be a list of tables so that each table is written into an extra Excel tab.
 #' @param file Output file name.
-#' @param additional_readme A data.frame to describe additional columns. Should contain columns 'Column' and 'Description'. Can be NULL.
+#' @param annotation Gene annotation to include in the tables. Will be merged using the rownames. Can be NULL.
+#' @param additional_readme A data.frame for describing additional columns. Should contain columns 'Column' and 'Description'. Can be NULL.
 #' @return Output file name.
-DegsWriteToFile = function(degs, annot_ensembl, file, additional_readme=NULL) {
-  # Always use list and add annotation
-  if (is.data.frame(degs)) degs_lst = list(All=degs) else degs_lst = degs
-  
-  # Add Ensembl annotation
-  for (i in seq(degs_lst)) {
-    degs_lst[[i]] = cbind(degs_lst[[i]], annot_ensembl[as.character(degs_lst[[i]]$gene), ])
-  }
-  
-  # Add README
-  readme_table = data.frame(Column=c("p_val"), Description=c("Uncorrected p-value"))
-  readme_table = rbind(readme_table, 
-                       c("avg_log2FC", "Mean log2 fold change group 1 vs group 2"),
-                       c("pct.1", "Fraction cells expressing gene in group 1"),
-                       c("pct.2", "Fraction cells expressing gene in group 2"),
-                       c("p_val_adj", "Adjusted p-value"),
-                       c("gene", "Gene"),
-                       c("cluster", "Cluster"),
-                       c("p_val_adj_score", "Score calculated as follows: -log10(p_val_adj)*sign(avg_log2FC)"),
-                       c("avg_RNA_counts_id1", "Average counts in group 1"),
-                       c("avg_RNA_data_id1", "Average normalized expression in group 1"))
-  
-  if (!is.null(additional_readme)) readme_table = dplyr::bind_rows(readme_table, additional_readme)
-  
-  degs_lst = c(list("README"=readme_table), degs_lst)
-  
-  # Fix names that are more than 31bp (which is too long for Excel)
-  names(degs_lst) = strtrim(names(degs_lst), 31)
-  
-  # Output in Excel sheet
-  openxlsx::write.xlsx(degs_lst, file=file)
-  return(file)
+DegsWriteToFile = function(degs, file, annotation=NULL, additional_readme=NULL) {
+    # Convert to list if not already
+    if (is.data.frame(degs_lst)) degs_lst = list(degs_lst)
+    
+    # Add annotation if available (merge via rownames)
+    if (!is.null(annotation)) {
+        degs_lst = purrr::map(degs_lst, function(degs) {
+            degs = degs %>% 
+                tibble::rownames_to_column() %>%
+                dplyr::left_join(annotation %>% tibble::rownames_to_column(), by=c("rowname")) %>%
+                dplyr::select(-rowname)
+            return(degs)
+        })
+    }
+    
+    # Add README
+    readme_table = data.frame(Column=c("gene"), Description=c("Gene"))
+    readme_table = rbind(readme_table, 
+                         c("p_val", "Individual test p-value (uncorrect)"),
+                         c("p_val_adj", "Adjusted p-value"),
+                         c("avg_log2FC", "Mean log2 fold change condition 1 vs condition 2"),
+                         c("pct.1", "Fraction cells expressing gene in condition 1"),
+                         c("pct.2", "Fraction cells expressing gene in condition 2"),
+                         c("condition1", "Average normalized expression in condition 1"),
+                         c("condition2", "Average normalized expression in condition 2"),
+                         c("cluster", "Cluster (not always applicable)"),
+                         c("...", "Additional annotation (if provided)"))
+    if (!is.null(additional_readme)) readme_table = dplyr::bind_rows(readme_table, additional_readme)
+    degs_lst = c(list("README"=readme_table), degs_lst)
+    
+    # Fix names that are more than 31bp (which is too long for Excel)
+    names(degs_lst) = strtrim(names(degs_lst), 31)
+    
+    # Output in Excel sheet
+    openxlsx::write.xlsx(degs_lst, file=file)
+    return(file)
 }
 
 #' Plot the number of DEGs per test.
