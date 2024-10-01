@@ -93,9 +93,6 @@ params:
   
   # Run over-representation analysis (ORA) for DEG results: True, false or a list with contrast names
   run_deg_ora: true
-  
-  # Run gene set enrichment analysis (GSEA): True, false or a list with contrast names
-  run_gsea: true
     
 # Module execution
 execute:
@@ -343,6 +340,37 @@ gt::gt(deg_summary_table) %>%
     gt::sub_missing(columns = 1:ncol(deg_summary_table),
     missing_text = ""
   )
+```
+
+```{r}
+#| label: deg_analysis_generate_reports
+#| results: asis
+#| eval: !expr have_deg_comparisons
+#| include: !expr have_deg_comparisons
+
+# Generate report sections for each DEG comparison
+if (have_deg_comparisons) {
+    for(i in seq(deg_results_list)) {
+        result = deg_results_list[[i]]
+        DegsGenerateReport(result, i)
+    }
+    
+    # Set up layout and automatically generate chunks
+    chunk_template = "
+\`\`\`{r}
+
+### {{name}}
+
+#| label: fig-cluster_annotation_known_list{{i}}_{{gene_patched}}
+#| fig-cap: {{gene}}
+#| echo: false
+#| fig-width: 4
+#| fig-height: 3
+
+plist[['{{gene}}']]
+\`\`\`
+"
+}
 ```
 
 ## Software
