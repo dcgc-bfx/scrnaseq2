@@ -62,7 +62,7 @@ params:
     - "pERCC_RNA"
     - "pXIST_RNA"
     - "pChrY_RNA"
-    - "scrublet_doublet_scores"
+    - "doublet_scores"
     use_sketching: false
 
   modules:
