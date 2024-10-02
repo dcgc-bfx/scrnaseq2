@@ -67,7 +67,7 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
                 if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
                 totals = Matrix::rowSums(counts)
                 
-                row_lst = split(as.integer(counts@x)*(-1), counts@i) ## rows to list
+                row_lst = split(as.er(counts@x)*(-1), counts@i) ## rows to list
                 row_lst = lapply(row_lst, function(x) return(sort(x)*(-1)))
                 
                 top_n_cts = lapply(top_n, function(n) {
@@ -767,7 +767,7 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   # Checks
   valid_integration_methods = c("CCAIntegration", "RPCAIntegration", "HarmonyIntegration", "FastMNNIntegration", "scVIIntegration")
   assertthat::assert_that(integration_method %in% valid_integration_methods,
-                          msg=FormatString("Variable features method must must be one of: {valid_integration_methods*}."))
+                          msg=FormatString("Integration method method must be one of: {valid_integration_methods*}."))
   
   assertthat::assert_that(orig_reduct %in% SeuratObject::Reductions(sc),
                           msg=FormatString("Original reduction {orig_reduct} is not part of the Seurat object."))
