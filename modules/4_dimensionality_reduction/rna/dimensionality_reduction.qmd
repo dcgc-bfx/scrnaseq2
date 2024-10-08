@@ -483,6 +483,22 @@ if (!grepl(pattern="_SCT", x=default_assay)) {
   if (length(layer_counts) == 1) SeuratObject::LayerData(sc, layer=layer_counts) = NULL
   if (length(layer_data) == 1) SeuratObject::LayerData(sc, layer=layer_data) = NULL
 }
+
+# If SCTransform was run:
+# - SCTransform analyses each dataset separately thereby creating models that are used to correct the dataset.
+# - In the SCT assay, counts and data are still only corrected within the datasets but not between the datasets.
+#   Counts and data are only valid if all datasets have the same sequencing depth.
+# - If not, PrepSCTFindMarkers needs to be run which does a joint normalization using a geometric mean (similar to DESeq2).
+# - https://github.com/dcgc-bfx/scrnaseq2/issues/37 and https://github.com/satijalab/seurat/issues/6675
+if (grepl(pattern="_SCT", x=default_assay)) {
+    sc = PrepSCTFindMarkers(sc, assay=default_assay, verbose=verbose)
+    
+    # If sketching was used, also apply to sketch
+    if (use_sketching) {
+        sketched_assay_name = paste(Seurat::DefaultAssay(sc), "sketch", sep=".")
+        sc = PrepSCTFindMarkers(sc, assay=sketched_assay_name, verbose=verbose)
+    }
+}
 ```
 
 ```{r}
@@ -499,7 +515,8 @@ reductions = dplyr::case_match(integration_methods,
                                    "RPCAIntegration" ~ "rpca",
                                    "HarmonyIntegration" ~ "harmony",
                                    "FastMNNIntegration" ~ "mnn",
-                                   "scVIIntegration" ~ "scvii")
+                                   "scVIIntegration" ~ "scvii",
+                               TRUE ~ "NA")
 
 plist = purrr::map(reductions, function(method) {
   title = SeuratObject::Misc(sc[[method]], slot="title")
@@ -559,6 +576,7 @@ cat(":::\n")
 #| label: dimensionality_reduction_rna_save_reduction
 #| results: asis
 
+# Default reduction
 default_reduct = DefaultReduct(sc)
 reduct = sc[[default_reduct]]@cell.embeddings %>% as.data.frame()
 
