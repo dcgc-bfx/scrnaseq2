@@ -278,7 +278,8 @@ CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
   }
   
   colnames(boxplot_stats) = c("min", "q25", "q50", "q75", "max")
-  boxplot_stats$IQR = boxplot_stats$q75 - boxplot_stats$q25
+  iqr = boxplot_stats$q75 - boxplot_stats$q25
+  boxplot_stats$IQR = ifelse(is.na(iqr), 0, iqr)
   
   boxplot_stats$lower_whisker = purrr::pmap_dbl(boxplot_stats, function(min, q50, IQR, ...) {
     if (IQR>0) {
