@@ -1227,7 +1227,7 @@ if (!is.na(idx)) {
   CalloutBox(x="Could not find 'MKI67' or its orthologue in the data!", type="warning")
 }
 
-idx = match("PCNA", names(seurat_g2m_genes))
+idx = match("PCNA", names(seurat_s_genes))
 if (!is.na(idx)) {
   pcna = seurat_s_genes[[idx[1]]]
 } else {
