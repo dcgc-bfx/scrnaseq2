@@ -1302,7 +1302,8 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
                                   key = 'fov_')
   
   # Add information about cell_area and nucleus_area as barcode_metadata
-  barcode_metadata = as.data.frame(cell_centroids[, c("cell", "cell_area", "nucleus_area")])
+  barcode_metadata = as.data.frame(cell_centroids[, c("cell", "cell_area", "nucleus_area")]) %>%
+    tidyr::replace_na(list(cell_area=0, nucleus_area=0))
   rownames(barcode_metadata) = as.character(barcode_metadata$cell)
   barcode_metadata$cell = NULL
   attr(image, "barcode_metadata") = barcode_metadata
