@@ -16,7 +16,7 @@ params:
   default_assay: null
 
   # QC measures to look at 
-  qc_features:
+  barcode_qc:
   - "nCount_RNA"
   - "nFeature_RNA"
   - "pMito_RNA"
@@ -145,23 +145,23 @@ Do cells in individual clusters have particularly high counts, detected genes or
 #| results: asis
 
 # QC features to plot
-qc_features = param("barcode_qc")
-f = qc_features %in% colnames(sc[[]])
+barcode_qc = param("barcode_qc")
+f = barcode_qc %in% colnames(sc[[]])
 if (!all(f)) {
-  CalloutBox(x="Cannot find QC {qc_features[!f]*} in barcode metadata.", type="warning")
-  qc_features = qc_features[f]
+  CalloutBox(x="Cannot find QC {barcode_qc[!f]*} in barcode metadata.", type="warning")
+  barcode_qc = barcode_qc[f]
 }
 
 # Don't plot QC if there aren't any features to plot
-if (length(qc_features) > 0) {
+if (length(barcode_qc) > 0) {
     
   # If there are more than 25 cluster, plots need to be optimised so that they are not too crowded
   optimise_plots = levels(sc$seurat_clusters) %>% length() >= 25
 
   # Left: QC on UMAP
-  plist1 = Seurat::FeaturePlot(sc, features=qc_features, combine=FALSE, order=TRUE)
+  plist1 = Seurat::FeaturePlot(sc, features=barcode_qc, combine=FALSE, order=TRUE)
   for (i in seq(plist1)) {
-    q = qc_features[i]
+    q = barcode_qc[i]
     
     plist1[[i]] = plist1[[i]] + 
         AddPlotStyle(title=q, xlab="", ylab="") +
@@ -169,10 +169,10 @@ if (length(qc_features) > 0) {
         theme(legend.key.width = unit(0.01, "npc"), legend.position=ifelse(optimise_plots, "none", "right"))
     plist1[[i]] = Seurat::LabelClusters(plist1[[i]], id="ident", box=TRUE, fill="white", label.padding=unit(0.05, "lines"))
   }
-  names(plist1) = qc_features
+  names(plist1) = barcode_qc
   
   # Right: QC as violin plots
-  plist2 = lapply(qc_features, function(x) {
+  plist2 = lapply(barcode_qc, function(x) {
     p = ggplot(sc[[]] %>% dplyr::select(seurat_clusters, qc=x), 
                aes(x=seurat_clusters, y=qc, fill=seurat_clusters, group=seurat_clusters)) + 
       geom_violin(scale="width", linewidth=ifelse(optimise_plots, 0.1, 0.5)) + 
@@ -182,15 +182,15 @@ if (length(qc_features) > 0) {
       theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))
     return(p)
   })
-  names(plist2) = qc_features
+  names(plist2) = barcode_qc
   
   # Combine both plots with the patchwork library
-  plist = lapply(qc_features, function(x) {
+  plist = lapply(barcode_qc, function(x) {
     p = plist1[[x]] + plist2[[x]]
     return(p)
   })
-  captions = GeneratePlotCaptions(qc_features, assay_names=SeuratObject::Assays(sc), capitalize=TRUE)
-  names(plist) = names(captions) = qc_features
+  captions = GeneratePlotCaptions(barcode_qc, assay_names=SeuratObject::Assays(sc), capitalize=TRUE)
+  names(plist) = names(captions) = barcode_qc
   
   # Set up layout and automatically generate chunks
   chunk_template = "
@@ -207,7 +207,7 @@ plist[['{{type}}']]
   
   cat("::: panel-tabset\n")
   
-  for (x in qc_features) {
+  for (x in barcode_qc) {
     chunk_filled =  knitr::knit_expand(text=chunk_template, type=x, caption=captions[x])
     if(interactive()) {
       print(EvalKnitrChunk(chunk_filled))
