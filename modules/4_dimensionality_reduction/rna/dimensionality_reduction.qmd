@@ -361,7 +361,6 @@ The top PC captures the greatest variance across cells and each subsequent PC re
 dim_n_compute = param("dim_n_compute")
 dim_n = param("dim_n")
 
-
 # Plot the variance explained for the computed components
 p = Seurat::ElbowPlot(sc, reduction=DefaultReduct(sc), ndims=min(dim_n_compute, ncol(sc))) + 
   geom_vline(xintercept=dim_n + .5, col="firebrick", lty=2) + 
