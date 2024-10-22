@@ -42,12 +42,12 @@ params:
   general:
 
     # General
-    project_id: "nobfx"
+    project_id: "project"
     species: "homo_sapiens"
     ensembl: 104
 
     # Technical
-    verbose: true
+    verbose: false
     on_disk_counts: false
     on_disk_use_tmp: false
     cores: 8
@@ -62,7 +62,7 @@ params:
     - "pERCC_RNA"
     - "pXIST_RNA"
     - "pChrY_RNA"
-    - "scrublet_doublet_scores"
+    - "doublet_scores"
     use_sketching: false
 
   modules:
@@ -84,7 +84,9 @@ params:
       barcode_qc_cor:
       - "nFeature_RNA nCount_RNA"
       - "nFeature_RNA pMito_RNA"
-      barcode_filter: null
+      barcode_filter: !expr list(
+          nFeature_RNA=c(200, NA), 
+          percent_mt=c(0, 50))
       feature_filter: !expr list(
         min_counts = 1,
         min_cells = 3)

@@ -1135,8 +1135,8 @@ sc = CCScoring(sc, genes_s=unname(seurat_s_genes), genes_g2m=unname(seurat_g2m_g
 
 # Warn if there not enough genes for cell cycle scoring
 if (length(seurat_s_genes) < 20 | length(seurat_g2m_genes) < 20) {
-  CalloutBox(x="Cannot not find enough known S or G2M phase genes to be used cell cycle scoring. Phases and scores will be NA!", type="warning")
-  have_cell_cycle_scores = FALSE
+    CalloutBox(x="Cannot not find enough known S or G2M phase genes to be used cell cycle scoring. Phases and scores will be NA!", type="warning")
+    have_cell_cycle_scores = FALSE
 } else {
     have_cell_cycle_scores = TRUE
 }
@@ -1217,8 +1217,8 @@ Alternatively, the expression of MKI67 (a common G2M phase marker) and PCNA (a c
 #| label: qc_filtering_rna_cell_cycle_mki67_pcna
 #| results: asis
 
-# Get rownames for MKI67 (G2M phase) and PCNA (S phase)
-# Note: we use the human symbols that - in case of another species - get mapped to the orthologues
+# Get symbol for MKI67 (G2M phase) and PCNA (S phase) from the gene lists for cell cycle
+# Note: the names of the list values correspond to the human gene symbols and the values to the species-specific gene symbols
 idx = match("MKI67", names(seurat_g2m_genes))
 if (!is.na(idx)) {
   mki67 = seurat_g2m_genes[[idx[1]]]
