@@ -964,7 +964,6 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
   #barcode_suffix=NULL
   #on_disk_overwrite=TRUE
   
-  
   # Checks
   valid_technologies = c("smartseq2", "smartseq3", "10x", "10x_visium", "10x_xenium", "parse", "scale")
   assertthat::assert_that(technology %in% valid_technologies,
@@ -1058,8 +1057,12 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
   
   # Make feature names Seurat-compatible (replace '_' with '-') and unique
   for(i in seq_along(counts_lst)) {
-    assay = names(counts_lst)[i]
-    metadata = attr(counts_lst[[i]], "feature_metadata")
+    # Get attributes
+    barcode_metadata = attr(counts_lst[[i]], "barcode_metadata")
+    feature_metadata = attr(counts_lst[[i]], "feature_metadata")
+    assay = attr(counts_lst[[i]], "assay")
+    technology = attr(counts_lst[[i]], "technology")
+    
     
     feature_names = rownames(counts_lst[[i]])
     if (any(grepl(pattern="_", x=feature_names, fixed=TRUE))) {
@@ -1072,20 +1075,35 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
     }
     
     rownames(counts_lst[[i]]) = feature_names
-    rownames(metadata) = feature_names
-    attr(counts_lst[[i]], "feature_metadata") = metadata
+    rownames(feature_metadata) = feature_names
+    
+    # Restore attributes (when modifying the object they get erased)
+    attr(counts_lst[[i]], "barcode_metadata") = barcode_metadata
+    attr(counts_lst[[i]], "feature_metadata") = feature_metadata
+    attr(counts_lst[[i]], "assay") = assay
+    attr(counts_lst[[i]], "technology") = technology
   }
 
   # Add barcode suffix
   if (!is.null(barcode_suffix)) {
     for(i in seq_along(counts_lst)) {
+      # Get attributes
+      barcode_metadata = attr(counts_lst[[i]], "barcode_metadata")
+      feature_metadata = attr(counts_lst[[i]], "feature_metadata")
+      assay = attr(counts_lst[[i]], "assay")
+      technology = attr(counts_lst[[i]], "technology")
+      
       # Counts
       colnames(counts_lst[[i]]) = paste0(colnames(counts_lst[[i]]), barcode_suffix)
       
       # Metadata
-      barcode_metadata = attr(counts_lst[[i]], "barcode_metadata")
       rownames(barcode_metadata) = paste0(rownames(barcode_metadata), barcode_suffix)
+      
+      # Restore attributes (when modifying the object they get erased)
       attr(counts_lst[[i]], "barcode_metadata") = barcode_metadata
+      attr(counts_lst[[i]], "feature_metadata") = feature_metadata
+      attr(counts_lst[[i]], "assay") = assay
+      attr(counts_lst[[i]], "technology") = technology
     }
   }
   
@@ -1230,9 +1248,7 @@ CreateSegmentationImproved = function(coords) {
 #' @param barcodes If not NULL, character vector of barcodes to subset.
 #' @param coordinate_type Load cell "centroids", cell "segmentations" or both (default).
 #' @return A Seurat FOV object.
-ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("centroids", "segmentations")) {
-  library(data.table)
-  
+ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("centroids", "segmentation")) {
   # Checks
   assertthat::is.readable(image_dir)
   assertthat::assert_that(file.exists(file.path(image_dir, "cells.csv.gz")),
@@ -1247,15 +1263,25 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
   coords = list()
   
   # Read cell centroids and cell area
-  cell_centroids = data.table::fread(file.path(image_dir, "cells.csv.gz"), 
-                                     stringsAsFactors=FALSE, 
-                                     select=c("cell_id", "x_centroid", "y_centroid", "cell_area", "nucleus_area"),
-                                     colClasses=c("cell_id"="character", "x_centroid"="numeric", "y_centroid"="numeric", "cell_area"="numeric", "nucleus_area"="numeric"),
-                                     col.names=c("cell", "x", "y", "cell_area", "nucleus_area"), 
-                                     key="cell",
-                                     showProgress=FALSE)
+  cell_centroids = arrow::read_parquet(file.path(image_dir, "cells.parquet"),
+                                       col_select=c("cell_id", "x_centroid", "y_centroid", "cell_area", "nucleus_area"),
+                                       as_data_frame=TRUE)
+  names(cell_centroids) = c("cell", "x", "y", "cell_area", "nucleus_area")
+  
   if (!is.null(barcodes)) {
-    cell_centroids = cell_centroids[barcodes]
+    # Keep only barcodes that are requested
+    i = which(cell_centroids$cell %in% names(barcodes))
+    cell_centroids = cell_centroids[i, ]
+    
+    # Reorder barcodes
+    i = match(cell_centroids$cell, names(barcodes))
+    cell_centroids = cell_centroids[i, ]
+    
+    assertthat::assert_that(all(cell_centroids$cell == names(barcodes)),
+                            msg=FormatString("Barcodes for cell centroids do not match the requested barcodes."))
+    
+    # Rename
+    cell_centroids$cell = barcodes
   }
   
   if ("centroids" %in% coordinate_type) {
@@ -1263,31 +1289,39 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
   }
   
   # Read segmentations (area of cells)
-  if ("segmentations" %in% coordinate_type) {
-    cell_boundaries = data.table::fread(file.path(image_dir, "cell_boundaries.csv.gz"), 
-                                        stringsAsFactors=FALSE,
-                                        select=c("cell_id", "vertex_x", "vertex_y"),
-                                        colClasses=c("cell_id"="character", "vertex_x"="numeric", "vertex_y"="numeric"),
-                                        col.names=c("cell", "x", "y"),
-                                        key="cell",
-                                        showProgress=FALSE)
+  if ("segmentation" %in% coordinate_type) {
+    cell_boundaries = arrow::read_parquet(file.path(image_dir, "cell_boundaries.parquet"),
+                                         col_select=c("cell_id", "vertex_x", "vertex_y"),
+                                         as_data_frame=TRUE)
+    names(cell_boundaries) = c("cell", "x", "y")
+    
     if (!is.null(barcodes)) {
-      cell_boundaries = cell_boundaries[barcodes]
+      # Keep only barcodes that are requested
+      i = which(cell_boundaries$cell %in% names(barcodes))
+      cell_boundaries = cell_boundaries[i, ]
+      
+      # Reorder barcodes
+      i = match(cell_boundaries$cell, names(barcodes))
+      cell_boundaries = cell_boundaries[i, ]
+      
+      # Rename
+      new = barcodes[cell_boundaries$cell]
+      assertthat::assert_that(all(!is.na(new)),
+                              msg=FormatString("Barcodes for cell centroids do not match the requested barcodes."))
+      
+      cell_boundaries$cell = new
     }
     coords = c(coords, segmentation = CreateSegmentationImproved(cell_boundaries))
   }
   
-  
   # Load microns (molecule coordinates)
-  transcripts = data.table::fread(file.path(image_dir, "transcripts.csv.gz"), 
-                                  stringsAsFactors=FALSE, 
-                                  select=c("feature_name", "x_location", "y_location", "qv"),
-                                  colClasses=c("feature_name"="character", "x_location"="numeric", "y_location"="numeric", "qv"="numeric"),
-                                  col.names=c("gene", "x", "y", "qv"),
-                                  key="qv",
-                                  showProgress=FALSE)
-  transcripts = transcripts[qv >= mols.qv.threshold]
-  transcripts$qv = NULL
+  transcripts = arrow::read_parquet(file.path(image_dir, "transcripts.parquet"),
+                                   col_select=c("feature_name", "x_location", "y_location", "qv"),
+                                   as_data_frame=TRUE)
+  colnames(transcripts) = c("gene", "x", "y", "qv")
+  
+  i = which(transcripts$qv >= mols.qv.threshold)
+  transcripts = transcripts[i, c("gene", "x", "y")]
   molecules = SeuratObject::CreateMolecules(transcripts, key='mols_')
   
   # Create FOV (coordinates plus transcript info)
@@ -1302,6 +1336,9 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
   barcode_metadata$cell = NULL
   attr(image, "barcode_metadata") = barcode_metadata
   
+  # Set default boundary
+  SeuratObject::DefaultBoundary(image) = coordinate_type[1]
+  
   return(image)
 }
 
@@ -1313,7 +1350,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
 #' @param barcodes Named vector with barcodes to keep, order and rename. Names are original barcodes and values are barcodes after renaming. Barcodes will be re-ordered.
 #' @param coordinate_type For 10x Xenium only: Load cell "centroids", cell "segmentations" or both (default).
 #' @return A Seurat VisiumV1 object.
-ReadImage = function(image_dir, technology, assay, barcodes=NULL, coordinate_type=c("centroids", "segmentations")) {
+ReadImage = function(image_dir, technology, assay, barcodes, coordinate_type=c("centroids", "segmentations")) {
   library(magrittr)
   
   # Checks
@@ -1339,18 +1376,7 @@ ReadImage = function(image_dir, technology, assay, barcodes=NULL, coordinate_typ
 
   } else if(technology == "10x_xenium") {
     # Xenium
-    image = ReadImage_10xXenium(image_dir=image_dir, barcodes=names(barcodes), coordinate_type=coordinate_type)
-    
-    # Subset and re-order image and metadata
-    image = image[names(barcodes) %>% as.character()]
-    barcode_metadata = attr(image, "barcode_metadata")
-    barcode_metadata = barcode_metadata[names(barcodes),]
-
-    # Rename
-    new_barcode_names = barcodes[Seurat::Cells(image) %>% as.character()]
-    image = Seurat::RenameCells(image, new.names=new_barcode_names %>% as.character())
-    rownames(barcode_metadata) = new_barcode_names
-    attr(image, "barcode_metadata") = barcode_metadata
+    image = ReadImage_10xXenium(image_dir=image_dir, barcodes=barcodes, coordinate_type=coordinate_type)
   }
   
   # Set default assay for image
@@ -1538,130 +1564,14 @@ ParsePlateInformation = function(cell_names, pattern='_(\\d+)_([A-Z])(\\d+)$') {
   return(plate_information)
 }
 
-####################################################################################
-# This is a copy of the SeuratObject::SaveSeuratRds with the following bugs fixed: #
-# - matrices consisting of multiple paths (submatrices) cannot be copied           #
-####################################################################################
-SaveSeuratRds_Fixed <- function (object, file = NULL, move = TRUE, destdir = deprecated(), relative = FALSE, ...) 
-{
-  library(lifecycle)
-  library(progressr)
-  library(rlang)
-  
-  file <- file %||% file.path(getwd(), paste0(Project(object = object), 
-                                              ".Rds"))
-  file <- normalizePath(path = file, winslash = "/", mustWork = FALSE)
-  if (is_present(arg = destdir)) {
-    .Deprecate(when = "5.0.1", what = "SaveSeuratRds(destdir = )", 
-               with = "SaveSeuratRds(move = )", details = paste("Specifying a directory to move on-disk layers stored in", 
-                                                                sQuote(x = normalizePath(path = tempdir(), winslash = "/", 
-                                                                                         mustWork = FALSE)), "is deprecated; now, specify `move = TRUE` either move all on-disk layers to", 
-                                                                sQuote(x = dirname(path = file)), "or `move = FALSE` leave them as-is"))
-    move <- is_bare_character(x = destdir, n = 1L) || is.null(x = destdir)
-  }
-  assays <- .FilterObjects(object = object, classes.keep = "StdAssay")
-  p <- progressor(along = assays, auto_finish = TRUE)
-  on.exit(expr = p(type = "finish"), add = TRUE)
-  p(message = paste("Running a bug-fixed version of SaveSeuratRds\nLooking for on-disk matrices in", length(x = assays), 
-                    "assays"), class = "sticky", amount = 0)
-  cache <- vector(mode = "list", length = length(x = assays))
-  names(x = cache) <- assays
-  destdir <- dirname(path = file)
-  if (isTRUE(x = move)) {
-    check_installed(pkg = "fs", reason = "for moving on-disk matrices")
-  }
-  for (assay in assays) {
-    p(message = paste("Searching through assay", assay),
-      class = "sticky", amount = 0)
-    df <- lapply(X = Layers(object = object[[assay]]), FUN = function(lyr) {
-      ldat <- LayerData(object = object[[assay]], layer = lyr)
-      path <- .FilePath(x = ldat)
-      path <- Filter(f = nzchar, x = path)
-      if (!length(x = path)) {
-        path <- NULL
-      }
-      if (is.null(x = path)) {
-        return(NULL)
-      }
-      return(data.frame(layer = lyr, path = path, class = paste(class(x = ldat), 
-                                                                collapse = ","), pkg = .ClassPkg(object = ldat), 
-                        fxn = .DiskLoad(x = ldat) %||% identity))
-    })
-    df <- do.call(what = "rbind", args = df)
-    if (is.null(x = df) || !nrow(x = df)) {
-      p(message = "No on-disk layers found", class = "sticky",
-        amount = 0)
-      next
-    }
-    if (isTRUE(x = move)) {
-      for (i in seq_len(length.out = nrow(x = df))) {
-        pth <- unlist(strsplit(df$path[i], ","))
-        p(message = paste("Moving layer", sQuote(x = df$layer[i]),
-                          "to", sQuote(x = destdir)), class = "sticky",
-          amount = 0)
-        new_pth <- lapply(pth, function(p) {
-          np <- as.character(.FileMove(path = p, new_path = destdir))
-          if (p == np) np <- file.path(destdir, basename(p))
-          return(np)
-        })
-        new_pth <- paste(unlist(new_pth), collapse=",")
-        df[i, "path"] <- new_pth
-      }
-    }
-    if (isTRUE(x = relative)) {
-      p(message = paste("Adjusting paths to be relative to",
-                        sQuote(x = dirname(path = file), q = FALSE)),
-        class = "sticky", amount = 0)
-      
-      for (i in seq_len(length.out = nrow(x = df))) {
-        pth <- unlist(strsplit(df$path[i], ","))
-        new_pth <- lapply(pth, function(p) return(fs::path_rel(path = p, start = dirname(path = file))))
-        df$path[i] <- paste(unlist(new_pth), collapse=",")
-      }
-    }
-    df$assay <- assay
-    cache[[assay]] <- df
-    if (nrow(x = df) == length(x = Layers(object = object[[assay]]))) {
-      p(message = paste("Clearing layers from", assay),
-        class = "sticky", amount = 0)
-      adata <- S4ToList(object = object[[assay]])
-      adata$layers <- list()
-      adata$default <- 0L
-      adata$cells <- LogMap(y = colnames(x = object[[assay]]))
-      adata$features <- LogMap(y = rownames(x = object[[assay]]))
-      object[[assay]] <- ListToS4(x = adata)
-    } else {
-      p(message = paste("Clearing", nrow(x = df), "layers from",
-                        assay), class = "sticky", amount = 0)
-      for (layer in df$layer) {
-        LayerData(object = object[[assay]], layer = layer) <- NULL
-      }
-    }
-    p()
-  }
-  cache <- do.call(what = "rbind", args = cache)
-  if (!is.null(x = cache) && nrow(x = cache)) {
-    p(message = "Saving on-disk cache to object", class = "sticky", 
-      amount = 0)
-    row.names(x = cache) <- NULL
-    #Tool(object = object) <- cache
-    object@tools$SaveSeuratRds <- cache
-  }
-  saveRDS(object = object, file = file, ...)
-  return(invisible(x = file))
-}
-####################################################################################
-####################################################################################
-
-#' Saves Seurat object and - if available and requested - associated on-disk layers. Extension of Seurat's SaveSeuratRds.
+#' Saves Seurat object and - if available and requested - associated on-disk layers. Improved version of Seurat's SaveSeuratRds.
 #' 
 #' @param sc A Seurat sc object.
 #' @param outdir Output directory for saved Seurat object (sc.rds) and associated on-disk layers. If it does not exist, it will be created.
-#' @param on_disk_layers If TRUE also copy existing on-disk layers into this directory.
-#' @param clean If there are already files/directories in outdir, remove them.
+#' @param copy_disk_data If TRUE also copy existing on-disk layers into this directory.
+#' @param relative_paths Make paths to on-disk layers relative.
 #' @param commpress Whether to compress the Seurat sc.rds file
-#' @param relative Make paths to on-disk layers relative.
-SaveSeuratRdsWrapper = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, relative=FALSE, compress=FALSE) {
+SaveSeuratRdsWrapper = function(sc, outdir, copy_disk_data=TRUE, relative_paths=FALSE, compress=FALSE) {
   # If output directory does not exist, create it
   if (!dir.exists(outdir)) dir.create(outdir, recursive=TRUE)
   
@@ -1670,17 +1580,156 @@ SaveSeuratRdsWrapper = function(sc, outdir, on_disk_layers=TRUE, clean=FALSE, re
   assertthat::assert_that(length(files) == 0,
                           msg=FormatString("Target directory for Seurat object and associated matrix directories at {outdir} must be empty but is not. Please delete all files and directories in this directory."))
   
-  # Save Seurat object and on-disk data using the SeuratObject function SaveSeuratRds
-  SeuratObject::SaveSeuratRds(sc, file=file.path(outdir, "sc.rds"), move=on_disk_layers, relative=relative, compress=compress)
+  # Name of seurat object
+  file = file.path(outdir, "sc.rds")
+  file = normalizePath(path=file, winslash="/", mustWork=FALSE)
+  
+  # Check that the fs package is installed for file moving (in case there are on-disk matrices)
+  assertthat::assert_that(require("fs"), msg=FormatString("The package 'fs' is required to move on-disk matrices. Please install it."))
+  
+  # Assays
+  assays = SeuratObject::.FilterObjects(sc, classes.keep="StdAssay")
+  
+  # Progressor
+  p = progressr::progressor(along=assays, auto_finish=TRUE)
+  on.exit(expr=p(type="finish"), add=TRUE)
+  p(message=FormatString("Looking for on-disk matrices in {length(assays)} assays", quote=FALSE), class="sticky", amount=0)
+  
+  # Set up table with on-disk matrix information
+  cache = vector(mode="list", length=length(assays))
+  names(cache) = assays
+  destdir = dirname(file)
+  
+  # This contains information already existing in the Seurat object
+  save_seurat_rds = SeuratObject::Tool(sc, "SaveSeuratRds")
+  
+  # Loop over assays
+  for (assay in assays) {
+    p(message = FormatString("Searching through assay {assay}"), class="sticky", amount=0)
+    
+    # Loop over layers and collect information required for on-disk matrices
+    layer_disk_info = purrr::map_dfr(SeuratObject::Layers(sc[[assay]]), function(layer) {
+      layer_data = SeuratObject::LayerData(sc[[assay]], layer=layer)
+      
+      # Get path(s) to on-disk matrix
+      # If copy_disk_data is TRUE, path is collected from the IterableMatrix, else from the Seurat object
+      if (copy_disk_data || is.null(save_seurat_rds)) {
+        layer_disk_paths = SeuratObject::.FilePath(layer_data)
+      } else {
+        i = which(save_seurat_rds$assay == assay & save_seurat_rds$layer == layer)
+        if (length(i) == 0) {
+          layer_disk_paths = SeuratObject::.FilePath(layer_data)
+        } else {
+          layer_disk_paths = save_seurat_rds[i, "path"]
+        }
+        
+      }
+      
+      # Empty means no on-disk data and can be skipped
+      layer_disk_paths = Filter(f=nzchar, x=layer_disk_paths)
+      if (!length(layer_disk_paths)) layer_disk_paths = NULL
+      if (is.null(layer_disk_paths)) return(NULL)
+      
+      # Return table with information
+      layer_disk_fxn = SeuratObject::.DiskLoad(layer_data)
+      if (is.null(layer_disk_fxn)) layer_disk_fxn = identity
+      return(data.frame(
+        # Layer name
+        layer=layer,
+        # Path(s) to on-disk matrix
+        path=layer_disk_paths,
+        # Class of on-disk matrix
+        class=paste(class(layer_data), collapse=","),
+        # Package of on-disk matrix
+        pkg=SeuratObject::.ClassPkg(layer_data),
+        # Function to load on-disk matrix
+        fxn=layer_disk_fxn
+      ))
+    })
+    
+    # No on-disk layers found, skip (everything stored in Seurat object)
+    if (is.null(layer_disk_info) || !nrow(layer_disk_info)) {
+      p(message=FormatString("No on-disk layers found"), class="sticky", amount=0)
+      next
+    }
+    
+    # Copy on-disk matrices
+    if (copy_disk_data) {
+      for (i in seq_len(length.out=nrow(layer_disk_info))) {
+        layer = layer_disk_info$layer[i]
+        
+        # A on-disk matrix can consist of multiple data directories
+        layer_disk_paths = unlist(strsplit(layer_disk_info$path[i], ","))
+        
+        p(message=FormatString("Moving layer {layer} to {destdir}"), class="sticky", amount = 0)
+        
+        # Iterate over paths of data directories, copy them and return new paths
+        new_layer_disk_paths = purrr::map(layer_disk_paths, function(p) {
+          # Copy
+          np = as.character(.FileMove(path=p, new_path=destdir))
+          if (p == np) np = file.path(destdir, basename(p))
+          return(np)
+        })
+        new_layer_disk_paths = paste(unlist(new_layer_disk_paths), collapse=",")
+        layer_disk_info[i, "path"] = new_layer_disk_paths
+      }
+    }
+    
+    # If requested, store paths to on-disk matrices relative to Seurat object
+    if (relative_paths) {
+      p(message=FormatString("Adjusting paths to be relative to {dirname(file)}"), class="sticky", amount=0)
+      
+      for (i in seq_len(length.out=nrow(layer_disk_info))) {
+        layer_disk_paths = unlist(strsplit(layer_disk_info$path[i], ","))
+        new_layer_disk_paths = purrr::map(layer_disk_paths, function(p) {
+          return(fs::path_rel(path=p, start=dirname(path=file)))
+        })
+      }
+    }
+    
+    # Add to cache information
+    layer_disk_info$assay = assay
+    cache[[assay]] = layer_disk_info
+    
+    if (nrow(layer_disk_info) == length(SeuratObject::Layers(sc[[assay]]))) {
+      p(message = FormatString("Clearing layers from {assay}"), class="sticky", amount=0)
+      adata = SeuratObject::S4ToList(sc[[assay]])
+      adata$layers = list()
+      adata$default = 0L
+      adata$cells = SeuratObject::LogMap(colnames(sc[[assay]]))
+      adata$features = SeuratObject::LogMap(rownames(sc[[assay]]))
+      sc[[assay]] = SeuratObject::ListToS4(adata)
+    } else {
+      p(message = FormatString("Clearing layers from {assay}"), class="sticky", amount=0)
+      for (layer in layer_disk_info$layer) {
+        SeuratObject::LayerData(sc[[assay]], layer=layer) = NULL
+      }
+    }
+    p()
+  }
+  
+  # Update table with on-disk matrix information in Seurat object
+  cache = do.call("rbind", cache)
+  if (!is.null(cache) && nrow(cache)) {
+    p(message=FormatString("Saving on-disk cache to object"), class="sticky", amount=0)
+    row.names(cache) = NULL
+    #SeuratObject::Tool(sc) = cache
+    sc@tools$SaveSeuratRds = cache
+  }
+  
+  saveRDS(sc, file=file, compress=compress)
 }
 
 #' Copies on-disk layers of a Seurat object to a new directory.
+#' 
+#' Note: This will copy the data and adjust the paths for the IterableMatrix objects in an existing Seurat object. To make changes permanent, you will also need to update the Tool entry SaveSeuratRds.
 #' 
 #' @param sc A Seurat sc object.
 #' @param dir New directory for on-disk layers.
 #' @param assays For which assays should on-disk layers be copied. If NULL, copy all.
 #' @param layer For which layers should on-disk layers be copied. If NULL, copy all. Can also be a pattern.
-UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL) {
+#' @return Seurat object with updated on-disk layer paths.
+UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL, update_tool_saveseuratrds=FALSE) {
   # New directory for on-disk matrices
   dir = normalizePath(path=dir, winslash="/", mustWork=FALSE)
   if (is.null(assays)) assays = SeuratObject::Assays(sc)
@@ -1739,11 +1788,6 @@ UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL) {
     }
   }
   progr(type='finish')
-  
-  # Store information about on-disk matrices
-  if (!is.null(cache)) {
-    sc@tools$SaveSeuratRds = cache
-  }
   
   return(sc)
 }
