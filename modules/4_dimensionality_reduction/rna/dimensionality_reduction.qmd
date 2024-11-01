@@ -133,24 +133,24 @@ if(!file.exists(prev_sc_obj)) {
 }
 sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
 
-# Move on-disk layers to faster temp location if requested
-on_disk_counts = param("on_disk_counts")
-on_disk_use_tmp = param("on_disk_use_tmp")
-
-if (on_disk_counts & on_disk_use_tmp) {
-  on_disk_path = tempdir()
-  with_progress({
-    sc = UpdateMatrixDirs(sc, dir=on_disk_path)
-  }, enable=verbose)
-} else {
-  on_disk_path = file.path(module_dir, "sc")
-}
-
 # Set default assay standard
 default_assay = param("default_assay")
 if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
 Seurat::DefaultAssay(sc) = default_assay
 
+# ON-DISK LAYERS (if used)
+on_disk_counts = param("on_disk_counts")
+
+# If requested, move on-disk layers to faster temp location for faster access
+on_disk_use_tmp = param("on_disk_use_tmp")
+if (on_disk_counts & on_disk_use_tmp) {
+  on_disk_path = tempdir()
+  with_progress({
+    sc = UpdateMatrixDirs(sc, dir=on_disk_path)
+  }, enable=verbose)
+}
+
+# CHECKS
 # If sketching should be used, check for the sketch assay and then set as default
 use_sketching = param("use_sketching")
 if (use_sketching) {
@@ -476,12 +476,30 @@ if (length(integration_methods) > 0 & num_datasets > 1) {
 # Join layers if not SCT (SCT does not use layers)
 # Dataset layers are automatically dropped unless there is only one dataset (in which case we need to do it)
 if (!grepl(pattern="_SCT", x=default_assay)) {
-  layer_counts = SeuratObject::Layers(sc, search="counts")
-  layer_data = SeuratObject::Layers(sc, search="data")
+  # Existing layers
+  layer_counts = SeuratObject::Layers(sc, assay=default_assay, search="counts")
+  layer_data = SeuratObject::Layers(sc, assay=default_assay, search="data")
   
-  sc = SeuratObject::JoinLayers(sc)
-  if (length(layer_counts) == 1) SeuratObject::LayerData(sc, layer=layer_counts) = NULL
-  if (length(layer_data) == 1) SeuratObject::LayerData(sc, layer=layer_data) = NULL
+  # Join and set new default
+  sc = SeuratObject::JoinLayers(sc, assay=default_assay)
+  SeuratObject::DefaultLayer(sc[[default_assay]]) = "counts"
+    
+  # Remove old layers
+  if (length(layer_counts) == 1) SeuratObject::LayerData(sc, , assay=default_assay, layer=layer_counts) = NULL
+  if (length(layer_data) == 1) SeuratObject::LayerData(sc, , assay=default_assay, layer=layer_data) = NULL
+  
+  
+  # If sketching was used, also join layers of the sketched dataset (which is until now default)
+  if (use_sketching) {
+    layer_counts = SeuratObject::Layers(sc, search="counts")
+    layer_data = SeuratObject::Layers(sc, search="data")
+    
+    sc = SeuratObject::JoinLayers(sc)
+    SeuratObject::DefaultLayer(sc[[SeuratObject::DefaultAssay(sc)]]) = "counts"
+    
+    if (length(layer_counts) == 1) SeuratObject::LayerData(sc, layer=layer_counts) = NULL
+    if (length(layer_data) == 1) SeuratObject::LayerData(sc, layer=layer_data) = NULL
+  }
 }
 ```
 
@@ -564,7 +582,7 @@ reduct = sc[[default_reduct]]@cell.embeddings %>% as.data.frame()
 
 # Write default reduction for default assay
 outfile = paste0("reduction_", default_assay, "_", default_reduct , ".xlsx")
-openxlsx::write.xlsx(x=reduct, file=file.path(module_dir, "results", outfile), row.names=TRUE)
+openxlsx::write.xlsx(x=reduct, file=file.path(module_dir, "results", outfile), rowNames=TRUE)
 
 # Note
 CalloutBox("The default reduction {default_reduct} for the default assay {default_assay} is written to {outfile}.", type="note")
@@ -596,16 +614,17 @@ if (use_sketching) {
   SeuratObject::DefaultAssay(sc) = default_assay
 }
 
-# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
-
 # Save Seurat object and layer data
+# Note: counts and normalized data have not been changed in this module, no copying needed
+outdir = file.path(module_dir, "sc")
 with_progress({
   SaveSeuratRdsWrapper(sc,
-                       on_disk_layers=on_disk_counts,
-                       outdir=file.path(module_dir, "sc"))
+                       outdir=outdir,
+                       copy_disk_data=FALSE,
+                       relative_paths=FALSE,
+                       compress=FALSE
+                       )
 }, enable=verbose)
-
 ```
 
 ```{r}

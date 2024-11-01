@@ -42,7 +42,7 @@ params:
   # Filter for barcodes. Set to 'null' to deactivate.
   barcode_filter: !expr list(
     nCount_RNA = c(10, NA),
-    nFeature_RNA = c(10, 10000))
+    nFeature_RNA = c(10, NA))
 
   # Filter for features. Set to 'null' to deactivate.
   feature_filter: !expr list(
@@ -135,21 +135,22 @@ if(!file.exists(prev_sc_obj)) {
 }
 sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
 
-# Move on-disk layers to faster temp location if requested
-on_disk_counts = param("on_disk_counts")
-on_disk_use_tmp = param("on_disk_use_tmp")
+# Set default assay standard
+default_assay = param("default_assay")
+if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
+Seurat::DefaultAssay(sc) = default_assay
 
+# ON-DISK LAYERS (if used)
+on_disk_counts = param("on_disk_counts")
+
+# If requested, move on-disk layers to faster temp location for faster access
+on_disk_use_tmp = param("on_disk_use_tmp")
 if (on_disk_counts & on_disk_use_tmp) {
   on_disk_path = tempdir()
   with_progress({
     sc = UpdateMatrixDirs(sc, dir=on_disk_path)
   }, enable=verbose)
 }
-
-# Set default assay standard
-default_assay = param("default_assay")
-if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
-Seurat::DefaultAssay(sc) = default_assay
 ```
 
 The steps below represent a standard pre-processing workflow for single-cell data, including quality control, the respective filtering of barcodes and features, data normalization and scaling, and the detection of highly variable features.
@@ -1372,14 +1373,16 @@ for(i in seq_along(layers)) {
   SeuratObject::LayerData(sc[[default_assay]], layer=layers[i]) = NULL
 }
 
-# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
-
 # Save Seurat object and layer data
+# Note: counts and normalized data have been changed in this module, copying needed
+outdir = file.path(module_dir, "sc")
 with_progress({
   SaveSeuratRdsWrapper(sc,
-                       on_disk_layers=on_disk_counts,
-                       outdir=file.path(module_dir, "sc"))
+                       outdir=outdir,
+                       copy_disk_data=on_disk_counts,
+                       relative_paths=FALSE,
+                       compress=FALSE
+                       )
 }, enable=verbose)
 ```
 
