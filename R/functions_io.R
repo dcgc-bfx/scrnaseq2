@@ -1791,3 +1791,219 @@ UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL, update_tool_saves
   
   return(sc)
 }
+
+
+#' Exports a Seurat object to a Loupe file.
+#'
+#' @param sc A Seurat object.
+#' @param assays Assays to include in the Loupe file. If NULL, all assays are included.
+#' @param categories Cell metadata columns to include in the Loupe file. If NULL, all non-numeric are included. Numeric columns are always discarded.
+#' @param embeddings Embeddings to include in the Loupe file. If NULL, all embeddings are included.
+#' @param output_dir Directory where the Loupe file will be saved.
+#' @param output_name Name of the Loupe file (cloupe.cloupe).
+ExportLoupe = function(sc, assays=NULL, categories=NULL, embeddings=NULL, output_dir=".", output_name="cloupe.cloupe") {
+  # Setup eula and download executable for loupeR.
+  # Needs to be done only once but cannot be done automatically.
+  louper_status = loupeR:::needs_setup()
+  if (!louper_status$success) stop(louper_status$msg)
+  
+  # Barcode metadata
+  barcode_metadata = sc[[]]
+  
+  # Check and discard numeric columns (Loupe cannot handle them)
+  if (is.null(categories)) categories = colnames(barcode_metadata)
+  assertthat::assert_that(all(categories %in% colnames(barcode_metadata)),
+                          msg=FormatString("Not all requested categories are part of the cell metadata."))
+  categories = purrr::discard(categories, function(c) return(is.numeric(barcode_metadata[, c])))
+  
+  # Check requested assays
+  if (is.null(assays)) assays = SeuratObject::Assays(sc)
+  assertthat::assert_that(all(assays %in% SeuratObject::Assays(sc)),
+                          msg=FormatString("Not all requested assays are part of the Seurat object."))
+  
+  
+  # Get counts of assays(s) and convert to numeric matrix
+  if (length(assays) > 1) {
+    counts = purrr::map(assays, function(a) {
+      cts = SeuratObject::GetAssayData(sc, assay=a, layer="counts")
+      return(as(cts, "dgCMatrix"))
+    })
+    counts = do.call(SparseRbind, counts)
+  } else {
+    cts = SeuratObject::GetAssayData(sc, assay=assays[1], layer="counts")
+    counts = as(cts, "dgCMatrix")
+  }
+  
+  # Replace NA with "NA" in barcode metadata
+  # Convert character columns to factors
+  categorial_data = purrr::map(categories, function(x) {
+    v = barcode_metadata[, x]
+    if (!is.factor(v)) {
+      v = factor(as.character(v))
+    }
+    if (any(is.na(v))) v = forcats::fct_na_value_to_level(v, level="NA")
+    return(v)
+  })
+  names(categorial_data) = categories
+  categorial_data[["active_cluster"]] = Seurat::Idents(sc)
+  
+  # Get embeddings data
+  if (is.null(embeddings)) embeddings = SeuratObject::Reductions(sc)
+  embedding_names = embeddings
+  embeddings = purrr::map(embedding_names, function(r) {
+    return(SeuratObject::Embeddings(sc, r)[,1:2])
+  })
+  names(embeddings) = embedding_names
+  
+  # Seurat object version
+  seurat_obj_version = NULL
+  if (!is.null(sc@version)) seurat_obj_version = as.character(sc@version)
+  
+  # Create Loupe file
+  success = loupeR::create_loupe(counts, 
+                                 clusters=categorial_data,
+                                 projections=embeddings,
+                                 output_dir=output_dir,
+                                 output_name=gsub("\\.cloupe", "", output_name),
+                                 force=TRUE,
+                                 seurat_obj_version=seurat_obj_version)
+}
+
+#' Exports a Seurat object to a Xenium Explorer analysis.zarr.zip file.
+#' 
+#' @param sc A Seurat object.
+#' @param categories Cell metadata columns to include in the Xenium Explorer file. If NULL, all non-numeric are included. Numeric columns are always discarded.
+#' @param output_dir Directory where the Xenium Explorer file will be saved.
+#' @param output_name Name of the Xenium Explorer file (analysis.zarr.zip).
+ExportXeniumExplorer = function(sc, categories=NULL, output_dir=".", output_name="analysis.zar.zip") {
+  
+  # For this function, we need a datasets table in the misc slot (to get all barcodes present in the dataset)
+  assertthat::assert_that("datasets" %in% names(sc@misc),
+                          msg=FormatString("This function requires the Seurat object to have a 'datasets' table in the misc slot with columns 'experiment' for orig.ident and 'path' for the path to the dataset."))
+  
+  # Moreover, there needs to be a column 'orig_barcode' in the cell metadata
+  assertthat::assert_that("orig_barcode" %in% colnames(sc[[]]),
+                          msg=FormatString("This function requires the Seurat object to have a column 'orig_barcode' in the cell metadata."))
+  
+  # Check and discard numeric columns (Xenium Explorer cannot handle them)
+  barcode_metadata = sc[[]]
+  if (is.null(categories)) categories = colnames(barcode_metadata)
+  assertthat::assert_that(all(categories %in% colnames(barcode_metadata)),
+                          msg=FormatString("Not all requested categories are part of the cell metadata."))
+  categories = purrr::discard(categories, function(c) return(is.numeric(barcode_metadata[, c])))
+  
+  # Per dataset
+  for(smp in levels(sc$orig.ident)) {
+    dir.create(file.path(output_dir, smp), showWarnings=FALSE, recursive=TRUE)
+    
+    # Get path to dataset and get a list of all barcodes present in the dataset
+    # This is needed because the Xenium Explorer requires all barcodes to be present in the metadata (even if they are not part of the analysis)
+    dataset_path = datasets %>% 
+      dplyr::filter(experiment == smp) %>% 
+      dplyr::pull(path)
+    
+    # Get a list of all barcodes present in the dataset
+    if (dir.exists(dataset_path)) {
+      # 10x market exchange format
+      barcodes_file = dplyr::case_when(
+        file.exists(file.path(dataset_path, "barcodes.tsv.gz")) ~ "barcodes.tsv.gz",
+        file.exists(file.path(dataset_path, "barcodes.tsv")) ~ "barcodes.tsv"
+      )
+      
+      unfiltered_barcodes = readLines(file.path(dataset_path, barcodes_file))
+    } else {
+      # h5 file
+      hdf5_fh = hdf5r::H5File$new(dataset_path, mode = "r+")
+      unfiltered_barcodes = hdf5_fh[["/matrix/barcodes"]][]
+      hdf5_fh$close()
+    }
+    
+    # Get dataset barcodes and metadata
+    barcodes = sc[[]] %>% 
+      dplyr::filter(orig.ident == smp) %>% 
+      rownames()
+    categories = categories[categories != "orig_barcode"]
+    barcode_metadata = barcode_metadata[, c("orig_barcode", categories)]
+    rownames(barcode_metadata) = NULL
+    
+    # Add filtered (removed) barcodes to metadata table
+    if (length(unfiltered_barcodes) > length(barcodes)) {
+      barcode_metadata = barcode_metadata %>% 
+        dplyr::bind_rows(
+          data.frame(orig_barcode=setdiff(unfiltered_barcodes, barcodes))
+        )
+    }
+    i = match(unfiltered_barcodes, barcode_metadata$orig_barcode)
+    barcode_metadata = barcode_metadata[i, ]
+    
+    # Replace NA with "NA" in barcode metadata
+    # Convert character columns to factors
+    categorial_data = purrr::map(categories, function(x) {
+      v = barcode_metadata[, x]
+      if (!is.factor(v)) {
+        v = factor(as.character(v))
+      }
+      if (any(is.na(v))) v = forcats::fct_na_value_to_level(v, level="NA")
+      return(v)
+    })
+    names(categorial_data) = categories
+    
+    # Attributes for zarr store
+    zarr_attr = list("major_version" = 1,
+                     "minor_version" = 0,
+                     "number_groupings" = length(categorial_data),
+                     "grouping_names" = names(categorial_data),
+                     "group_names" = unname(purrr::map(categorial_data, levels)))
+    
+    # Convert categorial data to zarr-compatible format (lots of indices packed)
+    zarr_categorial_data = purrr::map(categorial_data, function(values) {
+      categories = levels(values)
+      
+      # For each categories, get the cell indices (note: we switch now to 0-based indices)
+      values_indices = purrr::map(categories, function(cat) return(which(values == cat) - 1))
+      
+      # For each category, get the cumulative length of cell indices
+      values_cum_len = purrr::map(values_indices, length) %>% 
+        unlist() %>% 
+        cumsum() %>%
+        as.integer()
+      
+      # indices: array of the cell indices assigned to one of the categories
+      indices = values_indices %>% unlist()
+      
+      # indptr: indicates the cell index value (row) where a new category begins
+      if (length(values_cum_len) == 1) {
+        indptr = c(0)
+      } else {
+        indptr = c(0, values_cum_len[1:length(values_cum_len)-1])
+      }
+      
+      return(list("indices" = indices, "indptr" = indptr))
+    })
+    names(zarr_categorial_data) = names(categorial_data)
+    
+    # Now switch to python via reticulate
+    # zarr is now a python module
+    zarr_module = import("zarr")
+    
+    # Create a zarr store file
+    zarr_store = zarr_module$ZipStore(file.path(output_dir, smp, "analysis.zarr.zip"), mode="w")
+    
+    # Create a hierarchy with root and group "cell_groups"
+    root = zarr_module$group(store=zarr_store)
+    cell_groups = root$create_group("cell_groups")
+    
+    # Add zarr groups
+    for(i in seq_along(zarr_categorial_data)) {
+      indices = zarr_categorial_data[[i]]$indices
+      indptr = zarr_categorial_data[[i]]$indptr
+      
+      group = cell_groups$create_group(as.character(i-1))
+      group$array("indices", indices, dtype="uint32", chunks=length(indices))
+      group$array("indptr", indptr, dtype="uint32", chunks=length(indptr))
+    }
+    
+    cell_groups$attrs$put(zarr_attr)
+    zarr_store$close()
+  }
+}

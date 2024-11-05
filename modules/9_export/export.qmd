@@ -146,7 +146,7 @@ if (on_disk_counts & on_disk_use_tmp) {
 
 ## Cell metadata
 
-The cell metadata is exported as CSV file which includes cell ID, cluster assignment and other cell metadata. This metadata can then be imported into other tools. Export is done per sample (with the original cell IDs) and per aggregated analysis (where the cell IDs were made unique).
+The cell metadata is exported as CSV file which includes cell ID, cluster assignment and other cell metadata. This metadata can then be imported into other tools. Export is done per dataset (with the original cell IDs) and per aggregated analysis (where the cell IDs were made unique).
 
 ```{r}
 #| label: export_metadata
@@ -156,46 +156,53 @@ export_metadata = param("export_metadata")
 
 # Create CSV files that can be imported
 if (export_metadata) {
-  dir.create(file.path(module_dir, "results", "csv", "samples"), showWarnings=FALSE, recursive=TRUE)
+  dir.create(file.path(module_dir, "results", "csv"), showWarnings=FALSE, recursive=TRUE)
   
-  # Per sample
+  # Cell metadata to export (ignore categories based on sketch assay)
+  categories_to_export = colnames(sc[[]])
+  categories_to_export = categories_to_export[!grepl("\\.sketch$", categories_to_export)]
+  categories_to_export = categories_to_export[categories_to_export != "orig_barcode"]
+  
+  # Embeddings to export (ignore embeddings that were done based on sketch assays)
+  embeddings_to_export = purrr::discard(SeuratObject::Reductions(sc), function(r) {
+    return(grepl("\\.sketch$", Seurat::DefaultAssay(sc[[r]])))
+  })
+  
+  #
+  # Per dataset
+  #
   for(smp in levels(sc$orig.ident)) {
-    dir.create(file.path(module_dir, "results", "csv", "samples", smp), showWarnings=FALSE, recursive=TRUE)
+    dir.create(file.path(module_dir, "results", "csv", smp), showWarnings=FALSE, recursive=TRUE)
     
     # Get sample barcodes
     barcodes = sc[[]] %>% 
       dplyr::filter(orig.ident == smp) %>% 
       rownames()
     
-    # Clusters and other metadata
-    categories_to_export = colnames(sc[[]])
-    categories_to_export = categories_to_export[categories_to_export != "orig_barcode"]
-    
+    # Cell metadata
     categorial_data = sc[[]][barcodes, c("orig_barcode", categories_to_export)]
     col_nms = colnames(categorial_data)
     col_nms[1] = "cell_id"
     colnames(categorial_data) = col_nms
-    readr::write_csv(x=categorial_data, 
-              file=file.path(module_dir, "results", "csv", "samples", smp, "Cell_metadata.csv.gz"))
+    readr::write_csv(x=categorial_data, file=file.path(module_dir, "results", "csv", smp, "Cell_metadata.csv.gz"))
     
-    # Embeddings (ignore embeddings that were done based on sketch assays)
-    embedding_names = purrr::discard(SeuratObject::Reductions(sc), function(r) {
-      return(grepl("\\.sketch$", Seurat::DefaultAssay(sc[[r]])))
-    })
-    for( r in embedding_names) {
+    # Embeddings
+    for( r in embeddings_to_export) {
       emb = SeuratObject::Embeddings(sc, r)[barcodes, 1:2] %>%
         as.data.frame() %>%
         tibble::rownames_to_column(var="cell_id")
       emb$cell_id = categorial_data$cell_id
       readr::write_csv(x=emb,
-                file=file.path(module_dir, "results", "csv", "samples", smp, paste0("Cell_projection_", r, ".csv.gz")))
+                file=file.path(module_dir, "results", "csv", smp, paste0("Cell_projection_", r, ".csv.gz")))
     }
   }
   
+  #
   # For the aggregated analysis
+  #
   dir.create(file.path(module_dir, "results", "csv", "all"), showWarnings=FALSE, recursive=TRUE)
 
-  # Clusters and other categories
+  # Cell metadata
   categorial_data = sc[[]][, c("orig_barcode", categories_to_export)]
   col_nms = colnames(categorial_data)
   col_nms[1] = "cell_id"
@@ -203,11 +210,8 @@ if (export_metadata) {
   readr::write_csv(x=categorial_data, 
             file=file.path(module_dir, "results", "csv", "all", "Cell_metadata.csv.gz"))
   
-  # Embeddings (ignore embeddings that were done based on sketch assays)
-  embedding_names = purrr::discard(SeuratObject::Reductions(sc), function(r) {
-      return(grepl("\\.sketch$", Seurat::DefaultAssay(sc[[r]])))
-    })
-  for( r in embedding_names) {
+  # Embeddings
+  for( r in embeddings_to_export) {
     emb = SeuratObject::Embeddings(sc, r)[, 1:2] %>%
       as.data.frame() %>%
       tibble::rownames_to_column(var="cell_id")
@@ -216,7 +220,7 @@ if (export_metadata) {
               file=file.path(module_dir, "results", "csv", "all", paste0("Cell_projection_", r, ".csv.gz")))
   }
   
-  CalloutBox("Cell metadata can be imported into other tools (such as an active Loupe Cell Browser session). The directory 'csv/samples' contains the file for the per-sample datasets. The directory 'csv/all' contains the files for the cloupe file of the aggregated analysis.", type="note")
+  CalloutBox("Cell metadata can be imported into other tools (such as an active Loupe Cell Browser session). The directory 'csv/datasets' contains files for the individual datasets. The directory 'csv/all' contains files for the aggregated analysis.", type="note")
 } else {
   CalloutBox("Cell metadata was not exported.", type="note")
 }
@@ -229,7 +233,9 @@ The Loupe Cell Browser is a powerful tool to explore 10x single cell data. It al
 
 Results of the analysis are exported as cloupe file which can be read by the Loupe Cell Browser. The cloupe file includes the raw counts, categorial cell metadata and visualisations like UMAP or PCA. 
 
-**Note**: Spatial information is not included in the cloupe file. For 10x Visium/VisiumHD data, we recommend to use the original cloupe file provided by Spaceranger and to import the CSV cell metadata (see above for details) in Loupe. For 10x Xenium, the cloupe file can be loaded into the Loupe Cell Browser to inspect the cell clustering. For spatial information, use the Xenium explorer (see below for details).
+**Notes**: 
+- Due to license issues, this is only supported for 10x datasets. Non-10x datasets will not be exported.
+- Spatial information is not included in the cloupe file. For 10x Visium/VisiumHD data, we recommend to use the original cloupe file provided by Spaceranger and to import the CSV cell metadata (see above for details) in Loupe. For 10x Xenium, the cloupe file can be loaded into the Loupe Cell Browser to inspect the cell clustering. For spatial information, use the Xenium explorer (see below for details).
 
 ```{r}
 #| label: create_loupe_file
@@ -242,67 +248,37 @@ create_loupe_file = param("create_loupe_file")
 if (create_loupe_file & all(grepl("10x", sc$technology))) {
   dir.create(file.path(module_dir, "results", "loupe"), showWarnings=FALSE, recursive=TRUE)
   
-  # Barcode metadata for Loupe
-  barcode_metadata = sc[[]]
+  # Assays to export (currently only default)
+  assays_to_export = SeuratObject::DefaultAssay(sc)
   
-  # Discard numeric columns (Loupe cannot handle them)
-  categories_to_export = purrr::discard(sc[[]], function(c) return(is.numeric(c))) %>% colnames()
+  # Cell metadata to export (ignore categories based on sketch assay)
+  # Note: Loupe does not support numeric columns
+  categories_to_export = colnames(sc[[]])
+  categories_to_export = categories_to_export[!grepl("\\.sketch$", categories_to_export)]
   categories_to_export = categories_to_export[categories_to_export != "orig_barcode"]
-    
-  # Setup eula and download executable for loupeR.
-  # Needs to be done only once but cannot be done automatically.
-  louper_status = loupeR:::needs_setup()
-  if (!louper_status$success) stop(louper_status$msg)
-    
-  # Get counts and convert to sparse matrix if necessary
-  counts = SeuratObject::GetAssayData(sc, assay=default_assay, layer="counts")
-  counts = as(counts, "dgCMatrix")
-    
-  # Get clusters and other categories
-  # Replace NA with "NA" in barcode metadata
-  # Convert character columns to factors
-  categorial_data = purrr::map(categories_to_export, function(x) {
-      v = sc[[]][, x]
-      if (!is.factor(v)) {
-        v = factor(as.character(v))
-      }
-      if (any(is.na(v))) v = forcats::fct_na_value_to_level(v, level="NA")
-      return(v)
-  })
-  names(categorial_data) = categories_to_export
-  categorial_data[["active_cluster"]] = Seurat::Idents(sc)
-    
-  # Get embeddings (ignore embeddings that were done based on sketch assays)
-  embedding_names = purrr::discard(SeuratObject::Reductions(sc), function(r) {
+  
+  # Embeddings to export (ignore embeddings that were done based on sketch assays)
+  embeddings_to_export = purrr::discard(SeuratObject::Reductions(sc), function(r) {
     return(grepl("\\.sketch$", Seurat::DefaultAssay(sc[[r]])))
   })
-  embeddings = purrr::map(embedding_names, function(r) {
-    return(SeuratObject::Embeddings(sc, r)[,1:2])
-  })
-  names(embeddings) = embedding_names
-    
-  # Seurat object version
-  seurat_obj_version = NULL
-  if (!is.null(sc@version)) seurat_obj_version = as.character(sc@version)
   
-  # Create Loupe file
-  success = loupeR::create_loupe(counts, 
-                         clusters=categorial_data,
-                         projections=embeddings,
-                         output_dir=file.path(module_dir, "results", "loupe"),
-                         output_name="scrnaseq2",
-                         force=TRUE,
-                         seurat_obj_version=seurat_obj_version)
+  # Export as loupe file
+  ExportLoupe(sc, 
+              assays=assays_to_export, 
+              categories=categories_to_export, 
+              embeddings=embeddings_to_export, 
+              output_dir=file.path(module_dir, "results", "loupe"),
+              output_name="scrnaseq2")
   
   CalloutBox("The following loupe file can be loaded directly into the loupe browser: 'loupe/scrnaseq2.cloupe'.", type="note")
 } else {
-  CalloutBox("Creating loupe files was deactivated. Moreover, it is supported only for datasets of technology '10x', '10x_xenium' or '10x_visium'.", type="note")
+  CalloutBox("Creating loupe files was deactivated or is supported only for datasets of technology '10x', '10x_xenium' or '10x_visium'.", type="note")
 }
 ```
 
 The Xenium Explorer is a tool to explore 10x Xenium spatial data in a variety of ways. For download, please visit the [Xenium Explorer website](https://www.10xgenomics.com/support/software/xenium-explorer/latest). There are also a number of tutorials available on the [website](https://www.10xgenomics.com/support/software/xenium-explorer/latest/tutorials).
 
-For 10x Xenium data, categorial cell metadata is exported as analysis.zarr.zip file for each sample. Replace the original analysis.zarr.zip in the respective Xenium dataset (make a backup) to include the results of this analysis in the Xenium explorer. 
+For 10x Xenium data, categorial cell metadata is exported as analysis.zarr.zip file for each dataset. Replace the original analysis.zarr.zip in the respective Xenium dataset (make a backup) to include the results of this analysis in the Xenium explorer. 
 
 ```{r}
 #| label: export_xenium_analysis_file
@@ -310,112 +286,32 @@ For 10x Xenium data, categorial cell metadata is exported as analysis.zarr.zip f
 
 export_xenium_analysis_file = param("export_xenium_analysis_file")
 
+
 if (export_xenium_analysis_file & all(grepl("10x_xenium", sc$technology))) {
   dir.create(file.path(module_dir, "results", "xenium"), showWarnings=FALSE, recursive=TRUE)
   
-  # Per sample
-  for(smp in levels(sc$orig.ident)) {
-    smp = "mouse_pup"
-    dir.create(file.path(module_dir, "results", "xenium", smp), showWarnings=FALSE, recursive=TRUE)
-    
-    # Get sample barcodes
-    barcodes = sc[[]] %>% 
-      dplyr::filter(orig.ident == smp) %>% 
-      rownames()
-    
+  ExportXeniumExplorer(sc, 
+                       categories=categories_to_export, 
+                       output_dir=file.path(module_dir, "results", "xenium"), 
+                       output_name="analysis.zarr.zip")
   
-  # Discard numeric columns (Loupe cannot handle them)
-  categories_to_export = purrr::discard(sc[[]], function(c) return(is.numeric(c))) %>% colnames()
-  categories_to_export = categories_to_export[categories_to_export != "orig_barcode"]
-  
-  # Get clusters and other categories
-  # Replace NA with "NA" in barcode metadata
-  # Convert character columns to factors
-  categorial_data = purrr::map(categories_to_export, function(x) {
-      v = sc[[]][, x]
-      if (!is.factor(v)) {
-        v = factor(as.character(v))
-      }
-      v = forcats::fct_na_value_to_level(v, level="NA")
-      return(v)
-  })
-  names(categorial_data) = categories_to_export
-  
-  # Attributes for zarr store
-  zarr_attr = list("major_version" = 1,
-              "minor_version" = 0,
-              "number_groupings" = length(categorial_data),
-              "grouping_names" = names(categorial_data),
-              "group_names" = unname(purrr::map(categorial_data, levels)))
-  
-  # Convert categorial data to zarr-compatible format (lots of indices packed)
-  zarr_categorial_data = purrr::map(categorial_data, function(values) {
-    categories = levels(values)
-    
-    # For each categories, get the cell indices (note: we switch now to 0-based indices)
-    values_indices = purrr::map(categories, function(cat) return(which(values == cat) - 1))
-  
-    # For each category, get the cumulative length of cell indices
-    values_cum_len = purrr::map(values_indices, length) %>% 
-      unlist() %>% 
-      cumsum() %>%
-      as.integer()
-    
-    # indices: array of the cell indices assigned to one of the categories
-    indices = values_indices %>% unlist()
-    
-    # indptr: indicates the cell index value (row) where a new category begins
-    if (length(values_cum_len) == 1) {
-      indptr = c(0)
-    } else {
-      indptr = c(0, values_cum_len[1:length(values_cum_len)-1])
-    }
-    
-    return(list("indices" = indices, "indptr" = indptr))
-  })
-  names(zarr_categorial_data) = names(categorial_data)
-  
-  # Now switch to python via reticulate
-  # zarr is now a python module
-  zarr_module = import("zarr")
-  
-  # Create a zarr store file
-  zarr_store = zarr_module$ZipStore("analysis.zarr.zip", mode="w")
-  
-  # Create a hierarchy with root and group "cell_groups"
-  root = zarr_module$group(store=zarr_store)
-  cell_groups = root$create_group("cell_groups")
-  
-  # Add zarr groups
-  for(i in seq_along(zarr_categorial_data)) {
-    indices = zarr_categorial_data[[i]]$indices
-    indptr = zarr_categorial_data[[i]]$indptr
-    
-    group = cell_groups$create_group(as.character(i-1))
-    group$array("indices", indices, dtype="uint32", chunks=length(indices))
-    group$array("indptr", indptr, dtype="uint32", chunks=length(indptr))
-  }
-  
-  cell_groups$attrs$put(zarr_attr)
-  zarr_store$close()
-  
-  CalloutBox("The analysis.zarr.zip file can be used as input for the Xenium Explorer. Replace the original analysis.zarr.zip in the respective Xenium dataset (make a backup) to include the results of this analysis in the Xenium explorer.", type="note")
+  CalloutBox("Cell metadata was exported per dataset as analysis.zarr.zip file in the 'xenium' directory. Replace the original analysis.zarr.zip in the respective Xenium dataset (make a backup) to include the results of this analysis in the Xenium Explorer.", type="note")
 } else {
-  CalloutBox("Creating analysis.zarr.zip files was deactivated. Moreover, it is supported only for datasets of technology '10x_xenium'.", type="note")
+  CalloutBox("Exporting to Xenium Explorer was deactivated or is supported only for datasets of technology '10x_xenium'.", type="note")
 }
 ```
 
 ## Cellxgene
 
-Cellxgene is a web-based tool to explore single cell data. For download, please visit the [cellxgene website](https://cellxgene.cziscience.com/docs/01__CellxGene).
+Cellxgene is a web-based tool to explore single cell data. For download of the cellxgene server, please visit the [cellxgene website](https://cellxgene.cziscience.com/docs/01__CellxGene). For download of a stand-alone version that can be used locally and without installation, please visit the (portable-cellxgene)[https://github.com/george-hall-ucl/portable-cellxgene].
 
 Results of the analysis are exported into a format that can be read by cellxgene. This includes the normalized counts, categorial data per cell and vizualisations.
 
 ```{r}
 #| label: export_cellxgene
-#| eval: !expr export_loupe
-#| include: !expr export_loupe
 #| results: asis
+
+export_cellxgene = param("export_cellxgene")
 
 # Create an adata.h5ad file for cellxgene
 if (export_cellxgene) {
@@ -473,25 +369,25 @@ if (export_cellxgene) {
 
 ## Seurat object
 
-To facilitate further analysis, the Seurat object is exported. When counts are stored on disk, they will be exported as well. Alternatively, they can also be included in the Seurat object.
+To facilitate further analysis, the Seurat object is exported. When counts are stored on disk, they will be exported as well as separate directories that need to be in the same directory as the the Seurat object. Alternatively, they can also be included in the Seurat object.
 
 ```{r}
 #| label: export_sc
 #| results: asis
 
+export_sc = param("export_sc")
+
 # Export Seurat object
 if (export_sc) {
-  # This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-  assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
-
   # Save Seurat object and layer data
-  dir.create(file.path(module_dir, "results", "sc"), showWarnings=FALSE)
+  outdir = file.path(module_dir, "results", "sc")
   with_progress({
     SaveSeuratRdsWrapper(sc,
-                         on_disk_layers=on_disk_counts,
-                         outdir=file.path(module_dir, "results", "sc"),
-                         relative=TRUE,
-                         compress=TRUE)
+                         outdir=outdir,
+                         copy_disk_data=TRUE,
+                         relative_paths=TRUE,
+                         compress=TRUE
+                         )
   }, enable=verbose)
   
     CalloutBox("The Seurat object was exported to: 'sc/sc.rds' (there might be on-disk directories as well).", type="note")
