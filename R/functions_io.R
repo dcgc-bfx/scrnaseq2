@@ -1251,12 +1251,12 @@ CreateSegmentationImproved = function(coords) {
 ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("centroids", "segmentation")) {
   # Checks
   assertthat::is.readable(image_dir)
-  assertthat::assert_that(file.exists(file.path(image_dir, "cells.csv.gz")),
-                          msg=FormatString("10x Xenium image directory {image_dir} misses the file 'cells.csv.gz'."))
-  assertthat::assert_that(file.exists(file.path(image_dir, "cell_boundaries.csv.gz")),
-                          msg=FormatString("10x Xenium image directory {image_dir} misses the file 'cell_boundaries.csv.gz'."))
-  assertthat::assert_that(file.exists(file.path(image_dir, "transcripts.csv.gz")),
-                          msg=FormatString("10x Xenium image directory {image_dir} misses the file 'transcripts.csv.gz'."))
+  assertthat::assert_that(file.exists(file.path(image_dir, "cells.parquet")),
+                          msg=FormatString("10x Xenium image directory {image_dir} misses the file 'cells.parquet'."))
+  assertthat::assert_that(file.exists(file.path(image_dir, "cell_boundaries.parquet")),
+                          msg=FormatString("10x Xenium image directory {image_dir} misses the file 'cell_boundaries.parquet'."))
+  assertthat::assert_that(file.exists(file.path(image_dir, "transcripts.parquet")),
+                          msg=FormatString("10x Xenium image directory {image_dir} misses the file 'transcripts.parquet'."))
   
   mols.qv.threshold = 20
   options(stringsAsFactors=FALSE)
@@ -1266,6 +1266,14 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
   cell_centroids = arrow::read_parquet(file.path(image_dir, "cells.parquet"),
                                        col_select=c("cell_id", "x_centroid", "y_centroid", "cell_area", "nucleus_area"),
                                        as_data_frame=TRUE)
+  
+  cell_centroids = arrow::open_dataset(file.path(image_dir, "cells.parquet"),
+                                        schema=arrow::schema(cell_id=arrow::string(), 
+                                                             x_centroid=arrow::float(), 
+                                                             y_centroid=arrow::float(),
+                                                             cell_area=arrow::float(),
+                                                             nucleus_area=arrow::float()))
+  cell_centroids = as.data.frame(cell_centroids)
   names(cell_centroids) = c("cell", "x", "y", "cell_area", "nucleus_area")
   
   if (!is.null(barcodes)) {
@@ -1290,9 +1298,11 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
   
   # Read segmentations (area of cells)
   if ("segmentation" %in% coordinate_type) {
-    cell_boundaries = arrow::read_parquet(file.path(image_dir, "cell_boundaries.parquet"),
-                                         col_select=c("cell_id", "vertex_x", "vertex_y"),
-                                         as_data_frame=TRUE)
+    cell_boundaries = arrow::open_dataset(file.path(image_dir, "cell_boundaries.parquet"),
+                                          schema=arrow::schema(cell_id=arrow::string(), 
+                                                               vertex_x=arrow::float(), 
+                                                               vertex_y=arrow::float()))
+    cell_boundaries = as.data.frame(cell_boundaries)
     names(cell_boundaries) = c("cell", "x", "y")
     
     if (!is.null(barcodes)) {
@@ -1315,13 +1325,14 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
   }
   
   # Load microns (molecule coordinates)
-  transcripts = arrow::read_parquet(file.path(image_dir, "transcripts.parquet"),
-                                   col_select=c("feature_name", "x_location", "y_location", "qv"),
-                                   as_data_frame=TRUE)
-  colnames(transcripts) = c("gene", "x", "y", "qv")
-  
-  i = which(transcripts$qv >= mols.qv.threshold)
-  transcripts = transcripts[i, c("gene", "x", "y")]
+  transcripts = arrow::open_dataset(file.path(image_dir, "transcripts.parquet"),
+                                    schema=arrow::schema(feature_name=arrow::string(), 
+                                                         x_location=arrow::float(), 
+                                                         y_location=arrow::float(), 
+                                                         qv=arrow::float()))
+  transcripts = transcripts %>% dplyr::filter(qv >= mols.qv.threshold) %>% dplyr::select(-qv)
+  transcripts = as.data.frame(transcripts)
+  colnames(transcripts) = c("gene", "x", "y")
   molecules = SeuratObject::CreateMolecules(transcripts, key='mols_')
   
   # Create FOV (coordinates plus transcript info)
@@ -1876,10 +1887,10 @@ ExportLoupe = function(sc, assays=NULL, categories=NULL, embeddings=NULL, output
 #' @param output_dir Directory where the Xenium Explorer file will be saved.
 #' @param output_name Name of the Xenium Explorer file (analysis.zarr.zip).
 ExportXeniumExplorer = function(sc, categories=NULL, output_dir=".", output_name="analysis.zar.zip") {
-  
   # For this function, we need a datasets table in the misc slot (to get all barcodes present in the dataset)
   assertthat::assert_that("datasets" %in% names(sc@misc),
                           msg=FormatString("This function requires the Seurat object to have a 'datasets' table in the misc slot with columns 'experiment' for orig.ident and 'path' for the path to the dataset."))
+  datasets = sc@misc$datasets
   
   # Moreover, there needs to be a column 'orig_barcode' in the cell metadata
   assertthat::assert_that("orig_barcode" %in% colnames(sc[[]]),
@@ -1936,14 +1947,12 @@ ExportXeniumExplorer = function(sc, categories=NULL, output_dir=".", output_name
     i = match(unfiltered_barcodes, barcode_metadata$orig_barcode)
     barcode_metadata = barcode_metadata[i, ]
     
-    # Replace NA with "NA" in barcode metadata
     # Convert character columns to factors
     categorial_data = purrr::map(categories, function(x) {
       v = barcode_metadata[, x]
       if (!is.factor(v)) {
         v = factor(as.character(v))
       }
-      if (any(is.na(v))) v = forcats::fct_na_value_to_level(v, level="NA")
       return(v)
     })
     names(categorial_data) = categories
@@ -1957,10 +1966,9 @@ ExportXeniumExplorer = function(sc, categories=NULL, output_dir=".", output_name
     
     # Convert categorial data to zarr-compatible format (lots of indices packed)
     zarr_categorial_data = purrr::map(categorial_data, function(values) {
-      categories = levels(values)
-      
+
       # For each categories, get the cell indices (note: we switch now to 0-based indices)
-      values_indices = purrr::map(categories, function(cat) return(which(values == cat) - 1))
+      values_indices = purrr::map(levels(values), function(cat) return(which(values == cat) - 1))
       
       # For each category, get the cumulative length of cell indices
       values_cum_len = purrr::map(values_indices, length) %>% 
@@ -1978,13 +1986,18 @@ ExportXeniumExplorer = function(sc, categories=NULL, output_dir=".", output_name
         indptr = c(0, values_cum_len[1:length(values_cum_len)-1])
       }
       
-      return(list("indices" = indices, "indptr" = indptr))
+      if (length(indices) == 0){
+        indptr = as.integer(c())
+      }
+      
+      return(list("indices" = as.integer(indices), "indptr" = as.integer(indptr)))
     })
     names(zarr_categorial_data) = names(categorial_data)
     
     # Now switch to python via reticulate
-    # zarr is now a python module
+    # zarr_module is used to access the python module zarr, numpy_module ...
     zarr_module = import("zarr")
+    numpy_module = import("numpy")
     
     # Create a zarr store file
     zarr_store = zarr_module$ZipStore(file.path(output_dir, smp, "analysis.zarr.zip"), mode="w")
@@ -1997,10 +2010,18 @@ ExportXeniumExplorer = function(sc, categories=NULL, output_dir=".", output_name
     for(i in seq_along(zarr_categorial_data)) {
       indices = zarr_categorial_data[[i]]$indices
       indptr = zarr_categorial_data[[i]]$indptr
+      chunk_size = max(length(indices), 1)
+      
       
       group = cell_groups$create_group(as.character(i-1))
-      group$array("indices", indices, dtype="uint32", chunks=length(indices))
-      group$array("indptr", indptr, dtype="uint32", chunks=length(indptr))
+      group$array("indices", 
+                  numpy_module$array(indices, dtype="uint32"), 
+                  dtype="uint32", 
+                  chunks=reticulate::tuple(chunk_size))
+      group$array("indptr", 
+                  numpy_module$array(indptr, dtype="uint32"), 
+                  dtype="uint32", 
+                  chunks=reticulate::tuple(chunk_size))
     }
     
     cell_groups$attrs$put(zarr_attr)

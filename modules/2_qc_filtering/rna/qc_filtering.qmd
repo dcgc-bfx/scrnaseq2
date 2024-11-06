@@ -349,6 +349,7 @@ if (length(SeuratObject::Images(sc)) > 0) {
 \`\`\`{r}
 #| label: fig-qc_filtering_rna_spatial_qc_{{qc}}_dataset_{{dataset}}
 #| fig-cap: {{caption}}
+#| dev: png
 
 plist[[{{i}}]]
 \`\`\`
@@ -1185,6 +1186,7 @@ chunk_template = "
 \`\`\`{r}
 #| label: fig-qc_filtering_rna_cell_cycle_spatial_dataset_{{dataset}}
 #| fig-cap: {{caption}}
+#| dev: png
 
 plist[['{{dataset}}']]
 \`\`\`
@@ -1293,6 +1295,7 @@ if (length(cell_cycle_markers) > 0) {
 \`\`\`{r}
 #| label: fig-qc_filtering_rna_cell_cycle_spatial_{{gene}}_dataset_{{dataset}}
 #| fig-cap: {{caption}}
+#| dev: png
 
 plist[['{{dataset}}']]
 \`\`\`

@@ -290,6 +290,13 @@ export_xenium_analysis_file = param("export_xenium_analysis_file")
 if (export_xenium_analysis_file & all(grepl("10x_xenium", sc$technology))) {
   dir.create(file.path(module_dir, "results", "xenium"), showWarnings=FALSE, recursive=TRUE)
   
+  # Cell metadata to export (ignore categories based on sketch assay)
+  # Note: Xenium Explorer does not support numeric columns
+  categories_to_export = colnames(sc[[]])
+  categories_to_export = categories_to_export[!grepl("\\.sketch$", categories_to_export)]
+  categories_to_export = categories_to_export[categories_to_export != "orig_barcode"]
+  
+  # Export as analysis.zarr.zip files
   ExportXeniumExplorer(sc, 
                        categories=categories_to_export, 
                        output_dir=file.path(module_dir, "results", "xenium"), 

@@ -401,6 +401,7 @@ chunk_template = "
 #| label: fig-clustering_spatial_{{clstr}}_dataset_{{ident}}
 #| fig-cap: {{caption}}
 #| echo: false
+#| dev: png
 
 plist[['{{ident}}']][['{{clstr}}']]
 \`\`\`

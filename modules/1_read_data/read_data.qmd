@@ -872,6 +872,9 @@ if (parse_plate_information & any(grepl(pattern=plate_information_regex, x=sc$or
 # Set default identity
 Seurat::Idents(sc) = "orig.ident"
 
+# Add datasets to Seurat object
+sc@misc$datasets = datasets
+
 # Remove cells with zero counts
 names_nonzero_cells = sc[[]] %>% dplyr::filter(.data[[paste0("nCount_", default_assay)]] > 0) %>% rownames()
 n_zero_cells = sc[[]] %>% dplyr::filter(.data[[paste0("nCount_", default_assay)]] == 0) %>% nrow()
@@ -1165,6 +1168,7 @@ p
 \`\`\`{r}
 #| label: fig-read_data_basic_summary_spatial_{{qc}}_dataset_{{dataset}}
 #| fig-cap: {{caption}}
+#| dev: png
 
 plist[[{{i}}]]
 \`\`\`

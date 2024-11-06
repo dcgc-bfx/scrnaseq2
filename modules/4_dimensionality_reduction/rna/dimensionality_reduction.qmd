@@ -304,6 +304,7 @@ chunk_template = "
 \`\`\`{r}
 #| label: fig-dimensionality_reduction_rna_loadings_spatial_dim{{dim}}_dataset_{{dataset}}
 #| fig-cap: {{caption}}
+#| dev: png
 
 plist[['{{dataset}}']]
 \`\`\`
