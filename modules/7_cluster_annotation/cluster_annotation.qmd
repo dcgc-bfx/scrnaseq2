@@ -124,7 +124,7 @@ if (!is.null(param("prev_module_dir"))) {
   prev_module_dir = PreviousModuleDir(module_dir)
 }
 prev_sc_obj = file.path(prev_module_dir, "sc", "sc.rds")
-if(!file.exists(prev_sc_obj)) {
+if (!file.exists(prev_sc_obj)) {
   stop(FormatString("Could not find a sc.rds file in {{prev_module_dir}}. Was the respective module already run?"))
 }
 sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
@@ -325,7 +325,7 @@ p
             for (gene in names(plist)) {
                 # Note: 'gene_patched' is 'gene' but with special characters removed since it will be used for the plot name
                 chunk_filled =  knitr::knit_expand(text=chunk_template1, type=type, cluster=cl, gene=gene, gene_patched=MakeNamesValid(gene))
-                if(interactive()) {
+                if (interactive()) {
                     print(EvalKnitrChunk(chunk_filled))
                 } else {
                     chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
@@ -363,7 +363,7 @@ p
         
         # Print
         chunk_filled =  knitr::knit_expand(text=chunk_template2, type=type, caption=caption)
-        if(interactive()) {
+        if (interactive()) {
             print(EvalKnitrChunk(chunk_filled))
         } else {
             chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
@@ -373,17 +373,17 @@ p
     cat(":::\n")
 }
 ```
-### Over representation analysis of marker genes
-
-This section presents the results of the over representation analysis (ORA) performed on the marker genes identified for each cluster, focusing specifically on the [C8 collection](https://www.gsea-msigdb.org/gsea/msigdb/human/collections.jsp#C8) (cell type signature genesets) of the Molecular Signatures Database (MSigDB). ORA is a statistical method that determines whether a set of genes is enriched in a particular biological process or pathway (geneset). The analysis helps to identify cell type signatures that are significantly over-represented in the marker genes of each cluster, providing insights into the cell annotation of clusters.
+### Over-representation analysis of marker genes
 
 ::: {.callout-note}
 
-The gene sets present in C8 collection covers various cell types from Heart, GI Tract, Pancreas, Kidney, Liver, the Immune system, Retina, Olfactory tissue, and the Brain. So do not be surprised if you see a cell type annotated here that should not be in your data.
+This section presents the results of the over-representation analysis (ORA) performed on the marker genes identified for each cluster, focusing specifically on the [C8 collection](https://www.gsea-msigdb.org/gsea/msigdb/human/collections.jsp#C8) (cell type signature genesets) of the Molecular Signatures Database (MSigDB). ORA is a statistical method that determines whether a set of genes is enriched in a particular biological process or pathway (geneset). The analysis helps to identify cell type signatures that are significantly over-represented in the marker genes of each cluster, providing insights into the cell annotation of clusters.
 
 :::
 
 ::: {.callout-note}
+
+The genesets present in C8 collection covers various cell types from Heart, GI Tract, Pancreas, Kidney, Liver, the Immune system, Retina, Olfactory tissue, and the Brain. So do not be surprised if you see a cell type annotated here that should not be in your data.
 
 The C8 collection contains the genesets for <i>Homo sapiens</i>. Using MSigDbr R-package, these genesets are retrieved and converted to target organism. Check [msigdbr::msigdbr_species()](https://cran.r-project.org/web/packages/msigdbr/vignettes/msigdbr-intro.html) for supported species.
 
@@ -393,13 +393,13 @@ The C8 collection contains the genesets for <i>Homo sapiens</i>. Using MSigDbr R
 #| label: fig-cluster_annotation_markers_ora
 #| echo: false
 #| results: asis
-#| fig-cap: "Over representation analysis of marker genes"
+#| fig-cap: "Over-representation analysis of marker genes"
 
 species = gsub("_", " ", stringr::str_to_title(param("species")))
 species_tibble = msigdbr_species()
 
-if(any(species_tibble$species_name == species)) {
-  geneset_msigdb <- msigdbr(species = species, category = "C8")
+if (any(species_tibble$species_name == species)) {
+  geneset_msigdb <- msigdbr(species=species, category="C8")
   term2gene = geneset_msigdb %>% 
     dplyr::select(gs_name, gene_symbol) %>% 
     as.data.frame()
@@ -409,13 +409,12 @@ if(any(species_tibble$species_name == species)) {
   markers_down_per_cluster = split(markers_filt$down$gene, 
                                     markers_filt$down$cluster)
 
-
   # Perform ORA for each cluster
   ora_up_results = lapply(names(markers_up_per_cluster), function(cluster) {
-    perform_ora(genes = markers_up_per_cluster[[cluster]], 
-    universe = rownames(sc), 
-    cluster = cluster, 
-    term2gene = term2gene)
+    perform_ora(genes=markers_up_per_cluster[[cluster]], 
+    universe=rownames(sc), 
+    cluster=cluster, 
+    term2gene=term2gene)
   })
 
   # Combine results
@@ -427,22 +426,24 @@ if(any(species_tibble$species_name == species)) {
       group_by(Cluster) %>%
       top_n(3, wt = -p.adjust) %>%
       ungroup() %>%
-      mutate(Cluster = factor(as.numeric(Cluster))) %>%
-      mutate(Description = factor(Description, levels = 
+      mutate(Cluster=factor(as.numeric(Cluster))) %>%
+      mutate(Description=factor(Description, levels=
                                     unique(Description[order(Cluster)])))
     
-    p = ggplot(top_terms, aes(x = Cluster, y = Description, size = Count, 
-                               color = p.adjust)) +
+    p = ggplot(top_terms, aes(x=Cluster, y=Description, size=Count, 
+                               color=p.adjust)) +
       geom_point() +
-      scale_color_viridis_c(direction = -1, 
-                            labels = label_scientific(digits = 3)) +
+      scale_color_viridis_c(direction=-1, 
+                            labels=label_scientific(digits=3)) +
       theme_minimal() +
-      theme(axis.text.x = element_text(size = 6, angle = 75, hjust = 1)) +
-      labs(x = "Cluster", y = "C8 genesets", size = "Gene Count", 
-           color = "Adjusted p-value") +
-      theme(legend.position = "right") +
-      scale_y_discrete(labels = function(y) str_wrap(gsub("_", " ", y), 
-                                                     width = 30)) + 
+      theme(axis.text.x=element_text(size=6, angle=75, hjust=1)) +
+      labs(x="Cluster", y="C8 genesets", size="Gene Count", 
+           color="Adjusted p-value") +
+      theme(legend.position="right") +
+      scale_y_discrete(labels=function(y) str_wrap(gsub("_", " ", y), 
+                                                     width=30)) + 
+      AddPlotStyle(title=n, xlab="Cluster", ylab="C8 genesets", 
+                    legend_position="bottom") + 
       coord_flip()
 
     print(p)
@@ -514,14 +515,14 @@ if (!is.null(file_known_markers)) {
     known_markers_list = known_markers_list[!is_empty]
     
     # Count what is left
-    if(length(known_markers_list) > 0) { 
+    if (length(known_markers_list) > 0) { 
         known_markers_n = length(known_markers_list) 
         known_markers_vect = unlist(known_markers_list) %>% unique() %>% sort()
         idx_dotplot = sapply(seq(known_markers_list), function(x) length(known_markers_list[[x]]) <= 50)
     }
     
     # Calculate combined scores with UCell
-    if(length(known_markers_list) > 0) {
+    if (length(known_markers_list) > 0) {
         # Calculate scores based on the Mann-Whitney U statistic using UCell
         with_progress({
             known_markers_scores = CalculateModuleScoreUCell(matrix=Seurat::GetAssayData(sc, assay=default_assay, layer="counts"), features=known_markers_list, chunk_size=10000)
@@ -585,7 +586,7 @@ plist[['{{name}}']]
     cat("#####", name, "\n")
     
     chunk_filled =  knitr::knit_expand(text=chunk_template, name=name, i=i)
-    if(interactive()) {
+    if (interactive()) {
       print(EvalKnitrChunk(chunk_filled))
     } else {
       chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
@@ -643,7 +644,7 @@ plist[['{{name}}']]
   for (i in seq(plist)) {
     name = names(plist)[i]
     chunk_filled =  knitr::knit_expand(text=chunk_template, name=name, i=i)
-    if(interactive()) {
+    if (interactive()) {
       print(EvalKnitrChunk(chunk_filled))
     } else {
       chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
@@ -699,7 +700,7 @@ plist[['{{gene}}']]
         # Loop through genes
         for (gene in names(plist)) {
             chunk_filled =  knitr::knit_expand(text=chunk_template, gene=gene, gene_patched=MakeNamesValid(gene), i=i)
-            if(interactive()) {
+            if (interactive()) {
                 print(EvalKnitrChunk(chunk_filled))
             } else {
                 chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
@@ -765,7 +766,7 @@ if (length(ora_up_results) > 0) {
   }
   
   # Save the workbook
-  invisible(saveWorkbook(wb, outfile, overwrite = TRUE))
+  invisible(saveWorkbook(wb, outfile, overwrite=TRUE))
   
   # Note
   CalloutBox("ORA results are written to {outfile}.", type="note")

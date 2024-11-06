@@ -47,6 +47,3 @@ environment.local
 
 # Ignore rstudio-server directories
 rstudio-server/**
-
-
-analysis/

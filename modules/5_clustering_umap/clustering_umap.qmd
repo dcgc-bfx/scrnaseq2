@@ -168,6 +168,8 @@ During the first step of clustering, a K-nearest neighbor (KNN) graph is constru
 
 :::
 
+### Clustering resolution
+
 To get a first idea about how different cluster resolution values influence the clustering, we run and visualize the clustering multiple times, see below. 
 
 ```{r}
@@ -365,8 +367,6 @@ for (method in dimensionality_reduction_methods) {
 }
 
 cat(":::\n")
-
-#CalloutBox("Default clustering is set to the dimensionality reduction {dimensionality_reduction_methods[1]} with the resolution parameter {cluster_resolutions[1]}.", type="note")
 ```
 
 ```{r}
@@ -429,7 +429,7 @@ for(ident in names(plist)) {
 cat(":::\n")
 ```
 
-## Clustering Tree
+### Clustering Tree
 
 Clustering trees help in understanding how clusters split or merge as the resolution changes in data analysis. Each node represents a cluster at a given resolution, and edges between nodes indicate how clusters from one resolution relate to clusters at another resolution. This makes it easier to track cluster stability or transitions, aiding in the selection of an appropriate resolution for downstream analysis.
 

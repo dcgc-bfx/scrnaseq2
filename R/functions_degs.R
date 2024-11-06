@@ -585,6 +585,7 @@ DegsSetupContrastsList = function(sc, contrasts_table, latent_vars=NULL) {
   return(contrasts_list)
 }
 
+# this enrichr function is not used anymore
 #' Returns an empty Enrichr results table.
 # '
 # '
@@ -598,6 +599,7 @@ EmptyEnrichrDf = function(overlap_split=FALSE) {
   }
 }
 
+# this enrichr function is not used anymore
 #' Tests a list of entrez gene symbols for functional enrichment via Enrichr.
 # '
 #' @param genes: A vector of entrez gene symbols.
