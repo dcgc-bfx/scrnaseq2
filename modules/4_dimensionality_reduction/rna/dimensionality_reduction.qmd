@@ -426,11 +426,12 @@ if (length(integration_methods) > 0 & num_datasets > 1) {
   # IntegrateLayersWrapper will use scVIIntegration_Fixed which is a copy from the Seurat develop branch where the bug is already solved.
 
   # Integrate
+  orig_reduct = DefaultReduct(sc)
   for(method in integration_methods) {
     # Call wrapper
     sc = IntegrateLayersWrapper(sc=sc,
                                 integration_method=method,
-                                orig_reduct=DefaultReduct(sc),
+                                orig_reduct=orig_reduct,
                                 additional_args=integration_methods_params[[method]],
                                 verbose=verbose)
     

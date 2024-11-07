@@ -793,7 +793,7 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
     if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="SCT", x=assay), "SCT", "LogNormalize")
   } else if (integration_method == "RPCAIntegration") {
     # Our fixed version of RPCAIntegration
-    integration_method_arg = RPCAIntegration_Fixed 
+    #integration_method_arg = RPCAIntegration_Fixed 
     # Normalization method
     if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="SCT", x=assay), "SCT", "LogNormalize")
   } else if (integration_method == "FastMNNIntegration") {
@@ -804,8 +804,6 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   } else if (integration_method == "scVIIntegration") {
     # Our fixed version of scVIIntegration
     integration_method_arg = scVIIntegration_Fixed
-    # Conda environment for scVI
-    if (!"conda_env" %in% names(additional_args)) additional_args[["conda_env"]] = "base"
     # Add grouping information
     additional_args[["groups"]] = data.frame(group=Idents(sc))
   }
@@ -938,7 +936,7 @@ scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers
                                   conda_env = NULL, new.reduction = "integrated.dr", ndims = 30, 
                                   nlayers = 2, gene_likelihood = "nb", max_epochs = NULL, ...) 
 {
-  reticulate::use_condaenv(conda_env, required = TRUE)
+  if (!is.null(conda_env)) reticulate::use_condaenv(conda_env, required = TRUE)
   sc <- reticulate::import("scanpy", convert = FALSE)
   anndata <- reticulate::import("anndata", convert = FALSE)
   scipy <- reticulate::import("scipy", convert = FALSE)
