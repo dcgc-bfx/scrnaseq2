@@ -575,7 +575,12 @@ ReadCounts_10x_h5 = function(h5_file, strip_suffix=NULL) {
     feature_id, feature_name, feature_type
   )
   
-  non_standard_features = hdf5_features[["_all_tag_keys"]][]
+  if ("_all_tag_keys" %in% names(hdf5_features)) {
+    non_standard_features = hdf5_features[["_all_tag_keys"]][]
+  } else {
+    non_standard_features = c()
+  }
+
   if (length(non_standard_features) > 0) {
     non_standard_features_data = purrr::map(non_standard_features, function(f) {
       return(hdf5_features[[f]][])
@@ -1342,7 +1347,8 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
                                   key = 'fov_')
   
   # Add information about cell_area and nucleus_area as barcode_metadata
-  barcode_metadata = as.data.frame(cell_centroids[, c("cell", "cell_area", "nucleus_area")])
+  barcode_metadata = as.data.frame(cell_centroids[, c("cell", "cell_area", "nucleus_area")]) %>%
+    tidyr::replace_na(list(cell_area=0, nucleus_area=0))
   rownames(barcode_metadata) = as.character(barcode_metadata$cell)
   barcode_metadata$cell = NULL
   attr(image, "barcode_metadata") = barcode_metadata

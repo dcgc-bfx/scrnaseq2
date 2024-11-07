@@ -228,17 +228,23 @@ for (l in SeuratObject::Layers(sc, "^counts")) {
 }
 ```
 
-We start the analysis by removing unwanted cells from the dataset(s). Three commonly used QC metrics include the number of unique genes detected in each cell ("nFeature_RNA"), the total number of molecules detected in each cell ("nCount_RNA"), and the percentage of counts that map to the mitochrondrial genome ("percent_mt"). If ERCC spike-in controls were used, the percentage of counts mapping to them is also shown ("percent_ercc").
+We start the analysis by removing unwanted barcodes from the dataset(s). Three commonly used QC metrics include: 
 
-::: {.callout-tip title="Which cells can be considered to be of low quality?" collapse="true"}
+- the number of unique features detected in each cell ("nFeature_RNA")
+- the total number of molecules detected in each cell ("nCount_RNA"), and
+- the percentage of counts that map to the mitochrondrial genome ("percent_mt"). 
 
-On the one hand, low-quality cells such as dying, degraded and damaged cells, and empty droplets will often have very few genes ("nFeature_RNA") and low total counts ("nCount_RNA"). On the other hand, cell doublets may show an aberrantly high number of genes. Since the total number of reads detected within a cell typically strongly correlates with the number of unique genes, we can focus on the number of unique genes for filtering. In addition, damaged cells often exhibit high mitochondrial ("percent_mt") or spike-in ("percent_ercc") content. As mitochondria have their own membranes, their RNA is often the last to degrade in damaged cells and can thus be found in high numbers. However, it is important to keep in mind that different cell types and cells isolated from various species may differ in their number of expressed genes and metabolism. For example, stem cells may express a higher number of unique genes, and metabolically active cells may express a higher number of mitochondrial genes.
+If ERCC spike-in controls were used, the percentage of counts mapping to them is also shown ("percent_ercc").
+
+::: {.callout-tip title="Which barcodes can be considered to be of low quality?" collapse="true"}
+
+On the one hand, low-quality cells such as dying, degraded and damaged cells, and empty droplets will often result in few genes ("nFeature_RNA") and low total counts ("nCount_RNA"). On the other hand, cell doublets may show an aberrantly high number of genes. Since the total number of reads detected within a barcode typically strongly correlates with the number of unique features, we can focus on the number of unique features for filtering. In addition, damaged cells often exhibit high mitochondrial ("percent_mt") or spike-in ("percent_ercc") content. As mitochondria have their own membranes, their RNA is often the last to degrade in damaged cells and can thus be found in high numbers. However, it is important to keep in mind that different cell types and cells isolated from various species may differ in their number of expressed genes and metabolism. For example, stem cells may express a higher number of unique genes, and metabolically active cells may express a higher number of mitochondrial genes.
 
 :::
 
-::: {.callout-tip title="Impact of low-quality cells on downstream analyses" collapse="true"}
+::: {.callout-tip title="Impact of low-quality barcodes on downstream analyses" collapse="true"}
 
-First of all, low-quality cells of different cell types might cluster together due to similarities in their damage-induced gene expression profiles. This leads to artificial intermediate states or trajectories between subpopulations that would otherwise be distinct. Second, low-quality cells might mask relevant gene expression changes. The main differences captured by the first principal components will likely be based on cell quality rather than the underlying biology, reducing the power of dimensionality reduction. Likewise, highly variable genes might just be genes that differ between low- and high-quality cells. Lastly and equally important, the low number of total counts in low-quality cells might lead to artificial upregulation of genes due to wrong scaling effects during the normalisation process.
+First of all, low-quality barcodes of different cell types might cluster together due to similarities in their damage-induced gene expression profiles. This leads to artificial intermediate states or trajectories between subpopulations that would otherwise be distinct. Second, low-quality barcodes might mask relevant gene expression changes. The main differences captured by the first principal components will likely be based on barcode quality rather than the underlying biology, reducing the power of dimensionality reduction. Likewise, highly variable features might just be features that differ between low- and high-quality barcodes. Lastly and equally important, the low number of total counts in low-quality barcodes might lead to artificial upregulation of features due to wrong scaling effects during the normalisation process.
 
 :::
 
@@ -438,9 +444,9 @@ plist[[{{i}}]]
 }
 ```
 
-## Genes with highest expression
+## Features with highest expression
 
-We next investigate whether there are individual genes that are represented by an unusually high number of counts. For each cell, we first calculate the percentage of counts per gene. Subsequently, for each gene, we calculate the median value of these percentages in all cells. Genes with the highest median percentage of counts are plotted below.
+We next investigate whether there are individual features that are represented by an unusually high number of counts. For each barcode, we first calculate the percentage of counts per feature. Subsequently, for each feature, we calculate the median value of these percentages in all barcodes. Genes with the highest median percentage of counts are plotted below.
 
 ```{r}
 #| label: qc_filtering_rna_highest_genes
@@ -503,7 +509,7 @@ highestExpr_summary$orig.ident = factor(highestExpr_summary$orig.ident, levels=o
 
 ```{r}
 #| label: fig-qc_filtering_rna_highest_genes
-#| fig-cap: "Highest expressed features (genes) overall"
+#| fig-cap: "Highest expressed features overall"
 #| warning: false
 
 # Plot highest expressed genes (overall)
@@ -557,7 +563,7 @@ chunk_template = "
 
 \`\`\`{r}
 #| label: fig-qc_filtering_rna_highest_genes_dataset_{{dataset}}
-#| fig-cap: Highest expressed features (genes) for dataset '{{dataset}}'
+#| fig-cap: Highest expressed features for dataset '{{dataset}}'
 #| echo: false
 #| message: false
 #| warning: false
@@ -583,7 +589,7 @@ cat(":::", sep="\n")
 
 ## Sample sex
 
-When working with human or animal samples, you should ideally constrain your experiments to a single sex to avoid bias. However this may not always be possible. By looking at reads from chromosome Y (males) and XIST (X-inactive specific transcript) expression (mainly female) it is possible to determine sample sex. 
+When working with human or animal samples, you should ideally constrain your experiments to a single sex in order to avoid bias. However, this may not always be possible. By looking at reads from chromosome Y (males) and XIST (X-inactive specific transcript) expression (mainly female) it is possible to determine sample sex. 
 
 ```{r}
 #| label: fig-qc_filtering_rna_sample_sex
@@ -1131,8 +1137,8 @@ sc = CCScoring(sc, genes_s=unname(seurat_s_genes), genes_g2m=unname(seurat_g2m_g
 
 # Warn if there not enough genes for cell cycle scoring
 if (length(seurat_s_genes) < 20 | length(seurat_g2m_genes) < 20) {
-  CalloutBox(x="Cannot not find enough known S or G2M phase genes to be used cell cycle scoring. Phases and scores will be NA!", type="warning")
-  have_cell_cycle_scores = FALSE
+    CalloutBox(x="Cannot not find enough known S or G2M phase genes to be used cell cycle scoring. Phases and scores will be NA!", type="warning")
+    have_cell_cycle_scores = FALSE
 } else {
     have_cell_cycle_scores = TRUE
 }
@@ -1214,8 +1220,8 @@ Alternatively, the expression of MKI67 (a common G2M phase marker) and PCNA (a c
 #| label: qc_filtering_rna_cell_cycle_mki67_pcna
 #| results: asis
 
-# Get rownames for MKI67 (G2M phase) and PCNA (S phase)
-# Note: we use the human symbols that - in case of another species - get mapped to the orthologues
+# Get symbol for MKI67 (G2M phase) and PCNA (S phase) from the gene lists for cell cycle
+# Note: the names of the list values correspond to the human gene symbols and the values to the species-specific gene symbols
 idx = match("MKI67", names(seurat_g2m_genes))
 if (!is.na(idx)) {
   mki67 = seurat_g2m_genes[[idx[1]]]
@@ -1224,7 +1230,7 @@ if (!is.na(idx)) {
   CalloutBox(x="Could not find 'MKI67' or its orthologue in the data!", type="warning")
 }
 
-idx = match("PCNA", names(seurat_g2m_genes))
+idx = match("PCNA", names(seurat_s_genes))
 if (!is.na(idx)) {
   pcna = seurat_s_genes[[idx[1]]]
 } else {
