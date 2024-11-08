@@ -45,15 +45,16 @@ FormatString = function(x, quote=TRUE, sep=", ") {
 #' @param x Character string that will be formatted by the FormatString function
 #' @param type Type of callout box. Can be: 'note', 'tip', 'important', 'caution' and 'warning'.
 #' @param print Whether to print (if TRUE) or to return (FALSE) the message box
+#' @param quote Whether to quote expanded variables in the message box
 #' @return Character string to generate a message box
-CalloutBox = function(x, type, print=TRUE) {
+CalloutBox = function(x, type, print=TRUE, quote=TRUE) {
   valid_types = c("note", "tip", "important", "caution", "warning")
   assertthat::assert_that(type %in% valid_types,
                           msg=FormatString("Callout box typ {type} but must be one of: {valid_types*}."))
   
   
   
-  x = paste0("\n\n::: callout-", type, "\n", FormatString(x), "\n:::\n\n")
+  x = paste0("\n\n::: callout-", type, "\n", FormatString(x, quote=quote), "\n:::\n\n")
   if (print) {
     cat(x)
   } else {
