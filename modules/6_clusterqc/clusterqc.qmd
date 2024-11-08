@@ -16,7 +16,7 @@ params:
   default_assay: null
 
   # QC measures to look at 
-  qc_features:
+  barcode_qc:
   - "nCount_RNA"
   - "nFeature_RNA"
   - "pMito_RNA"
@@ -145,23 +145,23 @@ Do cells in individual clusters have particularly high counts, detected genes or
 #| results: asis
 
 # QC features to plot
-qc_features = param("qc_features")
-f = qc_features %in% colnames(sc[[]])
+barcode_qc = param("barcode_qc")
+f = barcode_qc %in% colnames(sc[[]])
 if (!all(f)) {
-  CalloutBox(x="Cannot find QC {qc_features[!f]*} in barcode metadata.", type="warning")
-  qc_features = qc_features[f]
+  CalloutBox(x="Cannot find QC {barcode_qc[!f]*} in barcode metadata.", type="warning")
+  barcode_qc = barcode_qc[f]
 }
 
 # Don't plot QC if there aren't any features to plot
-if (length(qc_features) > 0) {
+if (length(barcode_qc) > 0) {
     
   # If there are more than 25 cluster, plots need to be optimised so that they are not too crowded
   optimise_plots = levels(sc$seurat_clusters) %>% length() >= 25
 
   # Left: QC on UMAP
-  plist1 = Seurat::FeaturePlot(sc, features=qc_features, combine=FALSE, order=TRUE)
+  plist1 = Seurat::FeaturePlot(sc, features=barcode_qc, combine=FALSE, order=TRUE)
   for (i in seq(plist1)) {
-    q = qc_features[i]
+    q = barcode_qc[i]
     
     plist1[[i]] = plist1[[i]] + 
         AddPlotStyle(title=q, xlab="", ylab="") +
@@ -169,10 +169,10 @@ if (length(qc_features) > 0) {
         theme(legend.key.width = unit(0.01, "npc"), legend.position=ifelse(optimise_plots, "none", "right"))
     plist1[[i]] = Seurat::LabelClusters(plist1[[i]], id="ident", box=TRUE, fill="white", label.padding=unit(0.05, "lines"))
   }
-  names(plist1) = qc_features
+  names(plist1) = barcode_qc
   
   # Right: QC as violin plots
-  plist2 = lapply(qc_features, function(x) {
+  plist2 = lapply(barcode_qc, function(x) {
     p = ggplot(sc[[]] %>% dplyr::select(seurat_clusters, qc=x), 
                aes(x=seurat_clusters, y=qc, fill=seurat_clusters, group=seurat_clusters)) + 
       geom_violin(scale="width", linewidth=ifelse(optimise_plots, 0.1, 0.5)) + 
@@ -182,15 +182,15 @@ if (length(qc_features) > 0) {
       theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))
     return(p)
   })
-  names(plist2) = qc_features
+  names(plist2) = barcode_qc
   
   # Combine both plots with the patchwork library
-  plist = lapply(qc_features, function(x) {
+  plist = lapply(barcode_qc, function(x) {
     p = plist1[[x]] + plist2[[x]]
     return(p)
   })
-  captions = GeneratePlotCaptions(qc_features, assay_names=SeuratObject::Assays(sc), capitalize=TRUE)
-  names(plist) = names(captions) = qc_features
+  captions = GeneratePlotCaptions(barcode_qc, assay_names=SeuratObject::Assays(sc), capitalize=TRUE)
+  names(plist) = names(captions) = barcode_qc
   
   # Set up layout and automatically generate chunks
   chunk_template = "
@@ -207,7 +207,7 @@ plist[['{{type}}']]
   
   cat("::: panel-tabset\n")
   
-  for (x in qc_features) {
+  for (x in barcode_qc) {
     chunk_filled =  knitr::knit_expand(text=chunk_template, type=x, caption=captions[x])
     if(interactive()) {
       print(EvalKnitrChunk(chunk_filled))
@@ -223,7 +223,9 @@ plist[['{{type}}']]
 
 ## Cell Cycle Effects {#sec-clusterqc-cc}
 
-How much do gene expression profiles in the dataset reflect the cell cycle phases the single cells were in? After initial normalisation, we determined the effects of cell cycle heterogeneity by calculating a score for each cell based on its expression of G2M and S phase markers. Scoring is based on the strategy described in @Tirosh_2016, and human gene symbols are translated to gene symbols of the species of interest using biomaRt. This section of the report visualizes the above calculated cell cycle scores. 
+How much do gene expression profiles in the dataset reflect the cell cycle phases the single cells were in? After initial normalisation, we determined the effects of cell cycle heterogeneity by calculating a score for each cell based on its expression of G2M and S phase markers. Scoring is based on the strategy described in @Tirosh_2016, and human gene symbols are translated to gene symbols of the species of interest using biomaRt. This section of the report visualizes the above calculated cell cycle scores.
+
+Alternatively, the expression of MKI67 (a common G2M phase marker) and PCNA (a common S phase marker), if available, can be used to get an impression of possible cell-cycle effects in the data.
 
 ```{r}
 #| label: clusterqc_cellcycle
@@ -234,6 +236,28 @@ have_cellcyle_scores = sc$Phase %>% is.na() %>% all() %>% not()
 
 if (!have_cellcyle_scores) CalloutBox(x="All cell cycle scores are zero and cell cycle information is not available. Most likely there were not enough S or G2M phase genes available for calculation.", type="warning")
 
+# Do we have MKI67 and PCNA?
+
+# Get symbol for MKI67 (G2M phase) and PCNA (S phase) from the gene lists for cell cycle
+# Note: the names of the list values correspond to the human gene symbols and the values to the species-specific gene symbols
+seurat_g2m_genes = ScLists(sc, lists_slot="gene_lists", list="CC_G2M_phase")
+idx = match("MKI67", names(seurat_g2m_genes))
+if (!is.na(idx)) {
+  mki67 = seurat_g2m_genes[[idx[1]]]
+} else {
+  mki67 = NULL
+  CalloutBox(x="Could not find 'PCNA' or its orthologue in the data!", type="warning")
+}
+
+seurat_s_genes = ScLists(sc, lists_slot="gene_lists", list="CC_S_phase")
+idx = match("PCNA", names(seurat_s_genes))
+if (!is.na(idx)) {
+  pcna = seurat_s_genes[[idx[1]]]
+} else {
+  pcna = NULL
+  CalloutBox(x="Could not find 'MKI67' or its orthologue in the data!", type="warning")
+}
+cell_cycle_markers = c(mki67, pcna)
 ```
 
 ```{r}
@@ -284,28 +308,40 @@ p
 
 ```{r}
 #| label: clusterqc_cellcycle_umap
-#| eval: !expr have_cellcyle_scores
-#| include: !expr have_cellcyle_scores
+#| eval: !expr have_cellcyle_scores | length(cell_cycle_markers) > 0
+#| include: !expr have_cellcyle_scores | length(cell_cycle_markers) > 0
 #| results: asis
 
-# Phases on UMAP
 plist = list()
-plist[["Phase"]] = Seurat::DimPlot(sc, group.by="Phase", pt.size=1, cols=ScColours(sc, "Phase")) + 
-  AddPlotStyle(title="", xlab="", ylab="")
 
-# Hack to colour by phase but label by
-barcodes = rownames(plist[["Phase"]]$data)
-plist[["Phase"]]$data$ident = sc[["seurat_clusters"]][barcodes,]
-plist[["Phase"]] = LabelClusters(plist[["Phase"]], id="ident", box=TRUE, fill="white", colour="black", label.padding=unit(0.05, "lines"))
-
-
-for (i in c("S.Score", "G2M.Score", "CC.Difference")) {
-  plist[[i]] = FeaturePlot(sc, features=i, pt.size=1, order=TRUE) +
-    AddPlotStyle(title="") + 
-    viridis::scale_color_viridis()
-  plist[[i]] = LabelClusters(plist[[i]], id="ident", box=TRUE, fill="white", colour="black", label.padding=unit(0.05, "lines"))
+if (have_cellcyle_scores) {
+    # Phases on UMAP
+    plist[["Phase"]] = Seurat::DimPlot(sc, group.by="Phase", pt.size=1, cols=ScColours(sc, "Phase")) + 
+      AddPlotStyle(title="", xlab="", ylab="")
+    
+    # Hack to colour by phase but label by
+    barcodes = rownames(plist[["Phase"]]$data)
+    plist[["Phase"]]$data$ident = sc[["seurat_clusters"]][barcodes,]
+    plist[["Phase"]] = LabelClusters(plist[["Phase"]], id="ident", box=TRUE, fill="white", colour="black", label.padding=unit(0.05, "lines"))
+    
+    
+    for (i in c("S.Score", "G2M.Score", "CC.Difference")) {
+      plist[[i]] = FeaturePlot(sc, features=i, pt.size=1, order=TRUE) +
+        AddPlotStyle(title="") + 
+        viridis::scale_color_viridis()
+      plist[[i]] = LabelClusters(plist[[i]], id="ident", box=TRUE, fill="white", colour="black", label.padding=unit(0.05, "lines"))
+    }
 }
 
+if (length(cell_cycle_markers) > 0) {
+    for (i in cell_cycle_markers) {
+      plist[[i]] = FeaturePlot(sc, features=i, pt.size=1, order=TRUE) +
+        AddPlotStyle(title="") + 
+        viridis::scale_color_viridis()
+      plist[[i]] = LabelClusters(plist[[i]], id="ident", box=TRUE, fill="white", colour="black", label.padding=unit(0.05, "lines"))
+    }
+}
+    
 captions = paste("UMAP coloured by", names(plist))
 names(captions) = names(plist)
 
@@ -336,11 +372,6 @@ for (i in names(plist)) {
 cat(":::", sep="\n")
 ```
 
-Alternatively, the expression of Ki67 and PCNA, if available, can be used to identify proliferating cells.
-
-```{r}
-
-```
 
 ## Software
 

@@ -79,7 +79,7 @@ execute:
 
 # Read data
 
-This workflow supports pre-processed data from a variety of sources, including single-cell data from platforms and protocols such as 10x Genomics, SmartSeq-2, Parse Biosciences and Scale Biosciences. Additionally, it can handle spatial data from the 10x Visium and 10x Xenium platforms.
+This workflow supports pre-processed data from a variety of sources, including single-cell data from platforms and protocols such as 10x Genomics, Smart-seq2 and Parse Biosciences. Additionally, it supports spatial data from the 10x Visium and 10x Xenium platforms.
 
 ```{r}
 #| label: setup
@@ -560,7 +560,7 @@ counts_summary = data.frame(
 gt(counts_summary)
 ```
 
-In case, the count datasets are very big, it is possible to (randomly) sample barcodes to generate smaller count subsets which may be faster to analyse but still give meaningful results. The number of barcodes to sample can either be a fix number or the number of barcodes in the smallest sample. Similarly, it is also possible to sample down features.
+In case, the count datasets are very big, it is possible to (randomly) sample barcodes to generate smaller count subsets which may be faster to analyse but still give meaningful results. The number of barcodes to sample can either be a fixed number or the number of barcodes in the smallest sample. Similarly, it is also possible to sample down features.
 
 ```{r}
 #| label: read_data_downsample
@@ -1040,7 +1040,7 @@ for (a in Seurat::Assays(sc)) {
 }
 ```
 
-The following table shows available metadata (columns) of the first 5 cells (rows). These metadata provide additional information about the cells in the dataset, such as the sample a cell belongs to ("orig.ident"), the number of mapped reads (“nCounts_RNA”), or the above mentioned number of unique genes detected ("nFeature_RNA").
+The following table shows available metadata (columns) of the first 5 cells (rows). These metadata provide additional information about the cells in the dataset, such as the sample a cell belongs to ("orig.ident"), the number of mapped reads (“nCounts_RNA”), or the above mentioned number of unique features detected ("nFeature_RNA").
 
 ```{r}
 #| label: tbl-read_data_barcode_metadata
