@@ -436,14 +436,11 @@ if (any(species_tibble$species_name == species)) {
       scale_color_viridis_c(direction=-1, 
                             labels=label_scientific(digits=3)) +
       theme_minimal() +
+      AddPlotStyle(xlab="Cluster", ylab="C8 genesets", legend_position="right") + 
       theme(axis.text.x=element_text(size=6, angle=75, hjust=1)) +
-      labs(x="Cluster", y="C8 genesets", size="Gene Count", 
-           color="Adjusted p-value") +
-      theme(legend.position="right") +
+      labs(size="Gene Count", color="Adjusted p-value") +
       scale_y_discrete(labels=function(y) str_wrap(gsub("_", " ", y), 
                                                      width=30)) + 
-      AddPlotStyle(title=n, xlab="Cluster", ylab="C8 genesets", 
-                    legend_position="bottom") + 
       coord_flip()
 
     print(p)
@@ -457,7 +454,6 @@ if (any(species_tibble$species_name == species)) {
   CalloutBox("ORA skipped; provided species {species} not in MSigdbr.", 
              type="note")
 }
-
 ```
 
 ## Known marker genes {.tabset}
@@ -771,9 +767,8 @@ if (length(ora_up_results) > 0) {
   # Note
   CalloutBox("ORA results are written to {outfile}.", type="note")
 }
-
 ```
-    
+
 ### Software
 
 ```{r}
