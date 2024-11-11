@@ -300,7 +300,7 @@ for (i in 1:nrow(datasets)) {
   ###############################################################################
   # Get experiment, sample, path(s), technology, assays and barcode suffix #
   ###############################################################################
-  
+
   # Sample
   sample = datasets$sample[i]
   # Experiment = dataset = orig.ident
@@ -319,7 +319,6 @@ for (i in 1:nrow(datasets)) {
   
   # Dataset file path
   path = datasets$path[i]
-
 
   #########################
   # Read barcode metadata #
@@ -355,20 +354,23 @@ for (i in 1:nrow(datasets)) {
   # Read counts #
   ###############
   
+  # For Visium HD; which bin sizes to use
+  visiumhd_bin_sizes = param("visiumhd_bin_sizes")
+  
   # Read counts
   counts_lst[[i]] = ReadCounts(path=path,
-                                    technology=technology,
-                                    assays=assays,
-                                    barcode_metadata=barcode_metadata,
-                                    feature_metadata=feature_metadata,
-                                    barcode_suffix=barcode_suffix)
+                               technology=technology,
+                               assays=assays,
+                               barcode_metadata=barcode_metadata,
+                               feature_metadata=feature_metadata,
+                               barcode_suffix=barcode_suffix,
+                               visiumhd_bin_sizes=visiumhd_bin_sizes)
   
   #################################
   # If requested, rename features #
   #################################
 
   rename_features = datasets$rename_features[i]
-  rename_features = "NO"
   if (is.na(rename_features)) {rename_features = 'NO'}
   
   # Rename using a feature metadata column or using Ensembl (keyword: "ENSEMBL")
@@ -387,7 +389,6 @@ for (i in 1:nrow(datasets)) {
   for (j in seq_along(counts_lst[[i]])) {
     assay = attr(counts_lst[[i]][[j]], "assay")
     feature_metadata = attr(counts_lst[[i]][[j]], "feature_metadata")
-    
     
     if (rename_features[j] == 'NO') {
       # 'NO': no renaming - just keep the current row names
@@ -432,7 +433,6 @@ for (i in 1:nrow(datasets)) {
       new_feature_names = ifelse(is.na(new_feature_names) | nchar(new_feature_names)==0, rownames(feature_metadata), new_feature_names)
     }
 
-    
     # Now make new feature names Seurat-compatible
     if (any(grepl(pattern="_", x=new_feature_names, fixed=TRUE))) {
       CalloutBox(x="New feature names contain '_' after renaming for dataset {path}, assay {assay}. All occurences will be replaced with '-'.", type="warning")
@@ -450,7 +450,6 @@ for (i in 1:nrow(datasets)) {
   for (j in seq_along(counts_lst[[i]])) {
     attr(counts_lst[[i]][[j]], "sample") = sample
     attr(counts_lst[[i]][[j]], "orig.ident") = experiment
-    attr(counts_lst[[i]][[j]], "path") = path
   }
 }
 
@@ -773,13 +772,13 @@ sc = purrr::map(all_assays, function(a) {
   s =  Seurat::CreateSeuratObject(counts=assay_obj, meta.data=barcode_metadata, assay=a, names.delim=NULL, names.field=NULL)
   
   # Fix NA values in barcode metadata
-  n =  paste("nCount", a, sep="_")
-  i = is.na(s[[]][, n]) %>% which()
-  s[[]][i, n] = 0
-  
-  n =  paste("nFeature", a, sep="_")
-  i = is.na(s[[]][, n]) %>% which()
-  s[[]][i, n] = 0
+  #n =  paste("nCount", a, sep="_")
+  #i = is.na(s[[]][, n]) %>% which()
+  #s[[]][i, n] = 0
+  #
+  #n =  paste("nFeature", a, sep="_")
+  #i = is.na(s[[]][, n]) %>% which()
+  #s[[]][i, n] = 0
   
   return(s)
 })
@@ -801,15 +800,15 @@ sc$sample = factor(sc$sample, levels=unique(barcode_metadata_levels$sample))
 sc$technology = factor(sc$technology, levels=unique(barcode_metadata_levels$technology))
 
 # Replace NA in nCount and nFeature with 0
-for (a in Seurat::Assays(sc)) {
-  n =  paste("nCount", a, sep="_")
-  i = is.na(sc[[]][, n]) %>% which()
-  sc[[]][i, n] = 0
-  
-  n =  paste("nFeature", a, sep="_")
-  i = is.na(sc[[]][, n]) %>% which()
-  sc[[]][i, n] = 0
-}
+#for (a in Seurat::Assays(sc)) {
+#  n =  paste("nCount", a, sep="_")
+#  i = is.na(sc[[]][, n]) %>% which()
+#  sc[[]][i, n] = 0
+#  
+#  n =  paste("nFeature", a, sep="_")
+#  i = is.na(sc[[]][, n]) %>% which()
+#  sc[[]][i, n] = 0
+#}
 
 # Remove cells with zero counts
 counts_per_cell = sc[[]][,paste0("nCount_", Seurat::Assays(sc))] %>% rowSums()
@@ -862,6 +861,10 @@ if (parse_plate_information & any(grepl(pattern=plate_information_regex, x=sc$or
 
 # Set default identity
 Seurat::Idents(sc) = "orig.ident"
+
+# Remove counts_lst and call garbage collector
+rm(counts_lst)
+invisible(gc())
 ```
 
 ```{r}
@@ -893,70 +896,77 @@ For spatial workflows, we add the image information.
 # Read images  (10x Visium, 10x Visium HD and 10x Xenium only)
 
 # Per dataset
-for (i in seq_along(counts_lst)) {
-  technology = attr(counts_lst[[i]][[1]], "technology")
-  orig_ident = attr(counts_lst[[i]][[1]], "orig.ident")
-  
+for (i in 1:nrow(datasets)) {
+  # Experiment = orig.ident, technology and path
+  orig_ident = datasets$experiment[i]
+  technology = datasets$technology[i]
+  path = datasets$path[i]
+
   # Three technologies have image data
   if (!technology %in% c("10x_visium", "10x_visiumhd" ,"10x_xenium")) {
     next
   }
-  
-  # Collect directories with spatial data
-  # - 10x Visium: subdirectory 'spatial'
-  # - 10x VisiumHD: for each bin size, there is a subdirectory 'spatial'
-  # - 10x Xenium: in the same directory
-  paths = purrr::map_chr(counts_lst[[i]], attr, "path")
-
-  for (path in paths) {
-
-    # 10x Visium: image is in subdirectory 'spatial'
-    #image_dir = file.path(dirname(path), "spatial")
-    #assertthat::assert_that(dir.exists(image_dir),
-    #                            msg=FormatString("10x Visium dataset {path} does not have a directory 'spatial' with spatial data."))
-  #} else if (technology == "10x_xenium") {
-  #  # 10x Xenium_ image is in the same directory
-  #  image_dir = dirname(path)
-  #} else {
-  #  # other: skip
-  #  next
-  #}
   
   # For renaming and reordering of barcodes in image
   barcodes = sc[[]] %>%
     dplyr::filter(orig.ident==orig_ident) %>%
     dplyr::select(orig_barcode)
   barcodes = setNames(rownames(barcodes), barcodes$orig_barcode)
-  j = match(barcodes, Cells(sc))
+  j = match(barcodes, SeuratObject::Cells(sc))
   barcodes = barcodes[order(j)]
+
+  # Image directorie(s) and default assays associated to the images
+  # Image key (to access in Seurat object)
+  if (technology == "10x_visiumhd") {
+    # For Visium there is an image for each bin size
+    visiumhd_bin_sizes = param("visiumhd_bin_sizes")
+    visiumhd_bin_sizes = sprintf("%03d", visiumhd_bin_sizes)
+    image_dir = file.path(path, paste0("square_", visiumhd_bin_sizes, "um"), "spatial")
+    default_image_assay = paste0(gsub("\\d+$", "", default_assay), visiumhd_bin_sizes)
+    image_key = paste0("slice", ".", orig_ident, visiumhd_bin_sizes)
+  } else if (technology == "10x_visium") {
+    image_dir = file.path(path, "spatial")
+    default_image_assay = default_assay
+    image_key = paste0("slice", ".", orig_ident)
+  } else if (technology == "10x_xenium") {
+    image_dir = path
+    default_image_assay = default_assay
+    image_key = paste0("slice", ".", orig_ident)
+  }
   
-  # Read image
+  # For Xenium: which coordinate type to use
   spatial_coordinate_type = param("spatial_coordinate_type")
-  with_progress({
-      image = ReadImage(image_dir=image_dir, 
-                        technology=technology, 
-                        assay=default_assay, 
+  
+  # Read in image(s)
+  image_lst = purrr::map(seq_along(image_dir), function(j) {
+    with_progress({
+      image = ReadImage(image_dir=image_dir[j],
+                        technology=technology,
+                        assay=default_image_assay[j],
                         barcodes=barcodes,
                         coordinate_type=spatial_coordinate_type)
-  }, enable=verbose)
-  
-  # Add image (10x visium) or field of view (10x xenium)
-  if (technology == "10x_visium") {
-    key = "image"
-  } else if (technology == "10x_xenium") {
-    key = "fov"
+      }, enable=verbose)
+    return(image)
+  })
+
+  # Add to Seurat object
+  for (j in seq_along(image_lst)) {
+    # Update image key(s)
+    SeuratObject::Key(image_lst[[j]]) = paste0(gsub("[^[:alnum:]]", "", image_key[j]), "_")
+    
+    # Add to Seurat object
+    sc[[image_key[j]]] = image_lst[[j]]
+    
+    # If additional barcode metadata is provided, add as well
+    barcode_metadata = attr(image_lst[[j]], "barcode_metadata")
+    if (!is.null(barcode_metadata)) {
+      sc = Seurat::AddMetaData(sc, barcode_metadata)
+    }
   }
-  key = paste0(key, "." , orig_ident)
-  image@key = paste0(gsub("[^[:alnum:]]", "", key), "_")
-  sc[[key]] = image
   
-  # If additional barcode metadata is provided, add as well
-  barcode_metadata = attr(image, "barcode_metadata")
-  if (!is.null(barcode_metadata)) {
-    sc = Seurat::AddMetaData(sc, barcode_metadata)
-  }
-  
-  sc
+  # Remove image_lst and call garbage collector
+  rm(image_lst)
+  invisible(gc())
 }
 ```
 
@@ -1022,16 +1032,20 @@ for (a in Seurat::Assays(sc)) {
   for (l in SeuratObject::Layers(sc[[a]], "^counts")) {
     # Get data for layer (sample)
     counts = sc[[a]][l]
-    bcs = counts %>% colnames()
-    total_counts = sc[[]][bcs, paste0("nCount_", a), drop=TRUE]
-    counts_perc = t(t(counts)/total_counts)*100
     
     # Calculate feature filters
     num_bcs_expr = rowSums(counts >= 1)
-
+    
     # Calculate median percentage of counts per feature
+    # TODO: maybe move to functions?
+    calculate_perc = function(mat) {
+      totals = colSums(mat)
+      totals = ifelse(totals>0, totals, 1)
+      return(t(t(mat) / totals) * 100)
+    }
+    
     with_progress({
-      counts_median = CalculateMedians(counts_perc, margin=1, chunk_size=2000)
+      counts_median = CalculateMedians(counts, margin=1, chunk_size=2000, fun=calculate_perc)
     }, enable=verbose)
     
     # Add to metadata
@@ -1040,6 +1054,10 @@ for (a in Seurat::Assays(sc)) {
     sc[[a]][[paste("medianPerc", n, sep="_")]] = counts_median
   }
 }
+
+# Remove counts and counts_perc
+rm(counts)
+invisible(gc())
 ```
 
 The following table shows available metadata (columns) of the first 5 cells (rows). These metadata provide additional information about the cells in the dataset, such as the sample a cell belongs to ("orig.ident"), the number of mapped reads (“nCounts_RNA”), or the above mentioned number of unique features detected ("nFeature_RNA").
@@ -1110,7 +1128,7 @@ for (a in Seurat::Assays(sc)) {
   
   # VIOLIN PLOTS
   # Make violin plots and combine into patchworked object
-  plist = PlotBarcodeQC(sc, qc=barcode_qc, log10="nCount")
+  plist = PlotBarcodeQC(sc, qc=barcode_qc, log10="nCount", assay=a)
   p = patchwork::wrap_plots(plist, ncol=2)
   
   # Make chunk template for violin plots
@@ -1140,7 +1158,7 @@ p
     for(q in barcode_qc) {
       
       # Make spatial plots split by sample
-      plist = FeaturePlotSpatial(sc, features=q, combine=FALSE) %>% purrr::flatten()
+      plist = FeaturePlotSpatial(sc, features=q, assay=a, combine=FALSE) %>% purrr::flatten()
       plist = purrr::map(plist, function(p) {
         p =  p + theme(legend.title=element_blank())
         p = p + viridis::scale_fill_viridis(trans=ifelse(grepl(pattern="nCount", q), "log10", "identity"))
@@ -1148,7 +1166,7 @@ p
       })
       
       # Make captions
-      orig_idents = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
+      orig_idents = names(plist) %>% gsub("^(fov|image|slice)\\.", "", .)
       captions = GeneratePlotCaptions(q, assay_names=SeuratObject::Assays(sc)) %>% paste("for dataset {orig_idents}") %>% FormatString()
       
       # Make chunk template for spatial plots

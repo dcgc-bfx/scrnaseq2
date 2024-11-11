@@ -151,8 +151,9 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
 #' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
 #' @param margin Margin for which to calculate median. Can be: 1 - rows, 2 - columns. Default is 1.
 #' @param chunk_size Iterable matrices will be converted into sparse matrics. To avoid storing the entire matrix in memory, only process this number of rows/columns at once. Default is no chunks.
+#' @param fun Function to apply to the matrix (chunk) before calcuating the median. Can be NULL.
 #' @return A named vector with medians.
-CalculateMedians = function(matrix, margin=1, chunk_size=NULL, cores=1){
+CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
                           msg="Margin can only be 1 - rows or 2 - columns.")
@@ -188,20 +189,23 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, cores=1){
       if (margin == 1) {
         # Per barcode
         if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
+        if (!is.null(fun)) counts = fun(counts)
         mds = sparseMatrixStats::rowMedians(counts)
       } else {
         # Per feature
         if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
+        if (!is.null(fun)) counts = fun(counts)
         mds = sparseMatrixStats::colMedians(counts)
       }
       return(mds)
-    }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("margin"))) %>% 
+    }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("margin", "fun"))) %>% 
       purrr::flatten_dbl()
     progr(type='finish')
   } else {
     # Convert to sparse matrix
     if (!is(matrix, "dgCMatrix")) {
       matrix = as(matrix, "dgCMatrix")
+      if (!is.null(fun)) matrix = fun(matrix)
     }
     
     # Calculate medians
