@@ -1166,8 +1166,8 @@ p
       })
       
       # Make captions
-      orig_idents = names(plist) %>% gsub("^(fov|image|slice)\\.", "", .)
-      captions = GeneratePlotCaptions(q, assay_names=SeuratObject::Assays(sc)) %>% paste("for dataset {orig_idents}") %>% FormatString()
+      idents = names(plist) %>% gsub("^(fov|image|slice)\\.", "", .)
+      captions = GeneratePlotCaptions(q, assay_names=SeuratObject::Assays(sc)) %>% paste("for dataset {idents}") %>% FormatString()
       
       # Make chunk template for spatial plots
       chunk_template = "
@@ -1181,8 +1181,8 @@ plist[[{{i}}]]
       # Fill out and print spatial plots
       cat("::: panel-tabset\n")
       for(i in seq_along(plist)) {
-        cat ("##### ", orig_idents[i], "\n\n")
-        chunk_filled =  knitr::knit_expand(text=chunk_template, qc=q, i=i, dataset=orig_idents[i], caption=captions[i])
+        cat ("##### ", idents[i], "\n\n")
+        chunk_filled =  knitr::knit_expand(text=chunk_template, qc=q, i=i, dataset=idents[i], caption=captions[i])
         if(interactive()) {
           print(EvalKnitrChunk(chunk_filled))
         } else {

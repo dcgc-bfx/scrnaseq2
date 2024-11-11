@@ -137,7 +137,7 @@ param = function(p=NULL) {
       profile_module_params = profile_params[["modules"]]
       
       if (module_name %in% names(profile_module_params)) {
-        param_set = purrr::list_modify(param_set, !!!profile_module_params[[module_name]])
+        param_set = purrr::list_assign(param_set, !!!profile_module_params[[module_name]])
       }
     }
   }
@@ -375,8 +375,9 @@ EvalKnitrChunk = function(x) {
 #' 
 #' @param filter Filter from yaml configuration
 #' @param orig_idents The samples in the analysis
+#' @param metadata The barcode metadata table
 #' @return A filter with entries for each sample
-PrepareBarcodeFilter = function(filter, orig_idents) {
+PrepareBarcodeFilter = function(filter, orig_idents, metadata) {
   if (is.null(filter) | length(filter) == 0) {
     return(NULL)
   }
@@ -402,6 +403,13 @@ PrepareBarcodeFilter = function(filter, orig_idents) {
     return(f)
   })
   
+  # Make sure filter columns exist in metadata
+  filter_cols = purrr::map(filter, names) %>% 
+    unlist() %>% 
+    unique()
+  assertthat::assert_that(all(filter_cols %in% colnames(metadata)),
+                          msg=FormatString("Filter columns {filter_cols*} not found in barcode metadata."))
+  
   return(filter)
 }
 
@@ -410,7 +418,7 @@ PrepareBarcodeFilter = function(filter, orig_idents) {
 #' @param filter Filter from yaml configuration
 #' @param orig_idents The samples in the analysis
 #' @return A filter with entries for each sample
-PrepareFeatureFilter = function(filter, orig_idents) {
+PrepareFeatureFilter = function(filter, orig_idents, metadata) {
   if (is.null(filter) | length(filter) == 0) {
     return(NULL)
   }

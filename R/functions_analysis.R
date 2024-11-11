@@ -403,34 +403,46 @@ CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
   if (length(genes_s) >= 20 & length(genes_g2m) >= 20) {
-      # For each layer (dataset)
-      # In this case, we need to split the Seurat object 
-      # (since CellCycleScoring and AddModuleScore still cannot work with layers)
-      sc_split = Seurat::SplitObject(sc, split.by="orig.ident")
-      cell_cycle_scores = furrr::future_map_dfr(sc_split, function(s) {
-          # Check that the genes exist
-          genes_s_exists = genes_s %in% rownames(s[[assay]])
-          genes_g2m_exists = genes_g2m %in% rownames(s[[assay]])
-          
-          
-          if (sum(genes_s_exists) >= 20 & sum(genes_g2m_exists) >= 20) {
-              s = Seurat::CellCycleScoring(s,
-                                           s.features=genes_s[genes_s_exists],
-                                           g2m.features=genes_g2m[genes_g2m_exists],
-                                           assay=assay,
-                                           verbose=verbose)
-              cc_scores = s[[c("Phase", "S.Score", "G2M.Score")]]
-              cc_scores[["CC.Difference"]] = cc_scores[["S.Score"]] - cc_scores[["G2M.Score"]]
-          } else {
-              barcodes = Cells(s)
-              cc_scores = data.frame(Phase=rep(NA, length(barcodes)) %>% as.character(), 
-                                     S.Score=rep(0, length(barcodes)) %>% as.numeric(), 
-                                     G2M.Score=rep(0, length(barcodes)) %>% as.numeric(), 
-                                     CC.Difference=rep(0, length(barcodes)) %>% as.numeric(),
-                                     row.names=barcodes)
-          }
-          return(cc_scores)
-      }, .options = furrr::furrr_options(seed=getOption("random_seed")))
+    # For each layer (dataset)
+    # since CellCycleScoring and AddModuleScore still cannot work with layers
+    # In this case, we just keep the data layers
+    layers = SeuratObject::Layers(sc, assay=assay, search="^data\\.")
+    sc_split = purrr::map(layers, function(l) {
+      # do not calculate nCount and nFeature
+      op = options(Seurat.object.assay.calcn = FALSE)
+      on.exit(expr = options(op), add = TRUE)
+      
+      data = SeuratObject::LayerData(sc, assay=assay, layer=l)
+      s = CreateAssay5Object(data=data)
+      s = CreateSeuratObject(s, assay=assay)
+      return(s)
+    })
+    
+    # Calculate cell cycle scores
+    cell_cycle_scores = furrr::future_map_dfr(sc_split, function(s) {
+        # Check that the genes exist
+        genes_s_exists = genes_s %in% rownames(s[[assay]])
+        genes_g2m_exists = genes_g2m %in% rownames(s[[assay]])
+        
+        
+        if (sum(genes_s_exists) >= 20 & sum(genes_g2m_exists) >= 20) {
+            s = Seurat::CellCycleScoring(s,
+                                         s.features=genes_s[genes_s_exists],
+                                         g2m.features=genes_g2m[genes_g2m_exists],
+                                         assay=assay,
+                                         verbose=verbose)
+            cc_scores = s[[c("Phase", "S.Score", "G2M.Score")]]
+            cc_scores[["CC.Difference"]] = cc_scores[["S.Score"]] - cc_scores[["G2M.Score"]]
+        } else {
+            barcodes = Cells(s)
+            cc_scores = data.frame(Phase=rep(NA, length(barcodes)) %>% as.character(), 
+                                   S.Score=rep(0, length(barcodes)) %>% as.numeric(), 
+                                   G2M.Score=rep(0, length(barcodes)) %>% as.numeric(), 
+                                   CC.Difference=rep(0, length(barcodes)) %>% as.numeric(),
+                                   row.names=barcodes)
+        }
+        return(cc_scores)
+    }, .options = furrr::furrr_options(seed=getOption("random_seed")))
   } else {
       barcodes = Cells(sc)
       cell_cycle_scores = data.frame(Phase=rep(NA, length(barcodes)) %>% as.character(), 

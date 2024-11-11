@@ -70,6 +70,7 @@ AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, lege
 #' @param capitalize If TRUE, capitalize the first letter of the caption.
 #' @return A list of captions.
 GeneratePlotCaptions = function(plot_names, assay_names=NULL, split=NULL, capitalize=TRUE) {
+  if (length(plot_names) == 0) return(NULL)
 
   # Split names into two parts if requested
   if (!is.null(split)) {
@@ -177,7 +178,10 @@ GeneratePlotCaptions = function(plot_names, assay_names=NULL, split=NULL, capita
 #' @param log10 If set to TRUE, show the y-axis in log10. Can also be a regular expression to apply only to specific columns. Only numeric columns will be affected.
 #' @return A list of ggplot2 objects.
 PlotBarcodeQC = function(sc, qc, filter=NULL, assay=NULL, log10=FALSE) {
-  barcode_metadata = sc[[]]
+  # Get assay and barcodes
+  if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
+  bcs = SeuratObject::Cells(sc[[assay]])
+  barcode_metadata = sc[[]][bcs, ]
   
   # Determine QC type (numeric or non-numeric)
   is_numeric = purrr::map_lgl(qc, function(q) return(is.numeric(barcode_metadata[, q, drop=TRUE])))
@@ -281,10 +285,14 @@ PlotBarcodeQC = function(sc, qc, filter=NULL, assay=NULL, log10=FALSE) {
 #' @param qc Pairs of barcode metadata columns to plot.
 #' @param filter A nested list where the first level is the barcode metadata column and the second levels 
 #' contains filters per dataset. Filters for numeric columns must numeric vectors with min and max. Filter
+#' @param assay The assay of the barcodes. If NULL, defaults to default assay of the Seurat object.
 #' for character/factor columns must be character vectors with the values that should be kept.
 #' @return A list of ggplot2 objects.
-PlotBarcodeQCCor = function(sc, qc, filter=NULL) {
-  barcode_metadata = sc[[]]
+PlotBarcodeQCCor = function(sc, qc, filter=NULL, assay=NULL) {
+  # Get assay and barcodes
+  if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
+  bcs = SeuratObject::Cells(sc[[assay]])
+  barcode_metadata = sc[[]][bcs, ]
   
   # Check QC type (only numeric allowed)
   qc_cols = purrr::flatten(qc) %>%
@@ -320,7 +328,7 @@ PlotBarcodeQCCor = function(sc, qc, filter=NULL) {
     f2 = c[2]
     
     # Plot QC feature f1 vs f2
-    p = Seurat::FeatureScatter(sc, feature1=f1, feature2=f2, shuffle=TRUE, seed=getOption("random_seed"))
+    p = Seurat::FeatureScatter(sc, cells=SeuratObject::Cells(sc[[assay]]), feature1=f1, feature2=f2, shuffle=TRUE, seed=getOption("random_seed"))
     p = p + AddPlotStyle(col=ScColours(sc, "orig.ident"))
     
     # Add filter thresholds for f1
