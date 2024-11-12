@@ -98,7 +98,6 @@ library(ggplot2)
 library(future)
 
 # Get module directory (needed to access files within the module directory)
-module_name = params$module_name
 module_dir = params$module_dir
 ```
 
