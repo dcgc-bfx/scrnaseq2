@@ -711,7 +711,7 @@ gt(feature_filter_tbl)
 ```
 :::
 
-The number of excluded cells and features is as follows.
+The number of excluded cells is as follows:
 
 ```{r}
 #| label: tbl-qc_filtering_rna_filter_barcodes
@@ -842,6 +842,8 @@ levels_to_drop = table(sc$orig.ident)
 levels_to_drop = names(levels_to_drop)[levels_to_drop==0]
 sc$orig.ident = factor(sc$orig.ident, levels=setdiff(levels(sc$orig.ident), levels_to_drop))
 ```
+
+The number of excluded features is as follows:
 
 ```{r}
 #| label: tbl-qc_filtering_rna_filter_features
