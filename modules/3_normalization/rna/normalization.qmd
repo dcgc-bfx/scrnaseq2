@@ -459,10 +459,10 @@ barcode_metadata = sc[[]][bcs, ]
 # b) when applying sketching since we only scale the data of the sketch
 if(normalization_method != "SCT" & !use_sketching) {
   
-  # Unfortunately ScaleData has limited support for on-disk counts: regress out does not work (values are the same with and without)
+  # Unfortunately ScaleData has limited support for on-disk counts
   # Therefore we load the normalized data into memory, run ScaleData and 
   # then extract the scale.data layer.
-  if (on_disk_counts & length(vars_to_regress) > 0) {
+  if (on_disk_counts) {
     # Keep layers with normalized data but convert to sparse matrix
     var_features = VariableFeatures(sc, assay=default_assay)
     normalized_layers = SeuratObject::Layers(sc, assay=default_assay, search="data")

@@ -129,7 +129,7 @@ param = function(p=NULL) {
     
     # Get general parameter if available
     if ("general" %in% names(profile_params)) {
-      param_set = purrr::list_modify(param_set, !!!profile_params[["general"]])
+      param_set = purrr::list_assign(param_set, !!!profile_params[["general"]])
     }
     
     # Get module-specific parameter if available

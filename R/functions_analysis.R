@@ -750,17 +750,18 @@ RunDimRedWrapper = function(sc, method="PCA", assay=NULL, dim_n=50, verbose=TRUE
   
   # Run dimensionality reduction
   if (method == "PCA") {
+    reduction_name = paste0(assay, "_pca") %>% tolower()
     sc = Seurat::RunPCA(sc,
                         assay=assay,
                         verbose=verbose, 
                         npcs=min(dim_n, ncol(sc)), 
                         seed.use=getOption("random_seed"),
-                        reduction.name="pca",
-                        reduction.key="Pca_")
-    SeuratObject::Misc(sc[["pca"]], slot="title") = "PCA"
+                        reduction.name=reduction_name,
+                        reduction.key=stringr::str_to_title(reduction_name))
+    SeuratObject::Misc(sc[[reduction_name]], slot="title") = "PCA"
     
     # Set as active dimensionality reduction
-    DefaultReduct(sc, assay=assay) = "pca"
+    DefaultReduct(sc, assay=assay) = reduction_name
   }
 
   return(sc)
@@ -797,6 +798,8 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
                                    "HarmonyIntegration" ~ "harmony",
                                    "FastMNNIntegration" ~ "mnn",
                                    "scVIIntegration" ~ "scvii")
+    new_reduct = paste0(assay, "_", new_reduct) %>% tolower()
+    
   }
   
   if (!is.null(new_reduct_suffix)) {

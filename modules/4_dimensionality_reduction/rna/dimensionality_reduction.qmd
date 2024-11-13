@@ -19,10 +19,6 @@ params:
   # For large datasets: Copy matrix directories to a temporary directory for computations. This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). Once done, matrix directories will be copied back to the module directory. The temporary directory will be deleted once the R session exists.
   on_disk_use_tmp: true
   
-  # Which normalization should be used for analysis? Can we read from seurat object
-  # lognorm (Seurat), scran or SCT
-  normalization_method: "SCT"
-  
   # Which dimensionality reduction to use: only PCA supported
   dimensionality_reduction_method: "PCA"
   
@@ -181,13 +177,12 @@ To decide how many PCs to include in downstream analyses, we visualize the cells
 ```{r}
 #| label: dimensionality_reduction_rna_run
 
-normalization_method = param("normalization_method")
 dimensionality_reduction_method = param("dimensionality_reduction_method")
 dim_n_compute = param("dim_n_compute")
 
 # Run dimensionality reduction
 sc = RunDimRedWrapper(sc, 
-                      method=dimensionality_reduction_method, 
+                      method=dimensionality_reduction_method,
                       dim_n=dim_n_compute, 
                       verbose=verbose)
 
@@ -196,7 +191,7 @@ original_reduct = DefaultReduct(sc)
 
 if (use_sketching) {
   # Project to full dataset if sketching was used
-  full_reduct = paste(original_reduct, "full", sep="_")
+  full_reduct = paste0(original_reduct, "_full")
   sc = Seurat::ProjectData(sc, 
                            assay=default_assay,
                            sketched.assay=Seurat::DefaultAssay(sc),
@@ -205,7 +200,7 @@ if (use_sketching) {
                            normalization.method	= ifelse(grepl("_SCT", Seurat::DefaultAssay(sc)), "SCT", "LogNormalize"),
                            dims=1:dim_n_compute)
   SeuratObject::Key(sc[[full_reduct]]) = paste0(stringr::str_to_title(original_reduct), "Full_")
-  DefaultReduct(sc, assay=default_assay) = full_reduct
+  DefaultReduct(sc) = full_reduct
 }
 ```
 
@@ -247,7 +242,7 @@ p
 # Only when sketching is used: plot the first two dimensions projected to the full dataset
 if (use_sketching) {
   p = Seurat::DimPlot(sc, 
-                      reduction=DefaultReduct(sc, assay=default_assay), 
+                      reduction=DefaultReduct(sc), 
                       cols=ScColours(sc, "orig.ident")) +
     AddPlotStyle()
   print(p)
@@ -264,13 +259,13 @@ if (use_sketching) {
 #| fig-width: 2.6
 
 # When sketching is used, not available for the full dataset
-dim_n_compute = param("dim_n_compute")
 
 # Plot loading for the top 20 dimensions
+ncells = length(Cells(sc[[default_assay]])) 
 plist = Seurat::DimHeatmap(sc, 
                            reduction=DefaultReduct(sc),
-                           dims=1:min(min(20, dim_n_compute), ncol(sc)), 
-                           cells=min(500, ncol(sc)),
+                           dims=1:min(min(20, dim_n_compute), ncells), 
+                           cells=min(500, ncells),
                            balanced=TRUE, 
                            fast=FALSE, 
                            combine=FALSE)
@@ -294,10 +289,6 @@ for (i in seq(plist)) {
 #| results: asis
 
 # When sketching is used, not available for the full dataset
-dimensionality_reduction_method = param("dimensionality_reduction_method")
-dim_n_compute = param("dim_n_compute")
-dim_features = stringr::str_to_title(dimensionality_reduction_method) %>% 
-    paste0("_", 1:min(min(20, dim_n_compute), ncol(sc)))
 
 # Set up layout for generating chunks
 chunk_template = "
@@ -310,9 +301,13 @@ plist[['{{dataset}}']]
 "
   
 # Iterate over dimensions
+ncells = length(Cells(sc[[default_assay]])) 
+reduct = DefaultReduct(sc)
+
 cat("::: panel-tabset\n\n")
-for(dim in 1:min(min(20, dim_n_compute), ncol(sc))) {
-  dim_feature = stringr::str_to_title(dimensionality_reduction_method) %>% paste0("_", dim)
+for(dim in 1:min(min(20, dim_n_compute), ncells)) {
+  dim_feature = paste0(SeuratObject::Key(sc[[reduct]]), dim)
+  
   cat("##### Dim", dim, "\n\n")
 
   # Plot as spatial plots
@@ -322,7 +317,7 @@ for(dim in 1:min(min(20, dim_n_compute), ncol(sc))) {
     p = p + viridis::scale_fill_viridis()
     return(p)
   })
-  names(plist) = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
+  names(plist) = gsub("^(fov|image|slice)\\.", "", names(plist))
     
   # Fill out and print spatial plots
   cat("::: panel-tabset\n\n")
@@ -362,7 +357,8 @@ dim_n_compute = param("dim_n_compute")
 dim_n = param("dim_n")
 
 # Plot the variance explained for the computed components
-p = Seurat::ElbowPlot(sc, reduction=DefaultReduct(sc), ndims=min(dim_n_compute, ncol(sc))) + 
+ncells = length(Cells(sc[[default_assay]])) 
+p = Seurat::ElbowPlot(sc, reduction=DefaultReduct(sc), ndims=min(dim_n_compute, ncells)) + 
   geom_vline(xintercept=dim_n + .5, col="firebrick", lty=2) + 
   AddPlotStyle() 
 p
@@ -434,17 +430,17 @@ if (length(integration_methods) > 0 & num_datasets > 1) {
     
     # If sketching was used, project integrated dimensionality reduction of sketch to full dataset
     if (use_sketching) {
-      reduct = DefaultReduct(sc)
-      full_reduct = paste(reduct, "full", sep="_")
+      original_reduct = DefaultReduct(sc)
+      full_reduct = paste0(original_reduct, "_full")
       sc = Seurat::ProjectIntegration(sc,
                                       sketched.assay=SeuratObject::DefaultAssay(sc), 
                                       assay=default_assay,
-                                      reduction=reduct,
+                                      reduction=original_reduct,
                                       reduction.name=full_reduct,
-                                      reduction.key=paste0(stringr::str_to_title(reduct), "Full_"),
+                                      reduction.key=paste0(stringr::str_to_title(full_reduct), "_"),
                                       seed=getOption("random_seed"),
                                       verbose=verbose)
-      DefaultReduct(sc, assay=default_assay) = full_reduct
+      DefaultReduct(sc) = full_reduct
     }
     
     # We need to make sure that the default reduction is set to the first integrated dimensionality reduction method
@@ -455,7 +451,7 @@ if (length(integration_methods) > 0 & num_datasets > 1) {
       # Other methods: reset
       DefaultReduct(sc) = first_reduct
       if (use_sketching) {
-        DefaultReduct(sc, assay=default_assay) = paste("full", first_reduct, sep="_")
+        DefaultReduct(sc) = paste0(first_reduct, "_full")
       }  
     }
   }
@@ -475,8 +471,8 @@ if (length(integration_methods) > 0 & num_datasets > 1) {
 # Join layers if not SCT (SCT does not use layers)
 # Dataset layers are automatically dropped unless there is only one dataset (in which case we need to do it)
 if (!grepl(pattern="_SCT", x=default_assay)) {
-  layer_counts = SeuratObject::Layers(sc, search="counts")
-  layer_data = SeuratObject::Layers(sc, search="data")
+  layer_counts = SeuratObject::Layers(sc, search="^counts\\.")
+  layer_data = SeuratObject::Layers(sc, search="^data\\.")
   
   sc = SeuratObject::JoinLayers(sc)
   if (length(layer_counts) == 1) SeuratObject::LayerData(sc, layer=layer_counts) = NULL
@@ -490,12 +486,12 @@ if (!grepl(pattern="_SCT", x=default_assay)) {
 # - If not, PrepSCTFindMarkers needs to be run which does a joint normalization using a geometric mean (similar to DESeq2).
 # - https://github.com/dcgc-bfx/scrnaseq2/issues/37 and https://github.com/satijalab/seurat/issues/6675
 if (grepl(pattern="_SCT", x=default_assay)) {
-    sc = PrepSCTFindMarkers(sc, assay=default_assay, verbose=verbose)
+    sc = Seurat::PrepSCTFindMarkers(sc, verbose=verbose, assay=default_assay)
     
     # If sketching was used, also apply to sketch
     if (use_sketching) {
         sketched_assay_name = paste(Seurat::DefaultAssay(sc), "sketch", sep=".")
-        sc = PrepSCTFindMarkers(sc, assay=sketched_assay_name, verbose=verbose)
+        sc = Seurat::PrepSCTFindMarkers(sc, verbose=verbose, assay=sketched_assay_name)
     }
 }
 ```
