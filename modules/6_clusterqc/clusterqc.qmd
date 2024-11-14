@@ -144,6 +144,9 @@ Do cells in individual clusters have particularly high counts, detected genes or
 #| label: clusterqc
 #| results: asis
 
+bcs = SeuratObject::Cells(sc[[default_assay]])
+barcode_metadata = sc[[]][bcs, ]
+
 # QC features to plot
 barcode_qc = param("barcode_qc")
 f = barcode_qc %in% colnames(sc[[]])
@@ -156,7 +159,7 @@ if (!all(f)) {
 if (length(barcode_qc) > 0) {
     
   # If there are more than 25 cluster, plots need to be optimised so that they are not too crowded
-  optimise_plots = levels(sc$seurat_clusters) %>% length() >= 25
+  optimise_plots = levels(barcode_metadata$seurat_clusters) %>% length() >= 25
 
   # Left: QC on UMAP
   plist1 = Seurat::FeaturePlot(sc, features=barcode_qc, combine=FALSE, order=TRUE)
@@ -173,7 +176,7 @@ if (length(barcode_qc) > 0) {
   
   # Right: QC as violin plots
   plist2 = lapply(barcode_qc, function(x) {
-    p = ggplot(sc[[]] %>% dplyr::select(seurat_clusters, qc=x), 
+    p = ggplot(barcode_metadata %>% dplyr::select(seurat_clusters, qc=x), 
                aes(x=seurat_clusters, y=qc, fill=seurat_clusters, group=seurat_clusters)) + 
       geom_violin(scale="width", linewidth=ifelse(optimise_plots, 0.1, 0.5)) + 
       scale_x_discrete(guide=guide_axis(n.dodge=ifelse(optimise_plots, 2, 1))) +
@@ -232,7 +235,7 @@ Alternatively, the expression of MKI67 (a common G2M phase marker) and PCNA (a c
 #| results: asis
 
 # Do we have cell cycle scores?
-have_cellcyle_scores = sc$Phase %>% is.na() %>% all() %>% not()
+have_cellcyle_scores = barcode_metadata$Phase %>% is.na() %>% all() %>% not()
 
 if (!have_cellcyle_scores) CalloutBox(x="All cell cycle scores are zero and cell cycle information is not available. Most likely there were not enough S or G2M phase genes available for calculation.", type="warning")
 
@@ -269,16 +272,16 @@ cell_cycle_markers = c(mki67, pcna)
 
     
 # If there are more than 25 cluster, plots need to be optimised so that they are not too crowded
-optimise_plots = levels(sc$seurat_clusters) %>% length() >= 25
+optimise_plots = levels(barcode_metadata$seurat_clusters) %>% length() >= 25
 
 # Left: How strong are cell cycle effects?
-p1 = ggplot(sc[[]] %>% dplyr::select(S.Score, G2M.Score, Phase), 
+p1 = ggplot(barcode_metadata %>% dplyr::select(S.Score, G2M.Score, Phase), 
             aes(x=S.Score, y=G2M.Score, colour=Phase)) +
   geom_point() +
   AddPlotStyle(col=ScColours(sc, "Phase"), xlab="S score", ylab="G2/M score", legend_position="bottom")
 
 # Middle: Phases per cluster
-p2 = ggplot(sc[[]] %>% 
+p2 = ggplot(barcode_metadata %>% 
               dplyr::group_by(seurat_clusters, Phase) %>% 
               dplyr::summarise(num_cells=length(Phase)), 
             aes(x=seurat_clusters, y=num_cells, fill=Phase)) + 
@@ -287,7 +290,7 @@ p2 = ggplot(sc[[]] %>%
   theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1)) 
 
 # Right: Phases per sample
-p3 = ggplot(sc[[]] %>% 
+p3 = ggplot(barcode_metadata %>% 
               dplyr::group_by(orig.ident, Phase) %>% 
               dplyr::summarise(num_cells=length(Phase)), 
             aes(x=orig.ident, y=num_cells, fill=Phase)) + 
@@ -321,7 +324,7 @@ if (have_cellcyle_scores) {
     
     # Hack to colour by phase but label by
     barcodes = rownames(plist[["Phase"]]$data)
-    plist[["Phase"]]$data$ident = sc[["seurat_clusters"]][barcodes,]
+    plist[["Phase"]]$data$ident = barcode_metadata[barcodes, "seurat_clusters"]
     plist[["Phase"]] = LabelClusters(plist[["Phase"]], id="ident", box=TRUE, fill="white", colour="black", label.padding=unit(0.05, "lines"))
     
     
