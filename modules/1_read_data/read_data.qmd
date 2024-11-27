@@ -697,34 +697,36 @@ Next, we create the Seurat object. This is a summary representation of the objec
 
 # Create Seurat object with assays and metadata for barcodes (cells, nuclei or spots) and features (genes, peaks or proteins)
 
-# List all assays in all datasets
-all_assays = purrr::map_depth(counts_lst, 2, attr, "assay") %>% 
+# List all assays and get default assay
+all_assays = purrr::map_depth(counts_lst, 2, attr, "assay") %>%
   purrr::flatten() %>% 
   unlist() %>% 
   unique()
 
-# Default assay
 default_assay = param("default_assay")
 if (is.null(default_assay)) default_assay = all_assays[1]
 assertthat::assert_that(default_assay %in% all_assays,
                         msg=FormatString("Default assay {default_assay} not found. Available assays are: {all_assays*}."))
 all_assays = c(default_assay, setdiff(all_assays, default_assay))
 
-# First create a Seurat object per assay to get a list (sc)
-sc = purrr::map(all_assays, function(a) {
-  # Collect assay datasets
-  has_assay = purrr::map(counts_lst, purrr::pluck_exists, a) %>% purrr::flatten_lgl()
-  assay_counts_lst = purrr::map(counts_lst[has_assay], purrr::pluck, a)
-  names(assay_counts_lst) = purrr::map(assay_counts_lst, attr, "orig.ident") %>% unlist()
+# Create Seurat object by iteratively adding all assays
+sc = NULL
+for(assay in all_assays) {
+  # Collect counts matrices for assay
+  assay_counts_lst = purrr::map(counts_lst, function(cts_lst) {
+    cts_lst = purrr::keep(cts_lst, function(cts) return(attr(cts, "assay") == assay))
+  }) %>% purrr::flatten()
+  orig_idents = purrr::map_chr(assay_counts_lst, attr, "orig.ident") %>% unname()
+  names(assay_counts_lst) = orig_idents
   
-  # Collect barcode metadata (from all assays/datasets)
-  barcode_metadata = purrr::map_dfr(seq_along(assay_counts_lst), function(i) {
-    metadata = data.frame(rowname=colnames(assay_counts_lst[[i]]))
-    metadata$orig.ident = attr(assay_counts_lst[[i]], "orig.ident")
-    metadata$sample = attr(assay_counts_lst[[i]], "sample")
-    metadata$technology = attr(assay_counts_lst[[i]], "technology")
+  # Collect barcode metadata
+  barcode_metadata = purrr::map_dfr(assay_counts_lst, function(cts) {
+    metadata = data.frame(rowname=colnames(cts))
+    metadata$orig.ident = attr(cts, "orig.ident")
+    metadata$sample = attr(cts, "sample")
+    metadata$technology = attr(cts, "technology")
     
-    bc_meta = attr(assay_counts_lst[[i]], "barcode_metadata") %>% 
+    bc_meta = attr(cts, "barcode_metadata") %>% 
       tibble::rownames_to_column()
     bc_meta$sample = NULL
     bc_meta$technology = NULL
@@ -741,83 +743,70 @@ sc = purrr::map(all_assays, function(a) {
   
   # Collect feature metadata for default assay datasets
   # Group by feature name and make unique values
-  feature_metadata = purrr::map(seq_along(assay_counts_lst), function(i) {
-    metadata = attr(assay_counts_lst[[i]], "feature_metadata") %>% tibble::rownames_to_column()
+  feature_metadata = purrr::map(assay_counts_lst, function(cts) {
+    metadata = attr(cts, "feature_metadata") %>% tibble::rownames_to_column()
     return(metadata)
   }) %>% dplyr::bind_rows()
-
+  
   feature_metadata = feature_metadata %>% 
     dplyr::group_by(rowname) %>%
     dplyr::summarise_all(dplyr::first, na_rm=TRUE) %>% 
     as.data.frame()
   rownames(feature_metadata) = feature_metadata$rowname
   feature_metadata = feature_metadata %>% dplyr::select(-rowname)
-
+  
   # Remove since we do not need these attributes
-  for(i in seq_along(assay_counts_lst)) {
+  for (i in seq_along(assay_counts_lst)) {
     attr(assay_counts_lst[[i]], "barcode_metadata") = NULL
     attr(assay_counts_lst[[i]], "feature_metadata") = NULL
   }
   
-  # Create Seurat default assay object
+  # Create Seurat default assay object, make sure that layers are named "counts.dataset"
   assay_obj = SeuratObject::CreateAssay5Object(counts=assay_counts_lst)
   if (length(assay_counts_lst) == 1) {
     n = names(assay_counts_lst)
     assay_obj = split(assay_obj, rep(n, ncol(assay_obj)))
   }
   rownames(assay_obj@meta.data) = rownames(assay_obj)
+  
+  # Add feature metadata to Seurat default assay object
   assay_obj = SeuratObject::AddMetaData(assay_obj, metadata=feature_metadata)
   
-  # Create Seurat object
-  s =  Seurat::CreateSeuratObject(counts=assay_obj, meta.data=barcode_metadata, assay=a, names.delim=NULL, names.field=NULL)
-  
-  # Fix NA values in barcode metadata
-  #n =  paste("nCount", a, sep="_")
-  #i = is.na(s[[]][, n]) %>% which()
-  #s[[]][i, n] = 0
-  #
-  #n =  paste("nFeature", a, sep="_")
-  #i = is.na(s[[]][, n]) %>% which()
-  #s[[]][i, n] = 0
-  
-  return(s)
-})
+  if (is.null(sc)) {
+    # If it is the first assay, create the Seurat object
+    sc = Seurat::CreateSeuratObject(counts=assay_obj, meta.data=barcode_metadata, assay=default_assay, names.delim=NULL, names.field=NULL)
+  } else {
+    # Else add to the Seurat object using two different approaches
+    sc_barcodes = purrr::map(SeuratObject::Assays(sc), function(a) return(SeuratObject::Cells(sc[[a]]))) %>% 
+      unlist() %>% 
+      unique()
+    assay_obj_barcodes = SeuratObject::Cells(assay_obj)
+    
+    if (all(assay_obj_barcodes %in% sc_barcodes)) {
+      # a) Overlapping barcodes (all already exist in the Seurat object)
+      # just add the assay
+      sc[[assay]] = assay_obj
+    } else if (all(!assay_obj_barcodes %in% sc_barcodes)) {
+      # b) Non-overlapping barcodes (all barcodes are new to the Seurat object)
+      # Create a separate Seurat object and then merge
+      s = Seurat::CreateSeuratObject(counts=assay_obj, meta.data=barcode_metadata, assay=assay, names.delim=NULL, names.field=NULL)
+      
+      # Collect barcode metadata factor levels of both datasets combined (since merge removes the factors)
+      barcode_metadata_levels = purrr::map(dplyr::bind_rows(sc[[]], s[[]]), levels) %>% purrr::compact()
 
-# Collect all barcode metadata levels so that they can be restored after the merge in the final Seurat object
-barcode_metadata_levels = purrr::map_dfr(sc, function(s) return(s[[]])) %>%
-  purrr::map(levels)
-
-# Now merge all assays into one Seurat object
-if (length(sc)>1) {
-  sc = merge(sc[[1]], sc[[-1]])
-} else {
-  sc = sc[[1]]
-}
-
-# Update factor levels
-sc$orig.ident = factor(sc$orig.ident, levels=unique(barcode_metadata_levels$orig.ident))
-sc$sample = factor(sc$sample, levels=unique(barcode_metadata_levels$sample))
-sc$technology = factor(sc$technology, levels=unique(barcode_metadata_levels$technology))
-
-# Replace NA in nCount and nFeature with 0
-#for (a in Seurat::Assays(sc)) {
-#  n =  paste("nCount", a, sep="_")
-#  i = is.na(sc[[]][, n]) %>% which()
-#  sc[[]][i, n] = 0
-#  
-#  n =  paste("nFeature", a, sep="_")
-#  i = is.na(sc[[]][, n]) %>% which()
-#  sc[[]][i, n] = 0
-#}
-
-# Remove cells with zero counts
-counts_per_cell = sc[[]][,paste0("nCount_", Seurat::Assays(sc))] %>% rowSums()
-names_nonzero_cells = which(counts_per_cell>0) %>% names()
-names_zero_cells = which(counts_per_cell==0) %>% names()
-n_zero_cells = length(names_zero_cells)
-if (n_zero_cells > 0) {
-  sc = subset(sc, cells=names_nonzero_cells)
-  CalloutBox("Removed {n_zero_cells} cells with zero counts.", type="note", quote=FALSE)
+      # Merge
+      sc = merge(sc, s)
+      
+      # Restore factor levels
+      for (col in names(barcode_metadata_levels)) {
+        sc@meta.data[, col] = factor(sc@meta.data[, col], levels=barcode_metadata_levels[[col]])
+      }
+    } else {
+      # c) only some barcodes overlap (some barcodes are new to the Seurat object)
+      # not possible
+      stop("Some barcodes are new to the Seurat object and some are already present. This is not supported.")
+    }
+  }
 }
 
 # Set default assay
@@ -862,8 +851,8 @@ if (parse_plate_information & any(grepl(pattern=plate_information_regex, x=sc$or
 # Set default identity
 Seurat::Idents(sc) = "orig.ident"
 
-# Remove counts_lst and call garbage collector
-rm(counts_lst)
+# Remove big objects that are not needed anymore and call garbage collector
+rm(counts_lst, assay_counts_lst, assay_obj, s, barcode_metadata, feature_metadata)
 invisible(gc())
 ```
 
