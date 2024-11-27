@@ -390,13 +390,13 @@ integration_methods_params = purrr::map(integration_methods, function(method) {
   par_lst = param(method)
   
   # Parse into argument name and value. Interpret values (still strings) as R code.
-  if (!is.null(par_lst)) {
-    par_lst = stringr::str_split(par_lst, pattern="=", n=2)
-    nms = purrr::map(par_lst, 1)
-    vls = purrr::map(par_lst, 2)
-    vls = purrr::map(vls, function(v) return(eval(parse(text=v))))
-    par_lst = setNames(vls, nms)
-  }
+  #if (!is.null(par_lst)) {
+  #  par_lst = stringr::str_split(par_lst, pattern="=", n=2)
+  #  nms = purrr::map(par_lst, 1)
+  #  vls = purrr::map(par_lst, 2)
+  #  vls = purrr::map(vls, function(v) return(eval(parse(text=v))))
+  #  par_lst = setNames(vls, nms)
+  #}
   return(par_lst)
 })
 names(integration_methods_params) = integration_methods
@@ -420,11 +420,13 @@ if (length(integration_methods) > 0 & num_datasets > 1) {
   # IntegrateLayersWrapper will use scVIIntegration_Fixed which is a copy from the Seurat develop branch where the bug is already solved.
 
   # Integrate
+  orig_reduct = DefaultReduct(sc)
   for(method in integration_methods) {
+    method ="scVIIntegration"
     # Call wrapper
     sc = IntegrateLayersWrapper(sc=sc,
                                 integration_method=method,
-                                orig_reduct=DefaultReduct(sc),
+                                orig_reduct=orig_reduct,
                                 additional_args=integration_methods_params[[method]],
                                 verbose=verbose)
     
@@ -511,7 +513,10 @@ reductions = dplyr::case_match(integration_methods,
                                    "HarmonyIntegration" ~ "harmony",
                                    "FastMNNIntegration" ~ "mnn",
                                    "scVIIntegration" ~ "scvii",
-                               TRUE ~ "NA")
+                               .default=NULL)
+reductions = paste0(default_assay, "_", reductions) %>% tolower()
+reductions = c(orig_reduct, reductions)
+
 
 plist = purrr::map(reductions, function(method) {
   title = SeuratObject::Misc(sc[[method]], slot="title")
@@ -523,14 +528,7 @@ plist = purrr::map(reductions, function(method) {
     AddPlotStyle(legend_position="none")
   return(p)
 })
-
-# Add merge case (no integration)
-p = Seurat::DimPlot(sc, 
-                    reduction=original_reduct, 
-                    cols=ScColours(sc, "orig.ident")) +
-  AddPlotStyle(legend_position="none")
-plist = c(list(p), plist)
-names(plist) = c("merge", reductions)
+names(plist) = reductions
 captions = c("No integration", paste('Integrated with method', integration_methods))
 
 
