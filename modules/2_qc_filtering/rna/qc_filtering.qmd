@@ -831,11 +831,25 @@ if (length(SeuratObject::Images(sc)) > 0) {
 ```{r}
 #| label: qc_filtering_rna_filter_barcodes
 
-# Filter
+# Filter barcodes:
+# a) barcodes that are present only in this assay, will be removed from the whole Seurat object
+# b) barcodes that are present in other assays, will be removed from this assay only
 barcodes_to_exclude = purrr::flatten(barcodes_to_exclude) %>% purrr::flatten_chr() %>% unique()
-barcodes_to_keep = rownames(sc[[]])
-barcodes_to_keep = barcodes_to_keep[!barcodes_to_keep %in% barcodes_to_exclude]
-sc = subset(sc, cells=barcodes_to_keep)
+barcodes_other_assays = purrr::map(setdiff(SeuratObject::Assays(sc), default_assay), function(a) return(SeuratObject::Cells(sc[[a]]))) %>% 
+  purrr::flatten_chr()
+
+# Remove from assay barcodes that are still present in other assays
+barcodes_to_exclude_assay = intersect(barcodes_to_exclude, barcodes_other_assays)
+barcodes_to_keep = setdiff(SeuratObject::Cells(sc[[default_assay]]), barcodes_to_exclude_assay)
+sc[[default_assay]] = subset(sc[[default_assay]], cells=barcodes_to_keep)
+
+# Remove from Seurat object barcodes that are not present in other assays
+barcodes_to_exclude_sc = setdiff(barcodes_to_exclude, barcodes_other_assays)
+if (length(barcodes_to_exclude_assay) > 0) {
+  barcodes_sc = purrr::map(SeuratObject::Assays(sc), function(a) return(SeuratObject::Cells(sc[[a]]))) %>% purrr::flatten_chr() %>% unique()
+  barcodes_sc = setdiff(barcodes_sc, barcodes_to_exclude_sc)
+  sc = subset(sc, cells=barcodes_sc)
+}
 
 # Update orig.ident
 levels_to_drop = table(sc$orig.ident)
