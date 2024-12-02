@@ -175,7 +175,7 @@ for (i in 1:nrow(datasets)) {
 # If barcode_suffix is NA, generates suffixes per experiment (-1, -2, ...) 
 if (any(is.na(datasets$barcode_suffix))) {
   assertthat::assert_that(sum(is.na(datasets$barcode_suffix)) == nrow(datasets),
-                            msg=FormatString("If one barcode suffix is empty/NA, all barcode suffixes need to be empty/NA."))
+                            msg="If one barcode suffix is empty/NA, all barcode suffixes need to be empty/NA.")
   datasets$barcode_suffix = factor(datasets$experiment, level=unique(datasets$experiment)) %>% as.integer() %>% paste0("-", .)
 }
 
@@ -1234,7 +1234,7 @@ outdir = file.path(module_dir, "sc")
 with_progress({
   SaveSeuratRdsWrapper(sc,
                        outdir=outdir,
-                       copy_disk_data=on_disk_counts,
+                       write_disk_data=on_disk_counts,
                        relative_paths=FALSE,
                        compress=FALSE
                        )

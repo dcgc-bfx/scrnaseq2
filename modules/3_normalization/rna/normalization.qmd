@@ -130,6 +130,11 @@ if(!file.exists(prev_sc_obj)) {
 }
 sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
 
+# Check that the Seurat object is okay
+if (length(SeuratObject::Layers(sc)) == 0) {
+  stop("No layers found in Seurat object. Please check the input object.")
+}
+
 # Set default assay standard
 default_assay = param("default_assay")
 if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
@@ -165,7 +170,7 @@ if (cellcycle_remove) {
   # Are they in the barcode metadata?
   f = c("Phase", "G2M.Score", "S.Score", "CC.Difference") %in% colnames(barcode_metadata)
   if (!all(f)) {
-    stop(FormatString("The barcode metadata does not contain all required cell cycle columns ('Phase', 'G2M.Score', 'S.Score', 'CC.Difference'). Please rerun cell cycle scoring for the Seurat object."))
+    stop("The barcode metadata does not contain all required cell cycle columns ('Phase', 'G2M.Score', 'S.Score', 'CC.Difference'). Please rerun cell cycle scoring for the Seurat object.")
   }
   
   if (cellcycle_remove_all) {
@@ -616,7 +621,7 @@ outdir = file.path(module_dir, "sc")
 with_progress({
   SaveSeuratRdsWrapper(sc,
                        outdir=outdir,
-                       copy_disk_data=on_disk_counts,
+                       write_disk_data=on_disk_counts,
                        relative_paths=FALSE,
                        compress=FALSE
                        )

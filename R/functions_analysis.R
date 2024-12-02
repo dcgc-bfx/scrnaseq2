@@ -8,7 +8,7 @@
 SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
     # Checks
     assertthat::assert_that(margin %in% c("1", "2"),
-                            msg=FormatString("Margin can only be 1 - rows or 2 - columns."))
+                            msg="Margin can only be 1 - rows or 2 - columns.")
     
     # Split counts into chunks for processing (if requested)
     chunks = NULL
@@ -224,7 +224,7 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, cores=1){
 CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
-                          msg=FormatString("Margin can only be 1 - rows or 2 - columns."))
+                          msg="Margin can only be 1 - rows or 2 - columns.")
   
   # Define chunks
   chunks = NULL
@@ -720,32 +720,49 @@ FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variabl
 #' 
 #' @param sc Seurat v5 object.
 #' @param method Dimensionality reduction method. Can be: pca.
+#' @param name Name of the reduction in the Seurat object. If NULL, will be the method name in lowercase letters.
 #' @param assay Assay to analyze. If NULL, will be default assay of the Seurat object.
 #' @param dim_n Number of dimensions to compute. Default is 50.
 #' @param verbose Be verbose.
 #' @return Seurat v5 object with a new (integrated) reduction.
-RunDimRedWrapper = function(sc, method="PCA", assay=NULL, dim_n=50, verbose=TRUE) {
+RunDimRedWrapper = function(sc, method="pca", name=NULL, assay=NULL, dim_n=50, verbose=TRUE) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
     
   # Checks
-  valid_methods = c("PCA")
+  method = tolower(method)
+  valid_methods = c("pca")
   assertthat::assert_that(method %in% valid_methods,
                           msg=FormatMessage("Method is {method} but must be one of: {valid_methods*}."))
   
+  # Reduction name and key
+  if (is.null(name)) {
+    reduction_name = tolower(method)
+  } else {
+    reduction_name = name
+  }
+  reduction_key = gsub("[\\._]+", " ", reduction_name) %>%
+    stringr::str_to_title() %>%
+    gsub(" ", "", .)
+  reduction_key = paste0(reduction_key, "_")
+
   # Run dimensionality reduction
-  if (method == "PCA") {
+  if (method == "pca") {
     sc = Seurat::RunPCA(sc,
                         assay=assay,
                         verbose=verbose, 
                         npcs=min(dim_n, ncol(sc)), 
                         seed.use=getOption("random_seed"),
-                        reduction.name="pca",
-                        reduction.key="Pca_")
-    SeuratObject::Misc(sc[["pca"]], slot="title") = "PCA"
+                        reduction.name=reduction_name,
+                        reduction.key=reduction_key)
     
-    # Set as active dimensionality reduction
-    DefaultReduct(sc, assay=assay) = "pca"
+
   }
+  
+  # Set title in misc slot
+  SeuratObject::Misc(sc[[reduction_name]], slot="title") = method
+  
+  # Set as active dimensionality reduction
+  DefaultReduct(sc, assay=assay) = reduction_name
 
   return(sc)
 }
@@ -793,8 +810,6 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
     # Normalization method
     if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="SCT", x=assay), "SCT", "LogNormalize")
   } else if (integration_method == "RPCAIntegration") {
-    # Our fixed version of RPCAIntegration
-    #integration_method_arg = RPCAIntegration_Fixed 
     # Normalization method
     if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="SCT", x=assay), "SCT", "LogNormalize")
   } else if (integration_method == "FastMNNIntegration") {
@@ -827,7 +842,11 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   DefaultReduct(sc, assay=assay) = new_reduct
   
   # Fix key
-  SeuratObject::Key(sc[[new_reduct]]) = stringr::str_to_title(SeuratObject::Key(sc[[new_reduct]]))
+  new_reduct_key = gsub("[\\._]+", " ", new_reduct) %>%
+    stringr::str_to_title() %>%
+    gsub(" ", "", .)
+  umanew_reduct_keyp_key = paste0(new_reduct_key, "_")
+  SeuratObject::Key(sc[[new_reduct]]) = new_reduct_key
 
   # Post-process
   if (integration_method == "CCAIntegration") {
@@ -847,92 +866,7 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   return(sc)
 }
 
-#####################################################################################
-# This is a copy of the Seurat::RPCAIntegration from the Seurat develop branch:     #
-# - cannot scale data since only counts                                             #
-#####################################################################################
-RPCAIntegration_Fixed <- function (object = NULL, assay = NULL, layers = NULL, orig = NULL, 
-                                   new.reduction = "integrated.dr", reference = NULL, features = NULL, 
-                                   normalization.method = c("LogNormalize", "SCT"), dims = 1:30, 
-                                   k.filter = NA, scale.layer = "scale.data", dims.to.integrate = NULL, 
-                                   k.weight = 100, weight.reduction = NULL, sd.weight = 1, sample.tree = NULL, 
-                                   preserve.order = FALSE, verbose = TRUE, ...) {
-    op <- options(Seurat.object.assay.version = "v3", Seurat.object.assay.calcn = FALSE)
-    on.exit(expr = options(op), add = TRUE)
-    normalization.method <- match.arg(arg = normalization.method)
-    features <- features %||% SelectIntegrationFeatures5(object = object)
-    assay <- assay %||% 'RNA'
-    layers <- layers %||% Layers(object = object, search = 'data')
-    #check that there enough cells present
-    ncells <- sapply(X = layers, FUN = function(x) {ncell <-  dim(object[x])[2]
-    return(ncell) })
-    if (min(ncells) < max(dims))  {
-        abort(message = "At least one layer has fewer cells than dimensions specified, please lower 'dims' accordingly.")
-    }
-    if (normalization.method == 'SCT') {
-        #create grouping variables
-        groups <- CreateIntegrationGroups(object, layers = layers, scale.layer = scale.layer)
-        object.sct <- CreateSeuratObject(counts = object, assay = 'SCT')
-        object.sct$split <- groups[,1]
-        object.list <- SplitObject(object = object.sct, split.by = 'split')
-        object.list <- PrepSCTIntegration(object.list = object.list, anchor.features = features)
-        object.list <- lapply(X = object.list, FUN = function(x) {
-            x <- RunPCA(object = x, features = features, verbose = FALSE, npcs = max(dims))
-            return(x)
-        }
-        )
-    } else {
-        object.list <- list()
-        for (i in seq_along(along.with = layers)) {
-            object.list[[i]] <- CreateSeuratObject(
-              SeuratObject::CreateAssay5Object(data=object[layers[i]][features,])
-            )
-            VariableFeatures(object =  object.list[[i]]) <- features
-            object.list[[i]] <- ScaleData(object = object.list[[i]], verbose = TRUE)
-            object.list[[i]] <- RunPCA(object = object.list[[i]], verbose = TRUE, npcs=max(dims))
-            suppressWarnings(object.list[[i]][['RNA']]$counts <- NULL)
-        }
-    }
-    anchor <- FindIntegrationAnchors(object.list = object.list,
-                                     anchor.features = features,
-                                     scale = FALSE,
-                                     reduction = 'rpca',
-                                     normalization.method = normalization.method,
-                                     dims = dims,
-                                     k.filter = k.filter,
-                                     reference = reference,
-                                     verbose = verbose,
-                                     ...
-    )
-    slot(object = anchor, name = "object.list") <- lapply(
-        X = slot(
-            object = anchor,
-            name = "object.list"),
-        FUN = function(x) {
-            suppressWarnings(expr = x <- DietSeurat(x, features = features[1:2]))
-            return(x)
-        })
-    object_merged <- IntegrateEmbeddings(anchorset = anchor,
-                                         reductions = orig,
-                                         new.reduction.name = new.reduction,
-                                         dims.to.integrate = dims.to.integrate,
-                                         k.weight = k.weight,
-                                         weight.reduction = weight.reduction,
-                                         sd.weight = sd.weight,
-                                         sample.tree = sample.tree,
-                                         preserve.order = preserve.order,
-                                         verbose = verbose
-    )
-    
-    output.list <- list(object_merged[[new.reduction]])
-    names(output.list) <- c(new.reduction)
-    return(output.list)
-}
-
-####################################################################################
-# This is a copy of the Seurat::scVIIntegration with the following bugs fixed:     #
-# - cannot use on-disk matrices                                                    #
-####################################################################################
+# This is a copy of the Seurat::scVIIntegration with the following bugs fixed
 scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers = "counts", 
                                   conda_env = NULL, new.reduction = "integrated.dr", ndims = 30, 
                                   nlayers = 2, gene_likelihood = "nb", max_epochs = NULL, ...) 

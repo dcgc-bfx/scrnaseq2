@@ -121,9 +121,14 @@ if (!is.null(param("prev_module_dir"))) {
 }
 prev_sc_obj = file.path(prev_module_dir, "sc", "sc.rds")
 if(!file.exists(prev_sc_obj)) {
-  stop(FormatString("Could not find a sc.rds file in {{prev_module_dir}}. Was the respective module already run?"))
+  stop(FormatString("Could not find a sc.rds file in {prev_module_dir}. Was the respective module already run?"))
 }
 sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
+
+# Check that the Seurat object is okay
+if (length(SeuratObject::Layers(sc)) == 0) {
+  stop("No layers found in Seurat object. Please check the input object.")
+}
 
 # Set default assay standard
 default_assay = param("default_assay")
@@ -182,7 +187,7 @@ if (export_metadata) {
     # Cell metadata
     categorial_data = sc[[]][barcodes, c("orig_barcode", categories_to_export)]
     col_nms = colnames(categorial_data)
-    col_nms[1] = "cell_id"
+    col_nms[1] = "barcode"
     colnames(categorial_data) = col_nms
     readr::write_csv(x=categorial_data, file=file.path(module_dir, "results", "csv", smp, "Cell_metadata.csv.gz"))
     
@@ -190,8 +195,8 @@ if (export_metadata) {
     for( r in embeddings_to_export) {
       emb = SeuratObject::Embeddings(sc, r)[barcodes, 1:2] %>%
         as.data.frame() %>%
-        tibble::rownames_to_column(var="cell_id")
-      emb$cell_id = categorial_data$cell_id
+        tibble::rownames_to_column(var="barcode")
+      emb$barcode = categorial_data$barcode
       readr::write_csv(x=emb,
                 file=file.path(module_dir, "results", "csv", smp, paste0("Cell_projection_", r, ".csv.gz")))
     }
@@ -205,7 +210,7 @@ if (export_metadata) {
   # Cell metadata
   categorial_data = sc[[]][, c("orig_barcode", categories_to_export)]
   col_nms = colnames(categorial_data)
-  col_nms[1] = "cell_id"
+  col_nms[1] = "barcode"
   colnames(categorial_data) = col_nms
   readr::write_csv(x=categorial_data, 
             file=file.path(module_dir, "results", "csv", "all", "Cell_metadata.csv.gz"))
@@ -214,8 +219,8 @@ if (export_metadata) {
   for( r in embeddings_to_export) {
     emb = SeuratObject::Embeddings(sc, r)[, 1:2] %>%
       as.data.frame() %>%
-      tibble::rownames_to_column(var="cell_id")
-    emb$cell_id = categorial_data$cell_id
+      tibble::rownames_to_column(var="barcode")
+    emb$barcode = categorial_data$barcode
     readr::write_csv(x=emb,
               file=file.path(module_dir, "results", "csv", "all", paste0("Cell_projection_", r, ".csv.gz")))
   }
@@ -235,6 +240,7 @@ Results of the analysis are exported as cloupe file which can be read by the Lou
 
 **Notes**: 
 - Due to license issues, this is only supported for 10x datasets. Non-10x datasets will not be exported.
+- Since the Loupe Cell Browser does its own internal normalization, only the raw counts are exported.
 - Spatial information is not included in the cloupe file. For 10x Visium/VisiumHD data, we recommend to use the original cloupe file provided by Spaceranger and to import the CSV cell metadata (see above for details) in Loupe. For 10x Xenium, the cloupe file can be loaded into the Loupe Cell Browser to inspect the cell clustering. For spatial information, use the Xenium explorer (see below for details).
 
 ```{r}
@@ -247,9 +253,6 @@ create_loupe_file = param("create_loupe_file")
 # Create a cloupe file for the Loupe Browser (only 10x, 10x_visium and 10x_xenium)
 if (create_loupe_file & all(grepl("10x", sc$technology))) {
   dir.create(file.path(module_dir, "results", "loupe"), showWarnings=FALSE, recursive=TRUE)
-  
-  # Assays to export (currently only default)
-  assays_to_export = SeuratObject::DefaultAssay(sc)
   
   # Cell metadata to export (ignore categories based on sketch assay)
   # Note: Loupe does not support numeric columns
@@ -264,15 +267,15 @@ if (create_loupe_file & all(grepl("10x", sc$technology))) {
   
   # Export as loupe file
   ExportLoupe(sc, 
-              assays=assays_to_export, 
+              assay=SeuratObject::DefaultAssay(sc), 
               categories=categories_to_export, 
               embeddings=embeddings_to_export, 
               output_dir=file.path(module_dir, "results", "loupe"),
               output_name="scrnaseq2")
   
-  CalloutBox("The following loupe file can be loaded directly into the loupe browser: 'loupe/scrnaseq2.cloupe'.", type="note")
+  CalloutBox("The following cloupe file can be loaded directly into the Loupe Cell Browser: 'loupe/scrnaseq2.cloupe'.", type="note")
 } else {
-  CalloutBox("Creating loupe files was deactivated or is supported only for datasets of technology '10x', '10x_xenium' or '10x_visium'.", type="note")
+  CalloutBox("Creating cloupe files for the Loupe Cell Browser was deactivated or is supported only for datasets of technology '10x', '10x_xenium' or '10x_visium'.", type="note")
 }
 ```
 
@@ -282,29 +285,32 @@ For 10x Xenium data, categorial cell metadata is exported as analysis.zarr.zip f
 
 ```{r}
 #| label: export_xenium_analysis_file
+#| eval: !expr length(SeuratObject::Images(sc)) > 0
+#| include: !expr length(SeuratObject::Images(sc)) > 0
 #| results: asis
 
 export_xenium_analysis_file = param("export_xenium_analysis_file")
 
-
-if (export_xenium_analysis_file & all(grepl("10x_xenium", sc$technology))) {
-  dir.create(file.path(module_dir, "results", "xenium"), showWarnings=FALSE, recursive=TRUE)
-  
-  # Cell metadata to export (ignore categories based on sketch assay)
-  # Note: Xenium Explorer does not support numeric columns
-  categories_to_export = colnames(sc[[]])
-  categories_to_export = categories_to_export[!grepl("\\.sketch$", categories_to_export)]
-  categories_to_export = categories_to_export[categories_to_export != "orig_barcode"]
-  
-  # Export as analysis.zarr.zip files
-  ExportXeniumExplorer(sc, 
-                       categories=categories_to_export, 
-                       output_dir=file.path(module_dir, "results", "xenium"), 
-                       output_name="analysis.zarr.zip")
-  
-  CalloutBox("Cell metadata was exported per dataset as analysis.zarr.zip file in the 'xenium' directory. Replace the original analysis.zarr.zip in the respective Xenium dataset (make a backup) to include the results of this analysis in the Xenium Explorer.", type="note")
-} else {
-  CalloutBox("Exporting to Xenium Explorer was deactivated or is supported only for datasets of technology '10x_xenium'.", type="note")
+if (length(SeuratObject::Images(sc)) > 0) {
+  if (export_xenium_analysis_file & all(grepl("10x_xenium", sc$technology))) {
+    dir.create(file.path(module_dir, "results", "xenium"), showWarnings=FALSE, recursive=TRUE)
+    
+    # Cell metadata to export (ignore categories based on sketch assay)
+    # Note: Xenium Explorer does not support numeric columns
+    categories_to_export = colnames(sc[[]])
+    categories_to_export = categories_to_export[!grepl("\\.sketch$", categories_to_export)]
+    categories_to_export = categories_to_export[categories_to_export != "orig_barcode"]
+    
+    # Export as analysis.zarr.zip files
+    ExportXeniumExplorer(sc, 
+                         categories=categories_to_export, 
+                         output_dir=file.path(module_dir, "results", "xenium"), 
+                         output_name="analysis.zarr.zip")
+    
+    CalloutBox("Cell metadata was exported per dataset as analysis.zarr.zip file in the 'xenium' directory. Replace the original analysis.zarr.zip in the respective Xenium dataset (make a backup) to include the results of this analysis in the Xenium Explorer.", type="note")
+  } else {
+    CalloutBox("Exporting to Xenium Explorer is supported only for datasets of technology '10x_xenium'.", type="note")
+  }
 }
 ```
 
@@ -391,7 +397,7 @@ if (export_sc) {
   with_progress({
     SaveSeuratRdsWrapper(sc,
                          outdir=outdir,
-                         copy_disk_data=TRUE,
+                         write_disk_data=TRUE,
                          relative_paths=TRUE,
                          compress=TRUE
                          )

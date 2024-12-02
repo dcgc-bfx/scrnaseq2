@@ -444,7 +444,7 @@ PlotRLE = function(sc, assay=NULL, layer="counts", nbarcodes=500, is_log=FALSE) 
   # Checks
   layers = SeuratObject::Layers(sc[[assay]], layer)
   assertthat::assert_that(length(layers) > 0,
-                          msg=FormatString("Could not find data for layer {{layer}} of assay {assay}."))
+                          msg=FormatString("Could not find data for layer {layer} of assay {assay}."))
   
   if (!is(sc[[assay]], "SCTAssay")) {
     # Standard assays

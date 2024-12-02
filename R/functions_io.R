@@ -425,7 +425,7 @@ ReadCounts_SmartSeq = function(path, assays, version, transpose=FALSE) {
   # Checks
   assertthat::is.readable(path)
   assertthat::assert_that(version %in% c("2", "3"),
-                          msg=FormatString("Smartseq version must be '2' or '3'."))
+                          msg="Smartseq version must be '2' or '3'.")
   
   
   # Convert to feature type in dataset
@@ -1223,7 +1223,7 @@ CreateSegmentationImproved = function(coords) {
   library(SeuratObject)
   
   assertthat::assert_that(all(colnames(coords) == c("cell", "x", "y")),
-                          msg=FormatString("Function 'CreateSegmentationImproved' requires a table with columns 'cell', 'x' and 'y'."))
+                          msg="Function 'CreateSegmentationImproved' requires a table with columns 'cell', 'x' and 'y'.")
   
   coords_cell_names = coords[[1]]
   coords_cell_names = factor(coords_cell_names, levels=unique(coords_cell_names))
@@ -1291,7 +1291,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
     cell_centroids = cell_centroids[i, ]
     
     assertthat::assert_that(all(cell_centroids$cell == names(barcodes)),
-                            msg=FormatString("Barcodes for cell centroids do not match the requested barcodes."))
+                            msg="Barcodes for cell centroids do not match the requested barcodes.")
     
     # Rename
     cell_centroids$cell = barcodes
@@ -1322,7 +1322,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
       # Rename
       new = barcodes[cell_boundaries$cell]
       assertthat::assert_that(all(!is.na(new)),
-                              msg=FormatString("Barcodes for cell centroids do not match the requested barcodes."))
+                              msg="Barcodes for cell centroids do not match the requested barcodes.")
       
       cell_boundaries$cell = new
     }
@@ -1583,12 +1583,19 @@ ParsePlateInformation = function(cell_names, pattern='_(\\d+)_([A-Z])(\\d+)$') {
 
 #' Saves Seurat object and - if available and requested - associated on-disk layers. Improved version of Seurat's SaveSeuratRds.
 #' 
+#' The function was rewritten mainly for the usage of on-disk matrices for big datasets:
+#' - When layers of multiple samples are joined (e.g. counts.sample1 and counts.sample2 into counts), the 
+#' original function cannot save them. This was fixed.
+#' - The original function will write the on-disk matrices every time the Seurat object is saved. This is not necessary 
+#' since the matrices do not change after a certain point. This function includes an option to use the existing directories.
+#' - This function is much more documented.
+#' 
 #' @param sc A Seurat sc object.
 #' @param outdir Output directory for saved Seurat object (sc.rds) and associated on-disk layers. If it does not exist, it will be created.
-#' @param copy_disk_data If TRUE also copy existing on-disk layers into this directory.
+#' @param write_disk_data If TRUE also copy existing on-disk layers into this directory.
 #' @param relative_paths Make paths to on-disk layers relative.
 #' @param commpress Whether to compress the Seurat sc.rds file
-SaveSeuratRdsWrapper = function(sc, outdir, copy_disk_data=TRUE, relative_paths=FALSE, compress=FALSE) {
+SaveSeuratRdsWrapper = function(sc, outdir, write_disk_data=TRUE, relative_paths=FALSE, compress=FALSE) {
   # If output directory does not exist, create it
   if (!dir.exists(outdir)) dir.create(outdir, recursive=TRUE)
   
@@ -1602,7 +1609,7 @@ SaveSeuratRdsWrapper = function(sc, outdir, copy_disk_data=TRUE, relative_paths=
   file = normalizePath(path=file, winslash="/", mustWork=FALSE)
   
   # Check that the fs package is installed for file moving (in case there are on-disk matrices)
-  assertthat::assert_that(require("fs"), msg=FormatString("The package 'fs' is required to move on-disk matrices. Please install it."))
+  assertthat::assert_that(require("fs"), msg="The package 'fs' is required to move on-disk matrices. Please install it.")
   
   # Assays
   assays = SeuratObject::.FilterObjects(sc, classes.keep="StdAssay")
@@ -1617,7 +1624,7 @@ SaveSeuratRdsWrapper = function(sc, outdir, copy_disk_data=TRUE, relative_paths=
   names(cache) = assays
   destdir = dirname(file)
   
-  # This contains information already existing in the Seurat object
+  # This table contains information about already existing on-disk directories
   save_seurat_rds = SeuratObject::Tool(sc, "SaveSeuratRds")
   
   # Loop over assays
@@ -1626,26 +1633,41 @@ SaveSeuratRdsWrapper = function(sc, outdir, copy_disk_data=TRUE, relative_paths=
     
     # Loop over layers and collect information required for on-disk matrices
     layer_disk_info = purrr::map_dfr(SeuratObject::Layers(sc[[assay]]), function(layer) {
+      # Get layer data
       layer_data = SeuratObject::LayerData(sc[[assay]], layer=layer)
       
       # Get path(s) to on-disk matrix
-      # If copy_disk_data is TRUE, path is collected from the IterableMatrix, else from the Seurat object
-      if (copy_disk_data || is.null(save_seurat_rds)) {
-        layer_disk_paths = SeuratObject::.FilePath(layer_data)
-      } else {
-        i = which(save_seurat_rds$assay == assay & save_seurat_rds$layer == layer)
-        if (length(i) == 0) {
-          layer_disk_paths = SeuratObject::.FilePath(layer_data)
-        } else {
-          layer_disk_paths = save_seurat_rds[i, "path"]
-        }
-        
-      }
+      layer_disk_paths = SeuratObject::.FilePath(layer_data)
       
       # Empty means no on-disk data and can be skipped
-      layer_disk_paths = Filter(f=nzchar, x=layer_disk_paths)
-      if (!length(layer_disk_paths)) layer_disk_paths = NULL
+      layer_disk_paths = layer_disk_paths[nzchar(layer_disk_paths) > 0]
+      if (length(layer_disk_paths)==0) layer_disk_paths = NULL
       if (is.null(layer_disk_paths)) return(NULL)
+      
+      # If a layer consists of multiple on-disk directories, split them
+      layer_disk_paths = unlist(strsplit(layer_disk_paths, ","))
+      layer_disk_paths = trimws(layer_disk_paths)
+      
+      # We want to keep the paths relative to the current directory
+      layer_disk_paths = fs::path_rel(layer_disk_paths)
+      
+      # If write_disk_data is FALSE and the on-disk directories already exist 
+      # (from previous run, stored in tool SaveSeuratRds) change paths so that 
+      # these are used
+      if (!write_disk_data & !is.null(save_seurat_rds)) {
+        known_disk_paths = unlist(strsplit(save_seurat_rds$path, ","))
+        known_disk_paths = trimws(known_disk_paths)
+        layer_disk_paths = purrr::map_chr(layer_disk_paths, function(p) {
+          i = which(basename(known_disk_paths) %in% basename(p))
+          if (length(i) == 1) {
+            return(known_disk_paths[i])
+          } else if (length(i) == 0) {
+            return(p)
+          } else {
+            stop("Multiple on-disk directories found for the same layer. This should not happen.")
+          }
+        })
+      }
       
       # Return table with information
       layer_disk_fxn = SeuratObject::.DiskLoad(layer_data)
@@ -1654,7 +1676,7 @@ SaveSeuratRdsWrapper = function(sc, outdir, copy_disk_data=TRUE, relative_paths=
         # Layer name
         layer=layer,
         # Path(s) to on-disk matrix
-        path=layer_disk_paths,
+        path=paste(layer_disk_paths, collapse=","),
         # Class of on-disk matrix
         class=paste(class(layer_data), collapse=","),
         # Package of on-disk matrix
@@ -1666,27 +1688,36 @@ SaveSeuratRdsWrapper = function(sc, outdir, copy_disk_data=TRUE, relative_paths=
     
     # No on-disk layers found, skip (everything stored in Seurat object)
     if (is.null(layer_disk_info) || !nrow(layer_disk_info)) {
-      p(message=FormatString("No on-disk layers found"), class="sticky", amount=0)
+      p(message="No on-disk layers found", class="sticky", amount=0)
       next
     }
     
-    # Copy on-disk matrices
-    if (copy_disk_data) {
+    # Write on-disk matrices (if needed)
+    if (write_disk_data) {
       for (i in seq_len(length.out=nrow(layer_disk_info))) {
         layer = layer_disk_info$layer[i]
         
         # A on-disk matrix can consist of multiple data directories
         layer_disk_paths = unlist(strsplit(layer_disk_info$path[i], ","))
+        layer_disk_paths = trimws(layer_disk_paths)
         
-        p(message=FormatString("Moving layer {layer} to {destdir}"), class="sticky", amount = 0)
-        
-        # Iterate over paths of data directories, copy them and return new paths
+        # Iterate over paths of data directories, copy them (if needed) and return new paths
         new_layer_disk_paths = purrr::map(layer_disk_paths, function(p) {
-          # Copy
+          np = file.path(destdir, basename(p))
+          
+          # If p already exists and we do not want write the data, do not write, 
+          # just return
+          if (file.exists(p) & !write_disk_data) return(p)
+          
+          # If np already exists, do not write, just return
+          if (file.exists(np)) return(np)
+          
+          # Else write
+          p(message=FormatString("Writing on-disk directory {basename(p)}, layer {layer}, to {destdir}"), class="sticky", amount = 0)
           np = as.character(.FileMove(path=p, new_path=destdir))
-          if (p == np) np = file.path(destdir, basename(p))
           return(np)
         })
+
         new_layer_disk_paths = paste(unlist(new_layer_disk_paths), collapse=",")
         layer_disk_info[i, "path"] = new_layer_disk_paths
       }
@@ -1727,8 +1758,8 @@ SaveSeuratRdsWrapper = function(sc, outdir, copy_disk_data=TRUE, relative_paths=
   
   # Update table with on-disk matrix information in Seurat object
   cache = do.call("rbind", cache)
-  if (!is.null(cache) && nrow(cache)) {
-    p(message=FormatString("Saving on-disk cache to object"), class="sticky", amount=0)
+  if (!is.null(cache) && nrow(cache) > 0) {
+    p(message="Saving on-disk cache to object", class="sticky", amount=0)
     row.names(cache) = NULL
     #SeuratObject::Tool(sc) = cache
     sc@tools$SaveSeuratRds = cache
@@ -1797,7 +1828,7 @@ UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL, update_tool_saves
       fnx = eval(expr = str2lang(fnx))
       SeuratObject::LayerData(sc, assay=a, layer=layers[i]) = fnx(new_path)
       
-      # Update information about on-disk matrices
+      # Update path for on-disk matrices
       if (!is.null(cache)) {
         idx = which(cache$assay == a & cache$layer == layers[i])
         cache$path[idx] = new_path
@@ -1806,6 +1837,14 @@ UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL, update_tool_saves
   }
   progr(type='finish')
   
+  # Update information about on-disk matrices in Seurat object if requested
+  if (update_tool_saveseuratrds) {
+    if (!is.null(cache) && nrow(cache) > 0) {
+      row.names(cache) = NULL
+      sc@tools$SaveSeuratRds = cache
+    }
+  }
+  
   return(sc)
 }
 
@@ -1813,12 +1852,12 @@ UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL, update_tool_saves
 #' Exports a Seurat object to a Loupe file.
 #'
 #' @param sc A Seurat object.
-#' @param assays Assays to include in the Loupe file. If NULL, all assays are included.
+#' @param assay Assay to include in the Loupe file. If NULL, the default assay is included.
 #' @param categories Cell metadata columns to include in the Loupe file. If NULL, all non-numeric are included. Numeric columns are always discarded.
 #' @param embeddings Embeddings to include in the Loupe file. If NULL, all embeddings are included.
 #' @param output_dir Directory where the Loupe file will be saved.
 #' @param output_name Name of the Loupe file (cloupe.cloupe).
-ExportLoupe = function(sc, assays=NULL, categories=NULL, embeddings=NULL, output_dir=".", output_name="cloupe.cloupe") {
+ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, output_dir=".", output_name="cloupe.cloupe") {
   # Setup eula and download executable for loupeR.
   # Needs to be done only once but cannot be done automatically.
   louper_status = loupeR:::needs_setup()
@@ -1830,26 +1869,18 @@ ExportLoupe = function(sc, assays=NULL, categories=NULL, embeddings=NULL, output
   # Check and discard numeric columns (Loupe cannot handle them)
   if (is.null(categories)) categories = colnames(barcode_metadata)
   assertthat::assert_that(all(categories %in% colnames(barcode_metadata)),
-                          msg=FormatString("Not all requested categories are part of the cell metadata."))
-  categories = purrr::discard(categories, function(c) return(is.numeric(barcode_metadata[, c])))
+                          msg="Not all requested categories are part of the cell metadata.")
+  categories = purrr::discard(categories, function(i) return(is.numeric(barcode_metadata[, i])))
   
   # Check requested assays
-  if (is.null(assays)) assays = SeuratObject::Assays(sc)
-  assertthat::assert_that(all(assays %in% SeuratObject::Assays(sc)),
-                          msg=FormatString("Not all requested assays are part of the Seurat object."))
+  if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
+  assertthat::assert_that(all(assay %in% SeuratObject::Assays(sc)),
+                          msg=FormatString("Requested assay {assay} part of the Seurat object."))
   
   
-  # Get counts of assays(s) and convert to numeric matrix
-  if (length(assays) > 1) {
-    counts = purrr::map(assays, function(a) {
-      cts = SeuratObject::GetAssayData(sc, assay=a, layer="counts")
-      return(as(cts, "dgCMatrix"))
-    })
-    counts = do.call(SparseRbind, counts)
-  } else {
-    cts = SeuratObject::GetAssayData(sc, assay=assays[1], layer="counts")
-    counts = as(cts, "dgCMatrix")
-  }
+  # Get counts of assay and convert to numeric matrix
+  counts = SeuratObject::GetAssayData(sc, assay=assay, layer="counts")
+  counts = as(counts, "dgCMatrix")
   
   # Replace NA with "NA" in barcode metadata
   # Convert character columns to factors
@@ -1886,7 +1917,10 @@ ExportLoupe = function(sc, assays=NULL, categories=NULL, embeddings=NULL, output
                                  seurat_obj_version=seurat_obj_version)
 }
 
-#' Exports a Seurat object to a Xenium Explorer analysis.zarr.zip file.
+#' Exports the cell categorial metadata of a Seurat object to a Xenium Explorer analysis.zarr.zip file.
+#' 
+#' Note: By default, Xenium Explorer allows to import cell categorial metadata via csv files. However, only one category at a time and it 
+#' cannot be saved. Therefore, we save the complete cell categorial metadata in the native Xenium Explorer format for analysis results.
 #' 
 #' @param sc A Seurat object.
 #' @param categories Cell metadata columns to include in the Xenium Explorer file. If NULL, all non-numeric are included. Numeric columns are always discarded.
@@ -1895,19 +1929,19 @@ ExportLoupe = function(sc, assays=NULL, categories=NULL, embeddings=NULL, output
 ExportXeniumExplorer = function(sc, categories=NULL, output_dir=".", output_name="analysis.zar.zip") {
   # For this function, we need a datasets table in the misc slot (to get all barcodes present in the dataset)
   assertthat::assert_that("datasets" %in% names(sc@misc),
-                          msg=FormatString("This function requires the Seurat object to have a 'datasets' table in the misc slot with columns 'experiment' for orig.ident and 'path' for the path to the dataset."))
+                          msg="This function requires the Seurat object to have a 'datasets' table in the misc slot with columns 'experiment' for orig.ident and 'path' for the path to the dataset.")
   datasets = sc@misc$datasets
   
   # Moreover, there needs to be a column 'orig_barcode' in the cell metadata
   assertthat::assert_that("orig_barcode" %in% colnames(sc[[]]),
-                          msg=FormatString("This function requires the Seurat object to have a column 'orig_barcode' in the cell metadata."))
+                          msg="This function requires the Seurat object to have a column 'orig_barcode' in the cell metadata.")
   
   # Check and discard numeric columns (Xenium Explorer cannot handle them)
   barcode_metadata = sc[[]]
   if (is.null(categories)) categories = colnames(barcode_metadata)
   assertthat::assert_that(all(categories %in% colnames(barcode_metadata)),
-                          msg=FormatString("Not all requested categories are part of the cell metadata."))
-  categories = purrr::discard(categories, function(c) return(is.numeric(barcode_metadata[, c])))
+                          msg="Not all requested categories are part of the cell metadata.")
+  categories = purrr::discard(categories, function(i) return(is.numeric(barcode_metadata[, i])))
   
   # Per dataset
   for(smp in levels(sc$orig.ident)) {
