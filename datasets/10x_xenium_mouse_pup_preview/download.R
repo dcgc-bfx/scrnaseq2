@@ -1,5 +1,6 @@
-# Dataset provided by 10x: Xenium in situ data of fresh frozen mouse brain
-# https://www.10xgenomics.com/resources/datasets/fresh-frozen-mouse-brain-for-xenium-explorer-demo-1-standard
+# Dataset provided by 10x: Xenium in situ preview data generated using the Mouse Tissue Atlassing panel on a one day old mouse pup
+# https://www.10xgenomics.com/datasets/mouse-pup-preview-data-xenium-mouse-tissue-atlassing-panel-1-standard
+
 
 # Important: Run this script in its directory
 files = c("analysis_summary.html", "analysis.zarr.zip", "cell_boundaries.csv.gz", "cell_boundaries.parquet", "cell_feature_matrix.h5",
@@ -11,7 +12,10 @@ dirs = c("analysis", "cell_feature_matrix")
 unlink(dirs, recursive=TRUE)
 
 # download and unzip
-url = 'https://cf.10xgenomics.com/samples/xenium/1.0.2/Xenium_V1_FF_Mouse_Brain_Coronal_Subset_CTX_HP/Xenium_V1_FF_Mouse_Brain_Coronal_Subset_CTX_HP_outs.zip'
+url = 'https://s3-us-west-2.amazonaws.com/10x.files/samples/xenium/1.6.0/Xenium_V1_mouse_pup/Xenium_V1_mouse_pup_outs.zip'
 curl::curl_download(url=url, destfile=basename(path=url))
 utils::unzip(basename(path=url))
+unlink(basename(path=url))
+
+untar(tarfile = "analysis.tar.gz")
 unlink(basename(path=url))

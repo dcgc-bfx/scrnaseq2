@@ -21,12 +21,14 @@ options(Seurat.object.assay.version="v5")
 # Note: maybe we can move to this to a _environment.local file
 conda_env = NULL
 python_path = NULL
+
 if (!is.null(conda_env)) {
     reticulate::use_condaenv(conda_env)
 } else if (!is.null(python_path)) {
     Sys.setenv(RETICULATE_PYTHON=python_path)
 } else {
-    python_path = unname(Sys.which("python3"))
+    python_path = Sys.getenv("RETICULATE_PYTHON")
+    if (is.null(python_path)) python_path = unname(Sys.which("python"))
     Sys.setenv(RETICULATE_PYTHON=python_path)
 }
 
