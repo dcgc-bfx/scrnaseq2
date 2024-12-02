@@ -76,8 +76,7 @@ library(future)
 library(patchwork)
 library(reticulate)
 
-# Get module name and directory (needed to access files within the module directory)
-module_name = params$module_name
+# Get module directory (needed to access files within the module directory)
 module_dir = params$module_dir
 ```
 

@@ -2052,7 +2052,6 @@ ExportXeniumExplorer = function(sc, categories=NULL, output_dir=".", output_name
       indptr = zarr_categorial_data[[i]]$indptr
       chunk_size = max(length(indices), 1)
       
-      
       group = cell_groups$create_group(as.character(i-1))
       group$array("indices", 
                   numpy_module$array(indices, dtype="uint32"), 

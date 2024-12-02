@@ -98,7 +98,6 @@ library(ggplot2)
 library(future)
 
 # Get module directory (needed to access files within the module directory)
-module_name = params$module_name
 module_dir = params$module_dir
 ```
 
@@ -673,7 +672,7 @@ for (i in seq(counts_lst)) {
   if (on_disk_counts) {
     CalloutBox(x="Raw and normalized counts will be stored on disk. The names of the corresponding directories have the following structure: counts/data.assay.dataset.", type="note")
   } else {
-    CalloutBox(x="Raw and normalized counts will be kept memory and stored in the Seurat object.", type="note")
+    CalloutBox(x="Raw and normalized counts will be kept in memory and stored in the Seurat object.", type="note")
   }
 }
 ```

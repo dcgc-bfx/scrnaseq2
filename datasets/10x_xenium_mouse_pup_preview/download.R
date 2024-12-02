@@ -1,4 +1,4 @@
-# Dataset provided by 10x: Xenium In Situ preview data generated using the Mouse Tissue Atlassing panel on a one day old mouse pup
+# Dataset provided by 10x: Xenium in situ preview data generated using the Mouse Tissue Atlassing panel on a one day old mouse pup
 # https://www.10xgenomics.com/datasets/mouse-pup-preview-data-xenium-mouse-tissue-atlassing-panel-1-standard
 
 

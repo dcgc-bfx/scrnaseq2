@@ -77,9 +77,9 @@ library(Seurat)
 library(ggplot2)
 library(future)
 library(patchwork)
+library(clustree)
 
-# Get module name and directory (needed to access files within the module directory)
-module_name = params$module_name
+# Get module directory (needed to access files within the module directory)
 module_dir = params$module_dir
 ```
 
@@ -174,6 +174,8 @@ At this point, we would like to define subpopulations of cells with similar gene
 During the first step of clustering, a K-nearest neighbor (KNN) graph is constructed. In simplified terms this means that cells are connected to their K nearest neighbors based on cell-to-cell expression similarity using the PCs chosen in the previous step. The higher the similarity is, the higher the edge weight becomes. During the second step, the graph is partitioned into highly interconnected communities, whereby each community represents a cluster of cells with similar expression profiles. The separation of the graph into clusters is dependent on the chosen resolution. For scRNA-seq datasets of around 3000 cells, it is recommended to use a resolution value between 0.4 and 1.2. This value can be set even higher for larger datasets. Note that the choice of PCs and cluster resolution is an arbitrary one. Therefore, it is highly recommended to evaluate clusters and re-run the workflow with adapted parameters if needed. 
 
 :::
+
+### Clustering resolution
 
 To get a first idea about how different cluster resolution values influence the clustering, we run and visualize the clustering multiple times, see below. 
 
@@ -415,7 +417,7 @@ for (method in dimensionality_reduction_methods) {
     }
     clustering_name = paste0(assay, "_", reduct, "_", "snn", res)
     
-    chunk_filled =  knitr::knit_expand(text=chunk_template, name=clustering_name, caption=FormatString("UMAP coloured by clustering with resolution {res} based on reduction {toupper(method)}"))
+    chunk_filled =  knitr::knit_expand(text=chunk_template, name=clustering_name, caption=FormatString("UMAP coloured by clustering with resolution {res} based on reduction {method}"))
     if (interactive()) {
       print(EvalKnitrChunk(chunk_filled))
     } else {
@@ -426,8 +428,6 @@ for (method in dimensionality_reduction_methods) {
 }
 
 cat(":::\n")
-
-CalloutBox("Default clustering is set to the dimensionality reduction {dimensionality_reduction_methods[1]} with the resolution parameter {cluster_resolutions[1]}.", type="note")
 ```
 
 ```{r}
@@ -475,7 +475,7 @@ plist[['{{ident}}']][['{{clstr}}']]
       cat("#####", ident, "\n")
           
       # Generate captions
-      captions = purrr::map(dimensionality_reduction_methods, function(method) return(FormatString("Spatial plot for dataset {ident} coloured by clustering with resolution {cluster_resolutions} based on reduction {toupper(method)}"))) %>% purrr::flatten_chr()
+      captions = purrr::map(dimensionality_reduction_methods, function(method) return(FormatString("Spatial plot for dataset {ident} coloured by clustering with resolution {cluster_resolutions} based on reduction {method}"))) %>% purrr::flatten_chr()
   
       for(i in seq(plist[[ident]])) {
           clstr = names(plist[[ident]])[i]
@@ -495,6 +495,69 @@ plist[['{{ident}}']][['{{clstr}}']]
   cat(":::\n")
 }
 ```
+
+### Clustering Tree
+
+Clustering trees help in understanding how clusters split or merge as the resolution changes in data analysis. Each node represents a cluster at a given resolution, and edges between nodes indicate how clusters from one resolution relate to clusters at another resolution. This makes it easier to track cluster stability or transitions, aiding in the selection of an appropriate resolution for downstream analysis.
+
+::: {.callout-tip title="What is the best resolution for my experiment?" collapse="true"}
+When selecting the optimal resolution for your experiment, it's crucial to identify the resolution where nodes have multiple incoming edges. This indicates where clusters from different resolutions converge, providing valuable insight into cluster behavior.
+:::
+
+```{r}
+#| label: clustering_umap_clustree
+#| results: asis
+#| fig-cap: "Clustering tree based on clusters derived from various resolutions"
+
+# Make plots per dimensionality reduction showing the different clustering resolutions
+plist = purrr::map(dimensionality_reduction_methods, function(method) {
+  clust_tree_plot = clustree(sc, prefix = paste0(default_assay, "_", method, "_", "snn")) +
+    theme(legend.box = "vertical") +
+    guides(color = guide_legend(title = "Resolution", position = "bottom"),
+           edge_alpha = guide_legend(title = "Proportion of\nincoming cells", 
+                                     position = "right"),
+           size = "none") +
+    scale_edge_colour_gradientn(name = "Cell count", 
+                                colours = c("darkblue", "green4", "yellow"))
+  
+  clust_tree_plot = clust_tree_plot + 
+    ylim(layer_scales(clust_tree_plot)$y$range$range[1] - 0.2, 
+                         layer_scales(clust_tree_plot)$y$range$range[2] + 0.5)
+  
+  return(clust_tree_plot)
+})
+names(plist) = dimensionality_reduction_methods
+
+# Set up layout and automatically generate chunks
+chunk_template = "
+\`\`\`{r}
+#| label: fig-clustering_umap_clustree_{{method}}
+#| fig-cap: {{caption}}
+#| echo: false
+
+plist[['{{method}}']]
+\`\`\`
+"
+
+for (method in names(plist)) {
+  chunk_filled =  knitr::knit_expand(text=chunk_template, method=method, caption=FormatString("Clustering tree based on clusters derived from various resolutions for reduction method {method}."))
+  if (interactive()) {
+    print(EvalKnitrChunk(chunk_filled))
+  } else {
+    chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+    cat(chunk_filled, sep='\n')
+  }
+}
+
+```
+
+```{r}
+#| label: fig-clustering_umap_final_clustering
+#| results: asis
+
+CalloutBox("Default clustering for assay {default_assay} is set to the dimensionality reduction {dimensionality_reduction_methods[1]} with the resolution parameter {cluster_resolutions[1]}.", type="note")
+```
+
 
 ## Visualization with UMAP
 

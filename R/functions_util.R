@@ -562,27 +562,6 @@ DefaultVisualization = function(sc, assay=NULL) {
   return(sc)
 }
 
-#' Binds two sparse matrices of different sizes by rows
-#' 
-#' @param A A sparse matrix.
-#' @param B Another sparse matrix.
-#' @return A matrix combined by row. Columns that do not appear in A will be set to '0' and vice versa.
-SparseRbind = function(A, B) {
-  # From: https://stackoverflow.com/questions/43117608/r-binding-sparse-matrices-of-different-sizes-on-rows
-  misA = colnames(B)[!colnames(B) %in% colnames(A)]
-  misB = colnames(A)[!colnames(A) %in% colnames(B)]
-  
-  misAl = as.vector(numeric(length(misA)), "list")
-  names(misAl) = misA
-  misBl = as.vector(numeric(length(misB)), "list")
-  names(misBl) = misB
-  
-  An = do.call(cbind, c(A, misAl))
-  Bn = do.call(cbind, c(B, misBl))[,colnames(An)]
-  
-  return(rbind(An, Bn))
-}
-
 ######################
 ######################
 

@@ -82,8 +82,7 @@ library(Seurat)
 library(ggplot2)
 library(future)
 
-# Get module name and directory (needed to access files within the module directory)
-module_name = params$module_name
+# Get module directory (needed to access files within the module directory)
 module_dir = params$module_dir
 ```
 
@@ -185,19 +184,19 @@ if (cellcycle_remove) {
 
 In this section, we subsequently run a series of Seurat functions for each provided sample:
 
-1. We start by running a **standard log normalization**, where counts for each cell are divided by the total counts for that cell and multiplied by 10,000. This is then natural-log transformed.
+1. We start by running a **standard log normalization**, where counts for each barcode are divided by the total counts for that barcode and multiplied by 10,000. This is then natural-log transformed.
 
 ::: {.callout-tip title="What do we need normalization for?" collapse="true"}
 
-The number of raw sequencing reads per cell is influenced by technical differences in the capture, reverse transcription and sequencing of RNA molecules, particularly due to the difficulty of achieving consistent library preparation with minimal starting material. Thus, comparing gene expression between cells may reveal differences that are solely due to sampling effects. After low-quality cells were removed in the previous step, the primary goal of normalization is to remove technical sampling effects while preserving the true biological signal.
+The number of raw sequencing reads per barcode is influenced by technical differences in the capture, reverse transcription and sequencing of RNA molecules, particularly due to the difficulty of achieving consistent library preparation with minimal starting material. Thus, comparing expression between barcodes may reveal differences that are solely due to sampling effects. After low-quality barcodes were removed in the previous step, the primary goal of normalization is to remove technical sampling effects while preserving the true biological signal.
 
-Count depth scaling is the simplest and most commonly used normalization strategy. The underlying idea is that each cell initially contained an equal number of mRNA molecules, and differences arise due to sampling effects. For each cell, the number of reads per gene is divided by a cell-specific “size factor”, which is proportional to the total count depth of the cell. The resulting normalized data add up to 1 per cell, and is then typically multiplied by a factor of 10 (10,000 in this workflow).
+Count depth scaling is the simplest and most commonly used normalization strategy. The underlying idea is that each cell initially contained an equal number of mRNA molecules, and differences arise due to sampling effects. For each barcode, the number of reads per feature is divided by a barcode-specific “size factor”, which is proportional to the total count depth of the barcode. The resulting normalized data add up to 1 per barcode, and is then typically multiplied by a factor of 10 (10,000 in this workflow).
 
-Finally, normalized data are log-transformed for three important reasons. First, distances between log-transformed expression data represent log fold changes. Log-transformation emphasizes contributions from genes with strong relative differences, for example a gene that is expressed at an average count of 50 in cell type A and 10 in cell type B rather than a gene that is expressed at an average count of 1100 in A and 1000 in B. Second, log-transformation mitigates the relation between mean and variance in the data. Lastly, log-transformation reduces that skewness of the data as many downstream analyses require the data to be normally distributed.
+Finally, normalized data are log-transformed for three important reasons. First, distances between log-transformed expression data represent log fold changes. Log-transformation emphasizes contributions from features with strong relative differences, for example a gene that is expressed at an average count of 50 in cell type A and 10 in cell type B rather than a gene that is expressed at an average count of 1100 in A and 1000 in B. Second, log-transformation mitigates the relation between mean and variance in the data. Lastly, log-transformation reduces that skewness of the data as many downstream analyses require the data to be normally distributed.
 
 :::
 
-2. We assign **cell cycle scores** to each cell based on its normalized expression of G2/M and S phase markers. These scores are visualised in a separate section further below. If specified in the above parameter section, cell cycle effects are removed during scaling (step 3). 
+2. We assign **cell cycle scores** to each barcode based on its normalized expression of G2/M and S phase markers. These scores are visualised in a separate section further below. If specified in the above parameter section, cell cycle effects are removed during scaling (step 3). 
 
 ::: {.callout-tip title="How does removal of cell cycle effects affect the data?" collapse="true"}
 
@@ -207,17 +206,17 @@ Note that removing all signal associated to cell cycle can negatively impact dow
 
 3. Dependent on the normalization of your choice, we either
 
-a. Run standard functions to select **variable genes**, and **scale** normalized gene counts. For downstream analysis it is beneficial to focus on genes that exhibit high cell-to-cell variation, that is they are highly expressed in some cells and lowly in others.
+a. Run standard functions to select **variable features**, and **scale** normalized gene counts. For downstream analysis it is beneficial to focus on features that exhibit high cell-to-cell variation, that is they are highly expressed in some barcodes and lowly in others.
 
-b. Run **SCTransform**, a new and more sophisticated normalization method that replaces the previous functions (**normalization, variable genes and scaling**).
+b. Run **SCTransform**, a new and more sophisticated normalization method that replaces the previous functions (**normalization, variable features and scaling**).
 
 ::: {.callout-tip title="What is **SCTransform** special about?" collapse="true"}
 
-The standard log-transformation applied in step 1 assumes that count depth influences all genes equally. However, it has been shown that the use of a single size factor will introduce different effects on highly and lowly expressed genes @Hafemeister_2019. **SCTransform** is a new statistical approach for the modelling, normalization and variance stabilization of single-cell RNA-seq data, and is an alternative to steps 1 and 3a described above. Note that **SCTransform** has been developed for UMI count data and can therefore safely be applied to 10x but not SmartSeq-2 data. As for the scaling in step 3a, additional unwanted sources of variations can be regressed out during **SCTransform**.
+The standard log-transformation applied in step 1 assumes that count depth influences all features equally. However, it has been shown that the use of a single size factor will introduce different effects on highly and lowly expressed features @Hafemeister_2019. **SCTransform** is a new statistical approach for the modelling, normalization and variance stabilization of single-cell RNA-seq data, and is an alternative to steps 1 and 3a described above. Note that **SCTransform** has been developed for UMI count data and can therefore safely be applied to 10x but not SmartSeq-2 data. As for the scaling in step 3a, additional unwanted sources of variations can be regressed out during **SCTransform**.
 
 :::
 
-While raw data is typically used for statistical tests such as finding marker genes, normalized data is mainly used for visualising gene expression values. Scaled data include variable genes only, potentially without cell cycle effects, and are mainly used to determine the structure of the dataset(s) with Principal Component Analysis, and indirectly to cluster and visualise cells in 2D space.
+While raw data is typically used for statistical tests such as finding marker features, normalized data is mainly used for visualising expression values. Scaled data include variable features only, potentially without cell cycle effects, and are mainly used to determine the structure of the dataset(s) with Principal Component Analysis, and indirectly to cluster and visualise barcodes in 2D space.
 
 ## Run Normalization
 
@@ -317,9 +316,9 @@ if (on_disk_counts) {
 }
 ```
 
-To better understand the efficiency of the applied normalization procedures, we plot the relative log expression of genes in  randomly selected subset of cells per sample before and after normalization. This type of plot reveals unwanted variation in your data. The concept is taken from @Gandolfo_2018. In brief, we remove variation between genes, leaving only variation between samples. If expression levels of most genes are similar in all cell types, sample heterogeneity is a sign of unwanted variation.
+To better understand the efficiency of the applied normalization procedures, we plot the relative log expression of features in randomly selected subset of barcodes per sample before and after normalization. This type of plot reveals unwanted variation in your data. The concept is taken from @Gandolfo_2018. In brief, we remove variation between features, leaving only variation between samples. If expression levels of most features are similar in all cell types, sample heterogeneity is a sign of unwanted variation.
 
-For each gene, we calculate its median expression across all cells, and then calculate the deviation from this median for each cell. For each cell, we plot the median expression (black), the interquartile range (<span style="color:lightgrey;font-weight:bold">lightgrey</span>), whiskers defined as 1.5 times the interquartile range (<span style="color:darkgrey;font-weight:bold">darkgrey</span>), and outliers (`r paste0('<span style="color:', unname(ScColours(sc, "orig.ident")), ';font-weight:bold">', unname(ScColours(sc, "orig.ident")), '</span>', collapse=', ')`)
+For each feature, we calculate its median expression across all barcodes, and then calculate the deviation from this median for each barcode. For each barcode, we plot the median expression (black), the interquartile range (<span style="color:lightgrey;font-weight:bold">lightgrey</span>), whiskers defined as 1.5 times the interquartile range (<span style="color:darkgrey;font-weight:bold">darkgrey</span>), and outliers (`r paste0('<span style="color:', unname(ScColours(sc, "orig.ident")), ';font-weight:bold">', unname(ScColours(sc, "orig.ident")), '</span>', collapse=', ')`)
 
 ::: panel-tabset
 
@@ -357,7 +356,7 @@ p
 
 ## Variable features
 
-Experience shows that 1,000-2,000 genes with the highest cell-to-cell variation are often sufficient to describe the global structure of a single-cell dataset. For example, cell type-specific genes typically highly vary between cells. Housekeeping genes, on the other hand, are similarly expressed across cells and can be disregarded to differentiate between cells. Highly variable genes are typically the genes with a cell type specific expression profile, and are often the genes of interest in single-cell experiments. Housekeeping genes, with similar levels of expression across all cells, or genes with minor expression differences, might add random noise and mask relevant changes during downstream dimensionality reduction and clustering. We therefore aim to select a sensible set of variable genes that includes interesting biological signal and excludes noise. 
+Experience shows that 1,000-2,000 features with the highest cell-to-cell variation are often sufficient to describe the global structure of a single-cell dataset. For example, cell type-specific genes typically highly vary between cells. Housekeeping genes, on the other hand, are similarly expressed across cells and can be disregarded to differentiate between cells. Highly variable genes are typically the genes with a cell type specific expression profile, and are often the genes of interest in single-cell experiments. Housekeeping genes, with similar levels of expression across all cells, or genes with minor expression differences, might add random noise and mask relevant changes during downstream dimensionality reduction and clustering. We therefore aim to select a sensible set of variable genes that includes interesting biological signal and excludes noise. 
 
 ::: {.callout-tip title="How are variable genes selected?" collapse="true"}
 

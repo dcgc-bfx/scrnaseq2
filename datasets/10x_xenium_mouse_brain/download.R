@@ -1,4 +1,4 @@
-# Dataset provided by 10x: Xenium In Situ data of fresh frozen mouse brain
+# Dataset provided by 10x: Xenium in situ data of fresh frozen mouse brain
 # https://www.10xgenomics.com/resources/datasets/fresh-frozen-mouse-brain-for-xenium-explorer-demo-1-standard
 
 # Important: Run this script in its directory
