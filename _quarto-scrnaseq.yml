@@ -16,12 +16,12 @@ book:
   - "modules/1_read_data/read_data.qmd"
   - "modules/2_qc_filtering/rna/qc_filtering.qmd"
   - "modules/3_normalization/rna/normalization.qmd"
-  - "modules/4_dimensionality_reduction/rna/dimensionality_reduction.qmd"
-  - "modules/5_clustering_umap/clustering_umap.qmd"
-  - "modules/6_clusterqc/clusterqc.qmd"
-  - "modules/7_cluster_annotation/cluster_annotation.qmd"
-  - "modules/8_cluster_composition/cluster_composition.qmd"
-  - "modules/9_export/export.qmd"
+  #- "modules/4_dimensionality_reduction/rna/dimensionality_reduction.qmd"
+  #- "modules/5_clustering_umap/clustering_umap.qmd"
+  #- "modules/6_clusterqc/clusterqc.qmd"
+  #- "modules/7_cluster_annotation/cluster_annotation.qmd"
+  #- "modules/8_cluster_composition/cluster_composition.qmd"
+  #- "modules/9_export/export.qmd"
   - "references.qmd"
 
 ####################
@@ -63,12 +63,12 @@ params:
     - "pXIST_RNA"
     - "pChrY_RNA"
     - "doublet_scores"
-    use_sketching: false
+    use_sketching: true
 
   modules:
   
     read_data:
-      default_assay: RNA
+      default_assay: "RNA"
       datasets_file: "datasets/10x_pbmc_datasets.xlsx"
       downsample_barcodes_n: null
       downsample_barcodes_equally: false
@@ -79,6 +79,9 @@ params:
       spatial_coordinate_type:
         - "centroids"
         - "segmentations"
+      visiumhd_bin_sizes:
+      - 8
+      - 16
 
     qc_filtering_rna:
       barcode_qc_cor:
@@ -86,7 +89,7 @@ params:
       - "nFeature_RNA pMito_RNA"
       barcode_filter: !expr list(
           nFeature_RNA=c(200, NA), 
-          percent_mt=c(0, 50))
+          pMito_RNA=c(0, 50))
       feature_filter: !expr list(
         min_counts = 1,
         min_cells = 3)
@@ -100,16 +103,21 @@ params:
       vars_to_regress: null
       feature_selection_method: "vst"
       num_variable_features: 3000
-      num_barcodes_for_sketching: 50000
+      num_barcodes_for_sketching: 5000
 
     dimensionality_reduction_rna:
-      dimensionality_reduction_method: "PCA"
+      dimensionality_reduction_method: "pca"
       dim_n_compute: 50
       dim_n: 20
-      integration_methods: null
-      CCAIntegration: null
+      integration_methods:
+      - "CCAIntegration"
+      - "HarmonyIntegration"
+      - "FastMNNIntegration"
+      CCAIntegration:
+        dims: "1:30"
       RPCAIntegration: null
-      HarmonyIntegration: null
+      HarmonyIntegration:
+        npcs: "30L"
       FastMNNIntegration: null
       scVIIntegration: null
 
@@ -130,8 +138,9 @@ params:
       file_known_markers: null
 
     export:
-      export_loupe: true
-      export_loupe_normalized: true
+      export_metadata: true
+      create_loupe_file: true
+      export_xenium_analysis_file: false
       export_cellxgene: true
       export_sc: true
-      export_sc_on_disk: false
+      convert_on_disk_layers: false

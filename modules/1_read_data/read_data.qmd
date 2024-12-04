@@ -60,7 +60,7 @@ params:
   # When parsing plate information, set the name of the single-cell experiment (orig.ident) for each cell to the cell name after having removed the plate information
   plate_information_update_identity: false
 
-  # For 10x Xenium in situ data: Load cell "centroids", cell "segmentations" or both (default).
+  # For 10x Xenium in situ data: Load cell "centroids", cell "segmentation" or both (default).
   spatial_coordinate_type:
     - "centroids"
     - "segmentations"
@@ -103,7 +103,6 @@ library(ggplot2)
 library(future)
 
 # Get module directory (needed to access files within the module directory)
-module_name = params$module_name
 module_dir = params$module_dir
 ```
 
@@ -177,7 +176,7 @@ for (i in 1:nrow(datasets)) {
 # If barcode_suffix is NA, generates suffixes per experiment (-1, -2, ...) 
 if (any(is.na(datasets$barcode_suffix))) {
   assertthat::assert_that(sum(is.na(datasets$barcode_suffix)) == nrow(datasets),
-                            msg=FormatString("If one barcode suffix is empty/NA, all barcode suffixes need to be empty/NA."))
+                            msg="If one barcode suffix is empty/NA, all barcode suffixes need to be empty/NA.")
   datasets$barcode_suffix = factor(datasets$experiment, level=unique(datasets$experiment)) %>% as.integer() %>% paste0("-", .)
 }
 
@@ -274,15 +273,7 @@ cat(":::\n")
 
 ## Read counts and create Seurat object
 
-We next read the data into a Seurat object.
-
-::: {.callout-tip title="What is Seurat and which information is contained in a Seurat object?" collapse="true"}
-
-Seurat is an R-package that is used for the analysis of single-cell RNA-seq data. We read pre-processed data as described above, and convert it to a count matrix in R. In the case of single-cell RNA-seq 10x data, the count matrix contains the number of unique RNA molecules (UMIs) per gene and cell. In the case of single-cell RNA-seq SmartSeq-2 data, the count matrix contains the number of reads per gene and cell.
-
-In addition to the count matrix, the workflow stores additional information in the Seurat object, including but not limited to the normalized data, dimensionality reduction and cluster results.
-
-:::
+We next read the counts for each dataset. Here is the summary of barcodes and features for each dataset:
 
 ```{r}
 #| label: read_data_read_counts
@@ -504,59 +495,7 @@ for (i in seq(counts_lst)) {
     attr(counts_lst[[i]][[j]], "path") = path
   }
 }
-
-######################################################
-# If requested, write counts to matrix directory     #
-# else convert to in-memory matrix of type dgCMatrix #
-######################################################
-
-# - allows to analyse big datasets
-# - requires Seurat v5 and BPcells
-
-on_disk_counts = param("on_disk_counts")
-on_disk_use_tmp = param("on_disk_use_tmp")
-if (on_disk_use_tmp) {
-  on_disk_path = tempdir()
-} else {
-  on_disk_path = file.path(module_dir, "tmp")
-}
-
-for (i in seq(counts_lst)) {
-  for(j in seq_along(counts_lst[[i]])) {
-    # Metadata gets lost when saving
-    feature_metadata = attr(counts_lst[[i]][[j]], "feature_metadata")
-    barcode_metadata = attr(counts_lst[[i]][[j]], "barcode_metadata")
-    technology = attr(counts_lst[[i]][[j]], "technology")
-    assay = attr(counts_lst[[i]][[j]], "assay")
-    sample = attr(counts_lst[[i]][[j]], "sample")
-    experiment = attr(counts_lst[[i]][[j]], "orig.ident")
-    path = attr(counts_lst[[i]][[j]], "path")
-  
-    if (on_disk_counts) {
-      # Write counts to matrix directory
-      # Then open matrix directory for analysis
-      #counts_lst[[i]][[j]] = BPCells::open_matrix_dir(file.path(on_disk_path, paste(assay, "counts", experiment, sep=".")))
-      counts_lst[[i]][[j]] = WriteCounts_MatrixDir(counts=counts_lst[[i]][[j]],
-                                                   path=file.path(on_disk_path, paste(assay, "counts", experiment, sep=".")),
-                                                   overwrite=TRUE)
-    } else {
-      # Convert to in-memory matrix
-      counts_lst[[i]][[j]] = as(counts_lst[[i]][[j]], "dgCMatrix")
-    }
-    
-    # Add attributes barcode_metadata and feature_metadata, as well as technology and assay
-    attr(counts_lst[[i]][[j]], "feature_metadata") = feature_metadata
-    attr(counts_lst[[i]][[j]], "barcode_metadata") = barcode_metadata
-    attr(counts_lst[[i]][[j]], "technology") = technology
-    attr(counts_lst[[i]][[j]], "assay") = assay
-    attr(counts_lst[[i]][[j]], "sample") = sample
-    attr(counts_lst[[i]][[j]], "orig.ident") = experiment
-    attr(counts_lst[[i]][[j]], "path") = path
-  }
-}
 ```
-
-Here is the summary of barcodes and features for each dataset:
 
 ```{r}
 #| label: tbl-read_data_counts_summary
@@ -577,6 +516,7 @@ In case, the count datasets are very big, it is possible to (randomly) sample ba
 
 ```{r}
 #| label: read_data_downsample
+#| results: asis
 
 # Downsample barcodes (cells, nuclei or spots)
 
@@ -689,7 +629,76 @@ if (!is.null(downsample_barcodes_n) & !is.null(downsample_features_n)) {
 }
 ```
 
-Next, we create the Seurat object. This is a summary representation of the object:
+It is also possible to store the raw and normalized count on disk and only load them into memory when needed. This significantly reduces the memory footprint of downstream analyses. Furthermore, the resulting Seurat object is much smaller because the counts are stored in extra directories. However, this also means that these directories always have to be provided in addition to the Seurat object when running analyses.
+
+```{r}
+#| label: read_data_write_on_disk_matrices
+#| results: asis
+
+######################################################
+# If requested, write counts to matrix directory     #
+# else convert to in-memory matrix of type dgCMatrix #
+######################################################
+
+# - allows to analyse big datasets
+# - requires Seurat v5 and BPcells
+on_disk_counts = param("on_disk_counts")
+on_disk_use_tmp = param("on_disk_use_tmp")
+if (on_disk_use_tmp) {
+  on_disk_path = tempdir()
+} else {
+  on_disk_path = file.path(module_dir, "tmp")
+}
+
+for (i in seq(counts_lst)) {
+  for(j in seq_along(counts_lst[[i]])) {
+    # Metadata gets lost when saving
+    feature_metadata = attr(counts_lst[[i]][[j]], "feature_metadata")
+    barcode_metadata = attr(counts_lst[[i]][[j]], "barcode_metadata")
+    technology = attr(counts_lst[[i]][[j]], "technology")
+    assay = attr(counts_lst[[i]][[j]], "assay")
+    sample = attr(counts_lst[[i]][[j]], "sample")
+    experiment = attr(counts_lst[[i]][[j]], "orig.ident")
+    path = attr(counts_lst[[i]][[j]], "path")
+    
+    if (on_disk_counts) {
+      # Write counts to matrix directory
+      # Then open matrix directory for analysis
+      counts_lst[[i]][[j]] = WriteCounts_MatrixDir(counts=counts_lst[[i]][[j]],
+                                                   path=file.path(on_disk_path, paste(assay, "counts", experiment, sep=".")),
+                                                   overwrite=TRUE)
+    } else {
+      # Convert to in-memory matrix
+      counts_lst[[i]][[j]] = as(counts_lst[[i]][[j]], "dgCMatrix")
+    }
+    
+    # Add attributes barcode_metadata and feature_metadata, as well as technology and assay
+    attr(counts_lst[[i]][[j]], "feature_metadata") = feature_metadata
+    attr(counts_lst[[i]][[j]], "barcode_metadata") = barcode_metadata
+    attr(counts_lst[[i]][[j]], "technology") = technology
+    attr(counts_lst[[i]][[j]], "assay") = assay
+    attr(counts_lst[[i]][[j]], "sample") = sample
+    attr(counts_lst[[i]][[j]], "orig.ident") = experiment
+    attr(counts_lst[[i]][[j]], "path") = path
+  }
+  
+  if (on_disk_counts) {
+    CalloutBox(x="Raw and normalized counts will be stored on disk. The names of the corresponding directories have the following structure: counts/data.assay.dataset.", type="note")
+  } else {
+    CalloutBox(x="Raw and normalized counts will be kept in memory and stored in the Seurat object.", type="note")
+  }
+}
+```
+
+Next, we create the Seurat object. 
+
+::: {.callout-tip title="What is Seurat and which information is contained in a Seurat object?" collapse="true"}
+
+Seurat is an R-package that is used for the analysis of single-cell RNA-seq data. We read pre-processed data as described above, and convert it to a count matrix in R. In the case of single-cell RNA-seq 10x data, the count matrix contains the number of unique RNA molecules (UMIs) per gene and cell. In the case of single-cell RNA-seq SmartSeq-2 data, the count matrix contains the number of reads per gene and cell.
+
+In addition to the count matrix, the workflow stores additional information in the Seurat object, including but not limited to the normalized data, dimensionality reduction and cluster results.
+
+:::
 
 ```{r}
 #| label: read_data_seurat_object
@@ -854,12 +863,17 @@ Seurat::Idents(sc) = "orig.ident"
 # Remove big objects that are not needed anymore and call garbage collector
 rm(counts_lst, assay_counts_lst, assay_obj, s, barcode_metadata, feature_metadata)
 invisible(gc())
+
+# Add datasets to Seurat object
+sc@misc$datasets = datasets
 ```
 
-```{r}
-#| label: read_data_seurat_object_print
+This is a summary representation of the object:
 
-# Print sc
+```{r}
+#| label: read_data_print_seurat_object
+
+# Print
 sc
 ```
 
@@ -877,7 +891,7 @@ sc = ScAddColours(sc, colours=list(
 ))
 ```
 
-For spatial workflows, we add the image information.
+For spatial datasets, we read the image information and add it to the Seurat object.
 
 ```{r}
 #| label: read_data_read_images
@@ -967,7 +981,6 @@ Finally, we calculate some basic statistics such as the precentage of counts in 
 #| label: read_data_basic_stats
 
 # Calculate basic statistics for barcodes (cells, nuclei or spots)
-
 # Top n features for calculation of percentage of counts
 top_n = c(5, 50)
 
@@ -1163,6 +1176,7 @@ p
 \`\`\`{r}
 #| label: fig-read_data_basic_summary_spatial_{{qc}}_dataset_{{dataset}}
 #| fig-cap: {{caption}}
+#| dev: png
 
 plist[[{{i}}]]
 \`\`\`
@@ -1195,7 +1209,7 @@ plist[[{{i}}]]
 
 # Write annotation
 outfile = paste0("annotation_", default_assay, ".xlsx")
-openxlsx::write.xlsx(x=sc[[default_assay]][[]], file=file.path(module_dir, "results", outfile), row.names=TRUE)
+openxlsx::write.xlsx(x=sc[[default_assay]][[]], file=file.path(module_dir, "results", outfile), rowNames=TRUE)
 
 # Note
 CalloutBox("Feature annotation for the default assay {default_assay} is written to {outfile}.", type="note")
@@ -1223,15 +1237,15 @@ gt(paraminfo)
 #| label: read_data_save_seurat
 #| results: asis
 
-# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
-
 # Save Seurat object and layer data
 outdir = file.path(module_dir, "sc")
 with_progress({
   SaveSeuratRdsWrapper(sc,
-                       on_disk_layers=on_disk_counts,
-                       outdir=outdir)
+                       outdir=outdir,
+                       write_disk_data=on_disk_counts,
+                       relative_paths=FALSE,
+                       compress=FALSE
+                       )
 }, enable=verbose)
 ```
 
