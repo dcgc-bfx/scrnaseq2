@@ -1936,16 +1936,23 @@ UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL, update_tool_saves
 #' @param assay Assay to include in the Loupe file. If NULL, the default assay is included.
 #' @param categories Cell metadata columns to include in the Loupe file. If NULL, all non-numeric are included. Numeric columns are always discarded.
 #' @param embeddings Embeddings to include in the Loupe file. If NULL, all embeddings are included.
+#' @param barcodes Barcodes to include in the Loupe file. If NULL, all barcodes of the selected assay are included.
 #' @param output_dir Directory where the Loupe file will be saved.
 #' @param output_name Name of the Loupe file (cloupe.cloupe).
-ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, output_dir=".", output_name="cloupe.cloupe") {
+ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, barcodes=NULL, output_dir=".", output_name="cloupe.cloupe") {
   # Setup eula and download executable for loupeR.
   # Needs to be done only once but cannot be done automatically.
   louper_status = loupeR:::needs_setup()
   if (!louper_status$success) stop(louper_status$msg)
   
-  # Barcode metadata
-  barcode_metadata = sc[[]]
+  # Check requested assays
+  if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
+  assertthat::assert_that(all(assay %in% SeuratObject::Assays(sc)),
+                          msg=FormatString("Requested assay {assay} part of the Seurat object."))
+  
+  # Barcoded and barcode metadata
+  if (is.null(barcodes)) barcodes = SeuratObject::Cells(sc[[assay]])
+  barcode_metadata = sc[[]][barcodes, ]
   
   # Check and discard numeric columns (Loupe cannot handle them)
   if (is.null(categories)) categories = colnames(barcode_metadata)
@@ -1953,15 +1960,9 @@ ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, output_
                           msg="Not all requested categories are part of the cell metadata.")
   categories = purrr::discard(categories, function(i) return(is.numeric(barcode_metadata[, i])))
   
-  # Check requested assays
-  if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
-  assertthat::assert_that(all(assay %in% SeuratObject::Assays(sc)),
-                          msg=FormatString("Requested assay {assay} part of the Seurat object."))
-  
-  
   # Get counts of assay and convert to numeric matrix
   counts = SeuratObject::GetAssayData(sc, assay=assay, layer="counts")
-  counts = as(counts, "dgCMatrix")
+  counts = as(counts[, barcodes], "dgCMatrix")
   
   # Replace NA with "NA" in barcode metadata
   # Convert character columns to factors
@@ -2004,28 +2005,38 @@ ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, output_
 #' cannot be saved. Therefore, we save the complete cell categorial metadata in the native Xenium Explorer format for analysis results.
 #' 
 #' @param sc A Seurat object.
+#' @param assay Assay to include in the Loupe file. If NULL, the default assay is included.
 #' @param categories Cell metadata columns to include in the Xenium Explorer file. If NULL, all non-numeric are included. Numeric columns are always discarded.
+#' @param barcodes Barcodes to include in the Loupe file. If NULL, all barcodes of the selected assay are included.
 #' @param output_dir Directory where the Xenium Explorer file will be saved.
 #' @param output_name Name of the Xenium Explorer file (analysis.zarr.zip).
-ExportXeniumExplorer = function(sc, categories=NULL, output_dir=".", output_name="analysis.zar.zip") {
+ExportXeniumExplorer = function(sc, assay=NULL, categories=NULL, barcodes=NULL, output_dir=".", output_name="analysis.zar.zip") {
   # For this function, we need a datasets table in the misc slot (to get all barcodes present in the dataset)
   assertthat::assert_that("datasets" %in% names(sc@misc),
                           msg="This function requires the Seurat object to have a 'datasets' table in the misc slot with columns 'experiment' for orig.ident and 'path' for the path to the dataset.")
   datasets = sc@misc$datasets
   
+  # Check requested assays
+  if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
+  assertthat::assert_that(all(assay %in% SeuratObject::Assays(sc)),
+                          msg=FormatString("Requested assay {assay} part of the Seurat object."))
+  
+  # Barcoded and barcode metadata
+  if (is.null(barcodes)) barcodes = SeuratObject::Cells(sc[[assay]])
+  barcode_metadata = sc[[]][barcodes, ]
+  
   # Moreover, there needs to be a column 'orig_barcode' in the cell metadata
-  assertthat::assert_that("orig_barcode" %in% colnames(sc[[]]),
+  assertthat::assert_that("orig_barcode" %in% colnames(barcode_metadata),
                           msg="This function requires the Seurat object to have a column 'orig_barcode' in the cell metadata.")
   
   # Check and discard numeric columns (Xenium Explorer cannot handle them)
-  barcode_metadata = sc[[]]
   if (is.null(categories)) categories = colnames(barcode_metadata)
   assertthat::assert_that(all(categories %in% colnames(barcode_metadata)),
                           msg="Not all requested categories are part of the cell metadata.")
   categories = purrr::discard(categories, function(i) return(is.numeric(barcode_metadata[, i])))
   
   # Per dataset
-  for(smp in levels(sc$orig.ident)) {
+  for(smp in levels(barcode_metadata$orig.ident)) {
     dir.create(file.path(output_dir, smp), showWarnings=FALSE, recursive=TRUE)
     
     # Get path to dataset and get a list of all barcodes present in the dataset
@@ -2051,26 +2062,26 @@ ExportXeniumExplorer = function(sc, categories=NULL, output_dir=".", output_name
     }
     
     # Get dataset barcodes and metadata
-    barcodes = sc[[]] %>% 
+    bcs = barcode_metadata %>% 
       dplyr::filter(orig.ident == smp) %>% 
       rownames()
     categories = categories[categories != "orig_barcode"]
-    barcode_metadata = barcode_metadata[, c("orig_barcode", categories)]
-    rownames(barcode_metadata) = NULL
+    categorial_data = barcode_metadata[bcs, c("orig_barcode", categories)]
+    rownames(categorial_data) = NULL
     
     # Add filtered (removed) barcodes to metadata table
     if (length(unfiltered_barcodes) > length(barcodes)) {
-      barcode_metadata = barcode_metadata %>% 
+      categorial_data = categorial_data %>% 
         dplyr::bind_rows(
           data.frame(orig_barcode=setdiff(unfiltered_barcodes, barcodes))
         )
     }
-    i = match(unfiltered_barcodes, barcode_metadata$orig_barcode)
-    barcode_metadata = barcode_metadata[i, ]
+    i = match(unfiltered_barcodes, categorial_data$orig_barcode)
+    categorial_data = categorial_data[i, ]
     
     # Convert character columns to factors
     categorial_data = purrr::map(categories, function(x) {
-      v = barcode_metadata[, x]
+      v = categorial_data[, x]
       if (!is.factor(v)) {
         v = factor(as.character(v))
       }
