@@ -181,21 +181,29 @@ To decide how many PCs to include in downstream analyses, we visualize the cells
 ```{r}
 #| label: dimensionality_reduction_rna_run
 
+# Method of dimensionality reduction and number of dimensions to compute
 dimensionality_reduction_method = param("dimensionality_reduction_method")
-dim_n_compute = param("dim_n_compute")
-reduct_name = paste0(SeuratObject::DefaultAssay(sc), "_", dimensionality_reduction_method) %>% tolower()
+dim_n_compute = param("dim_n_compute") %>% as.integer()
+
+# Name of the dimensionality reduction (e.g. rna_pca)
+assay = ifelse(use_sketching, sketched_assay, default_assay)
+reduct_name = paste0(ifelse(use_sketching, sketched_assay, default_assay), "_", dimensionality_reduction_method) %>% tolower()
 
 # Run dimensionality reduction
 sc = RunDimRedWrapper(sc, 
                       method=dimensionality_reduction_method,
                       name=reduct_name,
+                      assay=assay,
                       dim_n=dim_n_compute, 
                       verbose=verbose)
+# Set default reduction for assay
+DefaultReduct(sc, assay=assay) = reduct_name
 
 # If sketching was used, project PCA to full dataset
-full_reduct = reduct_name
 if (use_sketching) {
-  # Name of sketched reduction
+  # Name of sketched reduction (e.g. rnasketch_pca)
+  
+  # Name of full reduction (e.g. rna_pca)
   sketched_reduct = reduct_name
   full_reduct = gsub("sketch_", "_", sketched_reduct)
   
@@ -218,8 +226,9 @@ if (use_sketching) {
     gsub(" ", "", .)
   SeuratObject::Key(sc[[full_reduct]]) = paste0(full_reduct_key, "_")
   
-  # Set default reduction for full assay
+  # Set default reduction for full and sketched assay
   DefaultReduct(sc, assay=default_assay) = full_reduct
+  DefaultReduct(sc, assay=sketched_assay) = sketched_reduct
   
   # Important: The default reduction for the whole Seurat object will be still the sketched reduction.
   # Important: The default assay for the whole Seurat object will be still the sketched assay.
@@ -234,8 +243,9 @@ if (use_sketching) {
 # When sketching is used, not available for the full dataset
 
 # Plot loadings for first and second dimension
+assay = ifelse(use_sketching, sketched_assay, default_assay)
 plist = Seurat::VizDimLoadings(sc, 
-                               reduction=ifelse(use_sketching, sketched_reduct, full_reduct), 
+                               reduction=DefaultReduct(sc, assay=assay), 
                                dims=1:2, combine=FALSE, balanced=TRUE)
 for (i in seq(plist)) {
   plist[[i]] = plist[[i]] + 
@@ -250,8 +260,9 @@ plist[[1]] + plist[[2]]
 #| fig-cap: !expr paste0("Barcodes arranged by the first two dimensions", ifelse(use_sketching, " for the sketch dimensionality reduction", ""))
 
 # Plot the first two dimensions of the computed dimensionality reduction
+assay = ifelse(use_sketching, sketched_assay, default_assay)
 p = Seurat::DimPlot(sc,
-                    reduction=ifelse(use_sketching, sketched_reduct, full_reduct), 
+                    reduction=DefaultReduct(sc, assay=assay),
                     cols=ScColours(sc, "orig.ident")) +
   AddPlotStyle()
 p
@@ -266,7 +277,7 @@ p
 # Only when sketching is used: plot the first two dimensions projected to the full dataset
 if (use_sketching) {
   p = Seurat::DimPlot(sc,
-                      reduction=full_reduct, 
+                      reduction=DefaultReduct(sc, assay=default_assay),
                       cols=ScColours(sc, "orig.ident")) +
     AddPlotStyle()
   print(p)
@@ -286,8 +297,9 @@ if (use_sketching) {
 
 # Plot loading for the top 20 dimensions
 ncells = length(SeuratObject::Cells(sc[[default_assay]]))
+assay = ifelse(use_sketching, sketched_assay, default_assay)
 plist = Seurat::DimHeatmap(sc, 
-                           reduction=ifelse(use_sketching, sketched_reduct, full_reduct),
+                           reduction=DefaultReduct(sc, assay=assay),
                            dims=1:min(min(20, dim_n_compute), ncells), 
                            cells=min(500, ncells),
                            balanced=TRUE, 
@@ -315,7 +327,18 @@ for (i in seq(plist)) {
 
 if (length(SeuratObject::Images(sc)) > 0) {
   # When sketching is used, show only for the full dataset since otherwise there would be gaps
-    
+  
+  # Set up layout for generating chunks
+  chunk_template = "
+\`\`\`{r}
+#| label: fig-dimensionality_reduction_rna_loadings_spatial_dim{{dim}}_dataset_{{dataset}}
+#| fig-cap: {{caption}}
+#| dev: png
+
+plist[['{{dataset}}']]
+\`\`\`
+"
+  
   # Iterate over dimensions
   ncells = length(SeuratObject::Cells(sc[[default_assay]]))
   key = SeuratObject::Key(sc[[full_reduct]])
@@ -326,13 +349,13 @@ if (length(SeuratObject::Images(sc)) > 0) {
     cat("##### Dim", dim, "\n\n")
   
     # Plot as spatial plots
-    plist = FeaturePlotSpatial(sc, features=dim_feature, combine=FALSE) %>% purrr::flatten()
+    plist = FeaturePlotSpatial(sc, images=SeuratObject::Images(sc), features=dim_feature, combine=FALSE) %>% purrr::flatten()
     plist = purrr::map(plist, function(p) {
       p =  p + theme(legend.title=element_blank())
       p = p + viridis::scale_fill_viridis()
       return(p)
     })
-    names(plist) = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
+    names(plist) = SeuratObject::Images(sc) %>% gsub("^image\\.", "", .)
       
     # Fill out and print spatial plots
     cat("::: panel-tabset\n\n")
@@ -365,17 +388,17 @@ The top PC captures the greatest variance across cells and each subsequent PC re
 ```{r}
 #| label: fig-dimensionality_reduction_rna_elbow_plot
 #| fig-cap: !expr paste0("Variance explained by computed dimensions", ifelse(use_sketching, " for the sketch dimensionality reduction", ""))
-
 #| fig-cap-location: "top"
 
 # When sketching is used, not available for the full dataset
 
-dim_n_compute = param("dim_n_compute")
-dim_n = param("dim_n")
+dim_n_compute = param("dim_n_compute") %>% as.integer()
+dim_n = param("dim_n") %>% as.integer()
 
 # Plot the variance explained for the computed components
 ncells = length(Cells(sc[[default_assay]])) 
-p = Seurat::ElbowPlot(sc, reduction=ifelse(use_sketching, sketched_reduct, full_reduct), ndims=min(dim_n_compute, ncells)) + 
+assay = ifelse(use_sketching, sketched_assay, default_assay)
+p = Seurat::ElbowPlot(sc, reduction=DefaultReduct(sc, assay=assay), ndims=min(dim_n_compute, ncells)) + 
   geom_vline(xintercept=dim_n + .5, col="firebrick", lty=2) + 
   AddPlotStyle() 
 p
@@ -426,17 +449,16 @@ if (grepl(pattern="sct", x=default_assay)) {
 if (length(integration_methods) > 0 & num_datasets > 1) {
   # Integration requested and necessary
   
-  # Note: Seurat::RPCAIntegration is bugged. 
-  # IntegrateLayersWrapper will use RPCAIntegration_Fixed which is a copy from the Seurat develop branch where the bug is already solved.
-  
   # Note: Seurat::scVIIntegration is bugged,
   # IntegrateLayersWrapper will use scVIIntegration_Fixed which is a copy from the Seurat develop branch where the bug is already solved.
 
   # Integrate
-  orig_reduct = ifelse(use_sketching, sketched_reduct, full_reduct)
   first_method = NULL
+  assay = ifelse(use_sketching, sketched_reduct, full_reduct)
+  orig_reduct = DefaultReduct(sc, assay=assay)
   for(method in integration_methods) {
-    # Set integrated reduction name, keep track of first method
+    # Set integrated reduction name (e.g. rna_cca)
+    # Keep track of first method
     method_short = dplyr::case_match(method,
                                "CCAIntegration" ~ "cca",
                                "RPCAIntegration" ~ "rpca",
@@ -444,24 +466,26 @@ if (length(integration_methods) > 0 & num_datasets > 1) {
                                "FastMNNIntegration" ~ "mnn",
                                "scVIIntegration" ~ "scvii")
     if (is.null(first_method)) first_method = method_short
-    integrated_reduct = paste0(SeuratObject::DefaultAssay(sc), "_", method_short) %>% tolower()
+    integrated_reduct = paste0(assay, "_", method_short) %>% tolower()
     
-    # Call wrapper
+    # Call wrapper function for integration
     sc = IntegrateLayersWrapper(sc=sc,
                                 integration_method=method,
                                 orig_reduct=orig_reduct,
                                 new_reduct=integrated_reduct,
                                 additional_args=integration_methods_params[[method]],
+                                assay=assay,
                                 verbose=verbose)
+    full_reduct = integrated_reduct
     
     # If sketching was used, project integrated reduction of sketch to full dataset
     if (use_sketching) {
-      # Name of sketched integrated reduction
+      # Name of sketched integrated reduction (e.g. rnasketch_cca)
       sketched_reduct = integrated_reduct
       
-      # Name and key of full integrated reduction
+      # Name and key of full integrated reduction  (e.g. rna_cca)
       full_reduct = gsub("[^_]+_", "", sketched_reduct)
-      full_reduct = paste0(tolower(default_assay), "_", full_reduct)
+      full_reduct = paste0(default_assay, "_", full_reduct) %>% tolower()
       
       full_reduct_key = gsub("[\\._]+", " ", full_reduct) %>%
         stringr::str_to_title() %>%
@@ -488,14 +512,12 @@ if (length(integration_methods) > 0 & num_datasets > 1) {
       # Set default reduction for full assay
       DefaultReduct(sc) = full_reduct
     }
-    
-    
   }
   
   # Set default reduction
-  DefaultReduct(sc, assay=default_assay) = paste0(tolower(default_assay), "_", first_method)
+  DefaultReduct(sc, assay=default_assay) = paste0(default_assay, "_", first_method) %>% tolower()
   if (use_sketching) {
-    DefaultReduct(sc, assay=sketched_assay) = paste0(tolower(sketched_assay), "_", first_method)
+    DefaultReduct(sc, assay=sketched_assay) = paste0(sketched_assay, "_", first_method) %>% tolower()
   } 
   
   # Message
@@ -561,7 +583,7 @@ if (grepl(pattern="sct", x=default_assay)) {
 #| include: !expr length(integration_methods) > 0 & num_datasets > 1 & use_sketching
 
 if (length(integration_methods) > 0 & num_datasets > 1 & use_sketching) {
-  merge_method = paste0(tolower(default_assay), "sketch", "_", tolower(dimensionality_reduction_method))
+  merge_method = paste0(sketched_assay, "_", dimensionality_reduction_method) %>% tolower()
   
   # Plot merge case and different integration methods for the sketched assay
   reductions = unique(c(merge_method, SeuratObject::Reductions(sc)))
@@ -617,7 +639,7 @@ plist[[{{i}}]]
 #| include: !expr length(integration_methods) > 0 & num_datasets > 1
 
 if (length(integration_methods) > 0 & num_datasets > 1) {
-  merge_method = paste0(tolower(default_assay), "_", tolower(dimensionality_reduction_method))
+  merge_method = paste0(default_assay, "_", dimensionality_reduction_method) %>% tolower()
   
   # Plot merge case and different integration methods for the sketched assay
   reductions = unique(c(merge_method, SeuratObject::Reductions(sc)))
@@ -668,22 +690,58 @@ plist[[{{i}}]]
 
 ## Output
 
-### Dimensionality reduction
+### Dimensionality reduction(s)
+
+This module produces one or more dimensionality reductions for the default assay that are stored in the Seurat object and can be used 
+for downstream analyses. Depending on the settings, the dimensionality reductions can include integration of datasets
+to deal with batch effects. If sketching is used, the Seurat also includes the dimensionality reductions for the sketched assay.
+
 
 ```{r}
 #| label: dimensionality_reduction_rna_save_reduction
 #| results: asis
 
-# Default reduction
+# Default dimensionality reduction 
 default_reduct = DefaultReduct(sc, assay=default_assay)
-reduct = sc[[default_reduct]]@cell.embeddings %>% as.data.frame()
-
 # Write default reduction for default assay
-outfile = paste0("reduction_", default_assay, "_", default_reduct , ".xlsx")
-openxlsx::write.xlsx(x=reduct, file=file.path(module_dir, "results", outfile), rowNames=TRUE)
+outfile = FormatString("dimensionality_reduction_{default_reduct}.xlsx", quote=FALSE)
+openxlsx::write.xlsx(x=default_reduct, file=file.path(module_dir, "results", outfile), rowNames=TRUE)
+
+# Non-integrated dimensionality reduction
+nonintegrated_full_reduct = paste0(default_assay, "_", dimensionality_reduction_method) %>% tolower()
+if (use_sketching) {
+  nonintegrated_sketched_reduct = paste0(sketched_assay, "_", dimensionality_reduction_method) %>% tolower()
+} else {
+  nonintegrated_sketched_reduct = ""
+}
+# Integrated dimensionality reductions
+integrated_full_reducts = purrr::keep(SeuratObject::Reductions(sc), function(r) {
+  return(SeuratObject::DefaultAssay(sc[[r]]) == default_assay & r != nonintegrated_full_reduct)
+})
+
+if (use_sketching) {
+  integrated_sketched_reducts = purrr::keep(SeuratObject::Reductions(sc), function(r) {
+    return(SeuratObject::DefaultAssay(sc[[r]]) == sketched_assay & r != nonintegrated_sketched_reduct)
+  })
+} else {
+  integrated_sketched_reducts = ""
+}
 
 # Note
-CalloutBox("The default reduction {default_reduct} for the default assay {default_assay} is written to {outfile}.", type="note")
+msg = "
+The following dimensionality reductions for assay {default_assay} are available in the Seurat object:
+
+- without integration:
+  - full assay: {nonintegrated_full_reduct}
+  - sketched assay (if sketching was used): {nonintegrated_sketched_reduct}
+- with integration (when used):
+   - full assay: {integrated_sketched_reducts*})
+   - sketched assay (if sketching was used): {integrated_sketched_reducts*}
+
+The default dimensionality reduction for assay {default_assay} is {default_reduct} and will be used in downstream analysis. It is written to {outfile}.
+"
+
+CalloutBox(msg, type="note")
 ```
 
 ## Software

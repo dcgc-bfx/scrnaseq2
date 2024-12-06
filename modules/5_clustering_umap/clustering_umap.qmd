@@ -14,7 +14,9 @@ params:
   # Default assay. If null, will be set to the default assay of the input Seurat object.
   default_assay: null
   
-  # Which dimensionality reduction(s) to use. If null, will be set to the default reduction of the default assay of the input Seurat object.
+  # Which dimensionality reduction(s) to use. These have to beeen already computed in a previous module.
+  # Examples are 'rna_pca' (just use the PCA of assay RNA), 'rna_cca' (use the CCA integration of assay RNA), ...
+  # If null, will be set to the default reduction of the default assay of the input Seurat object.
   # If multiple are specified, the first one will be used as default.
   dimensionality_reductions: null
 
@@ -143,7 +145,7 @@ on_disk_counts = param("on_disk_counts")
 #on_disk_use_tmp = param("on_disk_use_tmp")
 
 # Note: on-disk data is not used in this module, therefore deactivated
-on_disk_use_tmp = FALSE
+on_disk_use_tmp = on_disk_use_tmp = FALSE
 if (on_disk_counts & on_disk_use_tmp) {
   on_disk_path = tempdir()
   with_progress({
@@ -185,27 +187,27 @@ To get a first idea about how different cluster resolution values influence the 
 
 dimensionality_reductions = param("dimensionality_reductions")
 if (is.null(dimensionality_reductions)) dimensionality_reductions = DefaultReduct(sc, assay=default_assay)
-cluster_resolutions = param("cluster_resolution") %>% unlist()
-dim_n = param("dim_n")
+cluster_resolutions = param("cluster_resolution") %>% unlist() %>% as.numeric()
+dim_n = param("dim_n") %>% as.integer()
 
-# Calculate per dimensionality reduction: PCA, CCA integration, ...
+# Calculate per dimensionality reduction (e.g. rna_pca, rna_cca, ...)
 first_clustering = NULL
 for (reduct in dimensionality_reductions) {
   assay = default_assay
   
-  # If sketching is used, start with the sketched reduct
+  # If sketching is used, start with the sketched reduct (e.g. rnasketch_pca)
   if (use_sketching) {
     assay = sketched_assay
     reduct = DefaultReduct(sc, assay=sketched_assay)
   }
   
-  # Graph names
+  # Graph names (e.g. rna_pca_snn)
   graph_name = gsub("[^_]+_", "", reduct)
   graph_name = paste0(assay, "_", graph_name)
   nn_graph_name = paste0(graph_name, "_nn") %>% tolower()
   snn_graph_name = paste0(graph_name, "_snn") %>% tolower()
   
-  # Cluster name prefix
+  # Cluster name prefix (e.g. RNA_pca)
   cluster_prefix = gsub("[^_]+_", "", reduct)
   cluster_prefix = paste0(assay, "_", cluster_prefix)
   
@@ -220,14 +222,14 @@ for (reduct in dimensionality_reductions) {
   # Find clusters based on the neighbors
   sc = Seurat::FindClusters(sc, 
                             graph.name=snn_graph_name,
-                            resolution=cluster_resolutions,
+                            resolution=sort(cluster_resolutions),
                             algorithm=4, 
                             verbose=verbose, 
                             method="igraph")
   
   # Rename cluster names and add colours
   for (res in cluster_resolutions) {
-    # Rename
+    # Rename (e.g. to RNA_pca_snn0.5)
     old_name = paste0(snn_graph_name, "_res.", res)
     new_name = paste0(cluster_prefix, "_snn", res)
     sc@meta.data = sc@meta.data %>% dplyr::rename(dplyr::all_of(setNames(old_name, new_name)))
@@ -256,7 +258,7 @@ SeuratObject::Idents(sc) = "seurat_clusters"
 ```{r}
 #| label: clustering_umap
 
-# Calculate UMAP per dimensionality reduction: PCA, CCA integration, ...
+# Calculate UMAP per dimensionality reduction (e.g. rna_pca, rna_cca, ...)
 first_umap = NULL
 for (reduct in dimensionality_reductions) {
   assay = default_assay
@@ -267,7 +269,7 @@ for (reduct in dimensionality_reductions) {
     reduct = DefaultReduct(sc, assay=sketched_assay)
   }
   
-  # UMAP name and key
+  # UMAP name and key (e.g. rna_pca_umap)
   umap_name = paste0(reduct, "_umap")
   umap_key = gsub("[\\._]+", " ", umap_name) %>%
     stringr::str_to_title() %>%
@@ -289,12 +291,8 @@ for (reduct in dimensionality_reductions) {
   if (is.null(first_umap)) first_umap = umap_name
 }
 
-# Create a copy named "umap" for the first umap. This allows to run FeaturePlot without specifying the UMAP (makes it easier). 
-default_umap = first_umap
-um = sc[[default_umap]]
-SeuratObject::Key(um) = "Umap_"
-sc[["umap"]] = um
-DefaultVisualization(sc) = "umap"
+# Set default visualization
+DefaultVisualization(sc, assay=assay) = first_umap
 ```
 
 ```{r}
@@ -307,19 +305,20 @@ if (use_sketching) {
   first_clustering = NULL
   first_umap = NULL
   for (reduct in dimensionality_reductions) {
-    reduct = dimensionality_reductions[1]
-    
-    # Name of sketched and full reduction
+    # Name of sketched and full reduction (e.g. rnasketch_pca and rna_pca)
     sketched_reduct = gsub("[^_]+_", "", reduct)
     sketched_reduct = paste0(sketched_assay, "_", sketched_reduct) %>% tolower()
     full_reduct = reduct
     
-    # Names of the sketched and full clusterings
+    # Names of the sketched and full clusterings (e.g. RNAsketch_pca_snn0.5 and RNA_pca_snn0.5)
     sketched_clustering = gsub("[^_]+_", "", reduct)
     sketched_clustering = paste0(sketched_assay, "_", sketched_clustering, "_snn", cluster_resolutions)
-    
     full_clustering = gsub("[^_]+_", "", reduct)
     full_clustering = paste0(default_assay, "_", full_clustering, "_snn", cluster_resolutions)
+    
+    # Cell metadata columns to project from sketched to full assay
+    sketched_cols = sketched_clustering[order(cluster_resolutions)]
+    full_cols = full_clustering[order(cluster_resolutions)]
 
     # Project labels and embeddings
     sc = Seurat::ProjectData(sc, 
@@ -333,9 +332,9 @@ if (use_sketching) {
                              recompute.weights=TRUE,
                              verbose=verbose,
                              umap.model=paste0(sketched_reduct, "_umap"),
-                             refdata=as.list(setNames(sketched_clustering, full_clustering)))
+                             refdata=as.list(setNames(sketched_cols, full_cols)))
     
-    # Rename and fix keys for full UMAP
+    # Rename and fix keys for full UMAP (e.g. to rna_pca_umap)
     old_name = paste0("full.", sketched_reduct, "_umap")
     new_name = paste0(full_reduct, "_umap")
     new_key = gsub("[\\._]+", " ", new_name) %>%
@@ -374,13 +373,9 @@ if (use_sketching) {
   sc$seurat_clusters = sc[[]][, default_name]
   SeuratObject::Idents(sc) = "seurat_clusters"
   
-  # Set default UMAP
+  # Set default UMAP (e.g. 'umap')
   default_umap = first_umap
-  um = sc[[default_umap]]
-  SeuratObject::Key(um) = "Umap_"
-  sc[["umap"]] = NULL
-  sc[["umap"]] = um
-  DefaultVisualization(sc, assay=default_assay) = "umap"
+  DefaultVisualization(sc, assay=default_assay) = default_umap
   
   # Set default assay
   SeuratObject::DefaultAssay(sc) = default_assay
@@ -397,8 +392,7 @@ if (use_sketching) {
 plist = list()
 captions = c()
 for (reduct in dimensionality_reductions) {
-  for (res in cluster_resolutions) {
-    res = as.character(res)
+  for (res in sort(cluster_resolutions)) {
     assay = default_assay
     reduct_short = gsub("[^_]+_", "", reduct)
     
@@ -453,12 +447,12 @@ cat(":::\n")
 if (length(Seurat::Images(sc)) > 0) {
 
   # Test different dimensionality reduction methods and clustering resolution parameters
-  clusterings_to_plot = purrr::map(dimensionality_reductions, function(method) {
-      return(paste0(method, "_", "snn", cluster_resolutions, ifelse(use_sketching, "_full", "")))
+  clusterings_to_plot = purrr::map(dimensionality_reductions, function(reduct) {
+    reduct_short = gsub("[^_]+_", "", reduct)
+    return(paste0(default_assay, "_", reduct_short, "_", "snn", sort(cluster_resolutions)))
   }) %>% purrr::flatten_chr()
   
   # Generate plots
-  image_names = SeuratObject::Images(sc, assay=default_assay)
   plist = purrr::map(SeuratObject::Images(sc), function(i) {
       pl = DimPlotSpatial(sc, images=i, group.by=clusterings_to_plot, combine=FALSE) %>% purrr::flatten()
       pl = purrr::map(seq(pl), function(i) {
@@ -468,7 +462,7 @@ if (length(Seurat::Images(sc)) > 0) {
       names(pl) = clusterings_to_plot
       return(pl)
   })
-  names(plist) = gsub(pattern="^(fov|image)\\.", replacement="", x=image_names)
+  names(plist) = gsub(pattern="^image\\.", replacement="", x=SeuratObject::Images(sc))
   
   # Set up layout and automatically generate chunks
   chunk_template = "
@@ -488,7 +482,10 @@ plist[['{{ident}}']][['{{clstr}}']]
       cat("#####", ident, "\n")
           
       # Generate captions
-      captions = purrr::map(dimensionality_reductions, function(reduct) return(FormatString("Spatial plot for dataset {ident}, dimensionality reduction {reduct}, clustering resolution {cluster_resolutions}"))) %>% purrr::flatten_chr()
+      captions = purrr::map(dimensionality_reductions, function(reduct) {
+        cap = FormatString("Spatial plot for dataset {ident}, dimensionality reduction {reduct}, clustering resolution {cluster_resolutions}")
+        return(cap)
+      }) %>% purrr::flatten_chr()
   
       for(i in seq(plist[[ident]])) {
           clstr = names(plist[[ident]])[i]
@@ -528,7 +525,7 @@ plist = purrr::map(dimensionality_reductions, function(reduct) {
   assay = default_assay
   reduct_short = gsub("[^_]+_", "", reduct)
   clustering_prefix = paste0(assay, "_", reduct_short, "_", "snn")
-  clustering_names = paste0(clustering_prefix, sort(as.numeric(cluster_resolutions)))
+  clustering_names = paste0(clustering_prefix, sort(cluster_resolutions))
   
   # Now extract a table with clusterings for the barcodes of the current assay
   bcs = SeuratObject::Cells(sc[[assay]])
@@ -583,7 +580,22 @@ for (reduct in names(plist)) {
 #| label: fig-clustering_umap_final_clustering
 #| results: asis
 
-CalloutBox("Default clustering is set to the dimensionality reduction {dimensionality_reductions[1]} with resolution {cluster_resolutions[1]}.", type="note")
+reduct = gsub("[^_]+_", "", dimensionality_reductions[1])
+res = cluster_resolutions[1]
+default_clustering = paste0(default_assay, "_", reduct, "_snn", res)
+
+# Write message about default clustering
+CalloutBox("Default clustering for assay {default_assay} is set to the dimensionality reduction {reduct} with resolution {res}.", type="note")
+
+# Create a copy named "umap" for the default (full) umap. This allows to run FeaturePlot without specifying the UMAP (makes it easier). 
+default_umap = DefaultVisualization(sc, assay=default_assay)
+um = sc[[default_umap]]
+SeuratObject::Key(um) = "Umap_"
+sc[["umap"]] = NULL
+sc[["umap"]] = um
+
+# Also set default assay
+SeuratObject::DefaultAssay(sc) = default_assay
 ```
 
 
@@ -710,35 +722,83 @@ cat(":::\n")
 
 ## Output
 
-### Dimensionality reduction
+### UMAP visualization
+
+This module produces one or more UMAP visualizations for the default assay that are stored in the Seurat object and can be used 
+for downstream analyses. Each visualization is based on a different dimensionality reduction. If sketching is used, the Seurat object also includes the UMAP visualizations for the sketched assay.
 
 ```{r}
 #| label: clustering_save_visualization
 #| results: asis
 
-default_vis = DefaultVisualization(sc)
+default_vis = DefaultVisualization(sc, assay=default_assay)
 vis = sc[[default_vis]]@cell.embeddings %>% as.data.frame()
 
 # Write default visualization for default assay
-outfile = paste0("visualization_", default_assay, "_", default_vis , ".xlsx")
+outfile = FormatString("visualization_assay_{default_assay}_umap.xlsx", quote=FALSE)
 openxlsx::write.xlsx(x=vis, file=file.path(module_dir, "results", outfile), rowNames=TRUE)
 
+# Full UMAP visualizations
+full_visualizations = purrr::keep(SeuratObject::Reductions(sc), function(r) {
+  return(SeuratObject::DefaultAssay(sc[[r]]) == default_assay & grepl("_umap", r))
+})
+
+# Sketched UMAP visualizations
+sketched_visualizations = purrr::keep(SeuratObject::Reductions(sc), function(r) {
+  return(SeuratObject::DefaultAssay(sc[[r]]) == sketched_assay & grepl("_umap", r))
+})
+
 # Note
-CalloutBox("The default visualization {default_vis} for the default assay {default_assay} is written to {outfile}.", type="note")
+msg = "
+The following UMAP visualizations for assay {default_assay} are available in the Seurat object:
+
+- full assay: {full_visualizations*} 
+- sketched assay (if sketching was used): {sketched_visualizations*}
+- 'umap': alternative name for the default UMAP visualization {default_vis}
+
+The default UMAP visualization for assay {default_assay} is 'umap' and will be used in downstream analysis. It is written to {outfile}.
+"
+
+CalloutBox(msg, type="note")  
 ```
 
 ### Clustering
+
+This module produces one or more clusterings for the default assay that are stored in the Seurat object and can be used 
+for downstream analyses. Each clustering is based on a specific dimensionality reduction and clustering resolution. If sketching is used, the Seurat object also includes the clusterings for the sketched assay.
 
 ```{r}
 #| label: clustering_save_clustering
 #| results: asis
 
-# Write default clustering
+# Write default clustering for default assay (default_clustering)
 outfile = "seurat_clusters.xlsx"
 openxlsx::write.xlsx(x=sc[["seurat_clusters"]], file=file.path(module_dir, "results", outfile), rowNames=TRUE)
 
+# Clusterings for full assay
+full_clusterings = purrr::map(dimensionality_reductions, function(reduct) {
+    reduct_short = gsub("[^_]+_", "", reduct)
+    return(paste0(default_assay, "_", reduct_short, "_", "snn", sort(cluster_resolutions)))
+}) %>% purrr::flatten_chr()
+
+# Clusterings for sketched assay
+sketched_clusterings = purrr::map(dimensionality_reductions, function(reduct) {
+    reduct_short = gsub("[^_]+_", "", reduct)
+    return(paste0(sketched_assay, "_", reduct_short, "_", "snn", sort(cluster_resolutions)))
+}) %>% purrr::flatten_chr()
+
 # Note
-CalloutBox("The default clustering is written to {outfile}.", type="note")
+msg = "
+The following clusterings for assay {default_assay} are available in the Seurat object:
+
+- full assay: {full_clusterings*} 
+- sketched assay (if sketching was used): {sketched_clusterings*}
+- 'seurat_clusters': alternative name for the default clustering {default_clustering}
+
+The default clustering for assay {default_assay} stored in the column 'seurat_clusters' and will be used in downstream analysis. It is written to {outfile}.
+"
+
+CalloutBox(msg, type="note")  
 ```
 
 ## Software
