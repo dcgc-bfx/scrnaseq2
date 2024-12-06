@@ -152,6 +152,12 @@ if (on_disk_counts & on_disk_use_tmp) {
     sc = UpdateMatrixDirs(sc, dir=on_disk_path)
   }, enable=verbose)
 }
+
+# Get image names
+# At the moment an image is associated with only one assay.
+# For other assays, we plot all images.
+image_names = SeuratObject::Images(sc, assay=default_assay)
+if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
 ## Marker genes
@@ -736,7 +742,7 @@ plist[['{{gene}}']]
 #| results: asis
 
 # Write markers
-outfile = paste0("markers.xlsx")
+outfile = FormatString("markers_assay_{default_assay}.xlsx", quote=FALSE)
 
 # Bring gene column to the first position, for better reading of the results
 markers_out = markers_out %>% dplyr::select(gene, dplyr::everything())
@@ -748,7 +754,7 @@ annot_ensembl = sc[[default_assay]][[]] %>% dplyr::select(dplyr::starts_with("en
 # Split by cluster and write to file (function "DegsWriteToFile" in "R/functions_degs.R")
 invisible(DegsWriteToFile(split(markers_out, markers_out$cluster),
                           annot_ensembl=annot_ensembl,
-                          file=file.path(module_dir, "results", "markers.xlsx")))
+                          file=file.path(module_dir, "results", outfile)))
 
 # Note
 CalloutBox("Marker features are written to {outfile}.", type="note")
@@ -763,7 +769,7 @@ CalloutBox("Marker features are written to {outfile}.", type="note")
 
 if (length(ora_up_results) > 0) {
   # Save ORA results
-  outfile = file.path(module_dir, "results", "marker_annotation_C8_ora.xlsx")
+  outfile = FormatString("marker_annotation_C8_ora_assay_{default_assay}.xlsx", quote=FALSE)
   
   # Create a new Excel workbook
   wb = createWorkbook()
@@ -775,7 +781,7 @@ if (length(ora_up_results) > 0) {
   }
   
   # Save the workbook
-  invisible(saveWorkbook(wb, outfile, overwrite=TRUE))
+  invisible(saveWorkbook(wb, file.path(module_dir, "results", outfile), overwrite=TRUE))
   
   # Note
   CalloutBox("ORA results are written to {outfile}.", type="note")

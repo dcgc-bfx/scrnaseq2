@@ -155,6 +155,12 @@ if (on_disk_counts & on_disk_use_tmp) {
     sc = UpdateMatrixDirs(sc, dir=on_disk_path)
   }, enable=verbose)
 }
+
+# Get image names
+# At the moment an image is associated with only one assay.
+# For other assays, we plot all images.
+image_names = SeuratObject::Images(sc, assay=default_assay)
+if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
 The steps below represent a standard pre-processing workflow for single-cell data, including quality control, the respective filtering of barcodes and features, data normalization and scaling, and the detection of highly variable features.
@@ -324,8 +330,8 @@ plist[[{{i}}]]
 
 ```{r}
 #| label: qc_filtering_rna_spatial_qc_plots
-#| eval: !expr length(SeuratObject::Images(sc)) > 0
-#| include: !expr length(SeuratObject::Images(sc)) > 0
+#| eval: !expr length(image_names) > 0
+#| include: !expr length(image_names) > 0
 #| results: asis
 
 # Plot QC measures for barcodes (cells, nuclei or spots) in spatial context
@@ -339,7 +345,7 @@ if (!all(f)) {
 }
 
 # Do not plot QC if there is no spatial information
-if (length(SeuratObject::Images(sc)) > 0) {
+if (length(image_names) > 0) {
     
     # Do not plot QC if there is no QC metric available
     if (length(barcode_qc) > 0) {
@@ -350,7 +356,7 @@ if (length(SeuratObject::Images(sc)) > 0) {
             cat ("#####", q, "\n\n")
             
             # Make spatial plots split by sample
-            plist = FeaturePlotSpatial(sc, features=q, combine=FALSE)  %>% purrr::flatten()
+            plist = FeaturePlotSpatial(sc, images=image_names, features=q, combine=FALSE)  %>% purrr::flatten()
             plist = purrr::map(plist, function(p) {
                 p =  p + theme(legend.title=element_blank())
                 p = p + viridis::scale_fill_viridis(trans=ifelse(grepl(pattern="nCount", q), "log10", "identity"))
@@ -358,7 +364,7 @@ if (length(SeuratObject::Images(sc)) > 0) {
             })
             
             # Make captions
-            idents = SeuratObject::Images(sc) %>% gsub("^(fov|image|slice)\\.", "", .)
+            idents = image_names %>% gsub("^image\\.", "", .)
             captions = GeneratePlotCaptions(q, assay_names=SeuratObject::Assays(sc)) %>% paste("for dataset {idents}") %>% FormatString()
             
             # Make chunk template for spatial plots
@@ -792,31 +798,37 @@ gt(barcodes_to_exclude_tbl, rownames_to_stub=TRUE) %>%
 
 ```{r}
 #| label: qc_filtering_filter_barcodes_spatial
-#| eval: !expr length(SeuratObject::Images(sc)) > 0
-#| include: !expr length(SeuratObject::Images(sc)) > 0
+#| eval: !expr length(image_names) > 0
+#| include: !expr length(image_names) > 0
 #| results: asis
 
-if (length(SeuratObject::Images(sc)) > 0) {
+if (length(image_names) > 0) {
+  # Plot as filtered barcodes as spatial plots
   cat("\nThe filtered cells are shown in red in the spatial plots below.\n\n")
 
-  # Plot as filtered barcodes as spatial plots
-  plist = DimPlotSpatial(sc, 
-                         cells.highlight=purrr::flatten(barcodes_to_exclude) %>% purrr::flatten_chr() %>% unique())
-  names(plist) = gsub("^(fov|image|slice)\\.", "", names(plist))
-  plist = purrr::map(plist, function(p) {
-    return(p + scale_fill_manual("Status", labels=c("Filtered", "Ok"), values=c("#DE2D26", "grey60")))
-  })
+  # Add a cell metadata column to colour by
+  barcodes_to_exclude_flat = purrr::flatten(barcodes_to_exclude) %>% purrr::flatten_chr() %>% unique()
+  sc$cells.highlight = ifelse(rownames(sc[[]]) %in% barcodes_to_exclude_flat, "Filtered", "Ok")
+  sc$cells.highlight = factor(sc$cells.highlight, levels=c("Ok", "Filtered"))
   
+  plist = DimPlotSpatial(sc,
+                         images=image_names,
+                         group.by="cells.highlight")
+  plist = purrr::map(plist, function(p) {
+    return(p + scale_fill_manual("Status", values=c("Filtered"="#DE2D26", "Ok"="grey60")))
+  })
+  names(plist) = gsub("^image\\.", "", image_names)
+
   # Set up layout for generating chunks
   chunk_template = "
-  \`\`\`{r}
-  #| label: fig-qc_filtering_filter_barcodes_spatial_dataset_{{dataset}}
-  #| fig-cap: {{caption}}
-  #| dev: png
-  
-  plist[['{{dataset}}']]
-  \`\`\`
-  "
+\`\`\`{r}
+#| label: fig-qc_filtering_filter_barcodes_spatial_dataset_{{dataset}}
+#| fig-cap: {{caption}}
+#| dev: png
+
+plist[['{{dataset}}']]
+\`\`\`
+"
   
   # Fill out and print spatial plots
   cat("::: panel-tabset\n\n")
@@ -831,6 +843,9 @@ if (length(SeuratObject::Images(sc)) > 0) {
     }
   }
   cat(":::\n\n")
+  
+  # Remove column
+  sc$cells.highlight = NULL
 }
 ```
 
@@ -1240,20 +1255,20 @@ plist[[1]] + plist[[2]]
 
 ```{r}
 #| label: qc_filtering_rna_cell_cycle_spatial
-#| eval: !expr have_cell_cycle_scores & length(SeuratObject::Images(sc)) > 0
-#| include: !expr have_cell_cycle_scores & length(SeuratObject::Images(sc)) > 0
+#| eval: !expr have_cell_cycle_scores & length(image_names) > 0
+#| include: !expr have_cell_cycle_scores & length(image_names) > 0
 #| results: asis
 
 
-if (have_cell_cycle_scores & length(SeuratObject::Images(sc)) > 0) {
+if (have_cell_cycle_scores & length(image_names) > 0) {
   # Plot as spatial plots
-  plist = DimPlotSpatial(sc, group.by="Phase", combine=FALSE, cols=ScColours(sc, "Phase")) %>% purrr::flatten()
-  names(plist) = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
+  plist = DimPlotSpatial(sc, images=image_names, group.by="Phase", combine=FALSE, cols=ScColours(sc, "Phase")) %>% purrr::flatten()
+  names(plist) = image_names %>% gsub("^image\\.", "", .)
   
   
   # Set up layout for generating chunks
   chunk_template = "
-  \`\`\`{r}
+\`\`\`{r}
 #| label: fig-qc_filtering_rna_cell_cycle_spatial_dataset_{{dataset}}
 #| fig-cap: {{caption}}
 #| dev: png
@@ -1337,11 +1352,11 @@ p
 
 ```{r}
 #| label: qc_filtering_rna_cell_cycle_spatial_mki67_pcna
-#| eval: !expr length(SeuratObject::Images(sc)) > 0
-#| include: !expr length(SeuratObject::Images(sc)) > 0
+#| eval: !expr length(image_names) > 0
+#| include: !expr length(image_names) > 0
 #| results: asis
 
-if (length(SeuratObject::Images(sc)) > 0) {
+if (length(image_names) > 0) {
   # Get rownames for MKI67 (G2M phase) and PCNA (S phase)
   # Note: we use the human symbols that - in case of another species - get mapped to the orthologues
   idx = match("MKI67", names(seurat_g2m_genes))
@@ -1379,13 +1394,13 @@ plist[['{{dataset}}']]
       cat("#####", gene, "\n\n")
   
       # Plot as spatial plots
-      plist = FeaturePlotSpatial(sc, features=gene, combine=FALSE) %>% purrr::flatten()
+      plist = FeaturePlotSpatial(sc, images=image_names, features=gene, combine=FALSE) %>% purrr::flatten()
       plist = purrr::map(plist, function(p) {
         p =  p + theme(legend.title=element_blank())
         p = p + viridis::scale_fill_viridis()
         return(p)
       })
-      names(plist) = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
+      names(plist) = image_names %>% gsub("^image\\.", "", .)
       
       # Fill out and print spatial plots
       cat("::: panel-tabset\n\n")
@@ -1415,7 +1430,7 @@ plist[['{{dataset}}']]
 #| results: asis
 
 # Write metadata
-outfile = "metadata_qc.xlsx"
+outfile = FormatString("cell_metadata_qc_assay_{default_assay}.xlsx", quote=FALSE)
 openxlsx::write.xlsx(x=sc[[]], file=file.path(module_dir, "results", outfile), rowNames=TRUE)
 
 # Note

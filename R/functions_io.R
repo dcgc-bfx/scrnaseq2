@@ -1975,7 +1975,7 @@ ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, barcode
     return(v)
   })
   names(categorial_data) = categories
-  categorial_data[["active_cluster"]] = Seurat::Idents(sc)
+  categorial_data[["active_cluster"]] = categorial_data[["seurat_clusters"]]
   
   # Get embeddings data
   if (is.null(embeddings)) embeddings = SeuratObject::Reductions(sc)

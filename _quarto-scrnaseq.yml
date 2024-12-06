@@ -16,12 +16,12 @@ book:
   - "modules/1_read_data/read_data.qmd"
   - "modules/2_qc_filtering/rna/qc_filtering.qmd"
   - "modules/3_normalization/rna/normalization.qmd"
-  #- "modules/4_dimensionality_reduction/rna/dimensionality_reduction.qmd"
-  #- "modules/5_clustering_umap/clustering_umap.qmd"
-  #- "modules/6_clusterqc/clusterqc.qmd"
-  #- "modules/7_cluster_annotation/cluster_annotation.qmd"
-  #- "modules/8_cluster_composition/cluster_composition.qmd"
-  #- "modules/9_export/export.qmd"
+  - "modules/4_dimensionality_reduction/rna/dimensionality_reduction.qmd"
+  - "modules/5_clustering_umap/clustering_umap.qmd"
+  - "modules/6_clusterqc/clusterqc.qmd"
+  - "modules/7_cluster_annotation/cluster_annotation.qmd"
+  - "modules/8_cluster_composition/cluster_composition.qmd"
+  - "modules/9_export/export.qmd"
   - "references.qmd"
 
 ####################
@@ -63,7 +63,7 @@ params:
     - "pXIST_RNA"
     - "pChrY_RNA"
     - "doublet_scores"
-    use_sketching: true
+    use_sketching: false
 
   modules:
   
@@ -103,21 +103,16 @@ params:
       vars_to_regress: null
       feature_selection_method: "vst"
       num_variable_features: 3000
-      num_barcodes_for_sketching: 5000
+      num_barcodes_for_sketching: 50000
 
     dimensionality_reduction_rna:
       dimensionality_reduction_method: "pca"
       dim_n_compute: 50
       dim_n: 20
-      integration_methods:
-      - "CCAIntegration"
-      - "HarmonyIntegration"
-      - "FastMNNIntegration"
-      CCAIntegration:
-        dims: "1:30"
+      integration_methods: null
+      CCAIntegration: null
       RPCAIntegration: null
       HarmonyIntegration:
-        npcs: "30L"
       FastMNNIntegration: null
       scVIIntegration: null
 

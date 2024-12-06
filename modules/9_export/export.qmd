@@ -146,6 +146,12 @@ if (on_disk_counts & on_disk_use_tmp) {
     sc = UpdateMatrixDirs(sc, dir=on_disk_path)
   }, enable=verbose)
 }
+
+# Get image names
+# At the moment an image is associated with only one assay.
+# For other assays, we plot all images.
+image_names = SeuratObject::Images(sc, assay=default_assay)
+if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
 ## Cell metadata
@@ -210,7 +216,7 @@ if (export_metadata) {
       
       # Replace barcode with original barcode
       i = match(emb$barcode, barcodes)
-      emb$barcode1 = original_barcodes[i]
+      emb$barcode = original_barcodes[i]
       
       # Write
       readr::write_csv(x=emb,
@@ -245,7 +251,7 @@ if (export_metadata) {
     
     # Replace barcode with original barcode
     i = match(emb$barcode, barcodes)
-    emb$barcode1 = original_barcodes[i]
+    emb$barcode = original_barcodes[i]
     
     # Write
     readr::write_csv(x=emb,

@@ -160,6 +160,12 @@ if (use_sketching) {
   }
   SeuratObject::DefaultAssay(sc) = sketched_assay
 }
+
+# Get image names
+# At the moment an image is associated with only one assay.
+# For other assays, we plot all images.
+image_names = SeuratObject::Images(sc, assay=default_assay)
+if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
 A single-cell dataset of 20,000 genes and 5,000 cells has 20,000 dimensions. At this point of the analysis, we have already reduced the dimensionality of the dataset to 3,000 variable genes. The biological manifold however can be described by far fewer dimensions than the number of (variable) genes, since expression profiles of different genes are correlated if they are involved in the same biological process. Dimension reduction methods aim to find these dimensions. There are two general purposes for dimension reduction methods: to **summarize** a dataset, and to **visualize** a dataset.
@@ -321,11 +327,11 @@ for (i in seq(plist)) {
 
 ```{r}
 #| label: dimensionality_reduction_rna_loadings_spatial
-#| eval: !expr length(SeuratObject::Images(sc)) > 0
-#| include: !expr length(SeuratObject::Images(sc)) > 0
+#| eval: !expr length(image_names) > 0
+#| include: !expr length(image_names) > 0
 #| results: asis
 
-if (length(SeuratObject::Images(sc)) > 0) {
+if (length(image_names) > 0) {
   # When sketching is used, show only for the full dataset since otherwise there would be gaps
   
   # Set up layout for generating chunks
@@ -349,13 +355,13 @@ plist[['{{dataset}}']]
     cat("##### Dim", dim, "\n\n")
   
     # Plot as spatial plots
-    plist = FeaturePlotSpatial(sc, images=SeuratObject::Images(sc), features=dim_feature, combine=FALSE) %>% purrr::flatten()
+    plist = FeaturePlotSpatial(sc, images=image_names, features=dim_feature, combine=FALSE) %>% purrr::flatten()
     plist = purrr::map(plist, function(p) {
       p =  p + theme(legend.title=element_blank())
       p = p + viridis::scale_fill_viridis()
       return(p)
     })
-    names(plist) = SeuratObject::Images(sc) %>% gsub("^image\\.", "", .)
+    names(plist) = image_names %>% gsub("^image\\.", "", .)
       
     # Fill out and print spatial plots
     cat("::: panel-tabset\n\n")

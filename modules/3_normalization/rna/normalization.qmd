@@ -180,6 +180,12 @@ if (cellcycle_remove) {
     vars_to_regress = c(vars_to_regress, "CC.Difference") %>% unique()
   }
 }
+
+# Get image names
+# At the moment an image is associated with only one assay.
+# For other assays, we plot all images.
+image_names = SeuratObject::Images(sc, assay=default_assay)
+if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
 In this section, we subsequently run a series of Seurat functions for each provided sample:
@@ -589,7 +595,7 @@ if (use_sketching) {
 
   # Print sketched assay
   CalloutBox(paste("Sketching was applied using a subset of", num_barcodes_for_sketching, "barcodes."), type="note")
-  print(sc)
+  knitr::knit_print(sc)
 
   # Finally reset default assay to non-sketched assay
   SeuratObject::DefaultAssay(sc) = ifelse(normalization_method=="SCT", 

@@ -861,7 +861,7 @@ if (parse_plate_information & any(grepl(pattern=plate_information_regex, x=sc$or
 Seurat::Idents(sc) = "orig.ident"
 
 # Remove big objects that are not needed anymore and call garbage collector
-rm(counts_lst, assay_counts_lst, assay_obj, s, barcode_metadata, feature_metadata)
+rm(counts_lst, assay_counts_lst, assay_obj, barcode_metadata, feature_metadata)
 invisible(gc())
 
 # Add datasets to Seurat object
@@ -900,6 +900,7 @@ For spatial datasets, we read the image information and add it to the Seurat obj
 
 # Per dataset
 for (i in 1:nrow(datasets)) {
+  i = 1
   # Experiment = orig.ident, technology and path
   orig_ident = datasets$experiment[i]
   technology = datasets$technology[i]
@@ -926,15 +927,15 @@ for (i in 1:nrow(datasets)) {
     visiumhd_bin_sizes = sprintf("%03d", visiumhd_bin_sizes)
     image_dir = file.path(path, paste0("square_", visiumhd_bin_sizes, "um"), "spatial")
     default_image_assay = paste0(gsub("\\d+$", "", default_assay), visiumhd_bin_sizes)
-    image_key = paste0("slice", ".", orig_ident, visiumhd_bin_sizes)
+    image_key = paste0("image", ".", orig_ident, visiumhd_bin_sizes)
   } else if (technology == "10x_visium") {
     image_dir = file.path(path, "spatial")
     default_image_assay = default_assay
-    image_key = paste0("slice", ".", orig_ident)
+    image_key = paste0("image", ".", orig_ident)
   } else if (technology == "10x_xenium") {
-    image_dir = path
+    image_dir = dirname(path)
     default_image_assay = default_assay
-    image_key = paste0("slice", ".", orig_ident)
+    image_key = paste0("image", ".", orig_ident)
   }
   
   # For Xenium: which coordinate type to use
@@ -1031,7 +1032,7 @@ for (a in Seurat::Assays(sc)) {
 # Calculate for each assay
 for (a in Seurat::Assays(sc)) {
   # And each layer (dataset)
-  for (l in SeuratObject::Layers(sc[[a]], "^counts")) {
+  for (l in SeuratObject::Layers(sc[[a]], "^counts\\.")) {
     # Get data for layer (sample)
     counts = sc[[a]][l]
     
@@ -1154,13 +1155,19 @@ p
   }
   
   ## SPATIAL PLOTS
-  if (length(SeuratObject::Images(sc)) > 0) {
+  
+  # At the moment an image is associated with only one assay.
+  # For other assays, we plot all images.
+  image_names = SeuratObject::Images(sc, assay=a)
+  if (length(image_names)==0) image_names = SeuratObject::Images(sc)
+  
+  if (length(image_names) > 0) {
     
     # For each QC metric
     for(q in barcode_qc) {
       
       # Make spatial plots split by sample
-      plist = FeaturePlotSpatial(sc, features=q, assay=a, combine=FALSE) %>% purrr::flatten()
+      plist = FeaturePlotSpatial(sc, images=image_names, features=q, combine=FALSE) %>% purrr::flatten()
       plist = purrr::map(plist, function(p) {
         p =  p + theme(legend.title=element_blank())
         p = p + viridis::scale_fill_viridis(trans=ifelse(grepl(pattern="nCount", q), "log10", "identity"))
@@ -1168,7 +1175,7 @@ p
       })
       
       # Make captions
-      idents = names(plist) %>% gsub("^(fov|image|slice)\\.", "", .)
+      idents = names(plist) %>% gsub("^image\\.", "", .)
       captions = GeneratePlotCaptions(q, assay_names=SeuratObject::Assays(sc)) %>% paste("for dataset {idents}") %>% FormatString()
       
       # Make chunk template for spatial plots
@@ -1208,7 +1215,7 @@ plist[[{{i}}]]
 #| results: asis
 
 # Write annotation
-outfile = paste0("annotation_", default_assay, ".xlsx")
+outfile = FormatString("feature_annotation_assay_{default_assay}.xlsx", quote=FALSE)
 openxlsx::write.xlsx(x=sc[[default_assay]][[]], file=file.path(module_dir, "results", outfile), rowNames=TRUE)
 
 # Note

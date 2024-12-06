@@ -163,6 +163,12 @@ if (use_sketching) {
   }
   SeuratObject::DefaultAssay(sc) = sketched_assay
 }
+
+# Get image names
+# At the moment an image is associated with only one assay.
+# For other assays, we plot all images.
+image_names = SeuratObject::Images(sc, assay=default_assay)
+if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
 ## Clustering
@@ -440,8 +446,8 @@ cat(":::\n")
 
 ```{r}
 #| label: clustering_umap_tests_spatial
-#| eval: !expr length(Seurat::Images(sc)) > 0
-#| include: !expr length(Seurat::Images(sc)) > 0
+#| eval: !expr length(image_names) > 0
+#| include: !expr length(image_names) > 0
 #| results: asis
 
 if (length(Seurat::Images(sc)) > 0) {
@@ -453,7 +459,7 @@ if (length(Seurat::Images(sc)) > 0) {
   }) %>% purrr::flatten_chr()
   
   # Generate plots
-  plist = purrr::map(SeuratObject::Images(sc), function(i) {
+  plist = purrr::map(image_names, function(i) {
       pl = DimPlotSpatial(sc, images=i, group.by=clusterings_to_plot, combine=FALSE) %>% purrr::flatten()
       pl = purrr::map(seq(pl), function(i) {
           p = pl[[i]] + theme(legend.title=element_blank()) + ggtitle(clusterings_to_plot[i]) + scale_fill_manual(values=ScColours(sc, clusterings_to_plot[i]))
@@ -462,7 +468,7 @@ if (length(Seurat::Images(sc)) > 0) {
       names(pl) = clusterings_to_plot
       return(pl)
   })
-  names(plist) = gsub(pattern="^image\\.", replacement="", x=SeuratObject::Images(sc))
+  names(plist) = gsub(pattern="^image\\.", replacement="", x=image_names)
   
   # Set up layout and automatically generate chunks
   chunk_template = "
@@ -744,9 +750,13 @@ full_visualizations = purrr::keep(SeuratObject::Reductions(sc), function(r) {
 })
 
 # Sketched UMAP visualizations
-sketched_visualizations = purrr::keep(SeuratObject::Reductions(sc), function(r) {
-  return(SeuratObject::DefaultAssay(sc[[r]]) == sketched_assay & grepl("_umap", r))
-})
+if (use_sketching) {
+  sketched_visualizations = purrr::keep(SeuratObject::Reductions(sc), function(r) {
+    return(SeuratObject::DefaultAssay(sc[[r]]) == sketched_assay & grepl("_umap", r))
+  })
+} else {
+  sketched_visualizations = ""
+}
 
 # Note
 msg = "
@@ -782,10 +792,14 @@ full_clusterings = purrr::map(dimensionality_reductions, function(reduct) {
 }) %>% purrr::flatten_chr()
 
 # Clusterings for sketched assay
-sketched_clusterings = purrr::map(dimensionality_reductions, function(reduct) {
-    reduct_short = gsub("[^_]+_", "", reduct)
-    return(paste0(sketched_assay, "_", reduct_short, "_", "snn", sort(cluster_resolutions)))
-}) %>% purrr::flatten_chr()
+if (use_sketching) {
+  sketched_clusterings = purrr::map(dimensionality_reductions, function(reduct) {
+      reduct_short = gsub("[^_]+_", "", reduct)
+      return(paste0(sketched_assay, "_", reduct_short, "_", "snn", sort(cluster_resolutions)))
+  }) %>% purrr::flatten_chr()
+} else {
+  sketched_clusterings = ""
+}
 
 # Note
 msg = "
