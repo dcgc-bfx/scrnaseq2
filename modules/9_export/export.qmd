@@ -146,6 +146,12 @@ if (on_disk_counts & on_disk_use_tmp) {
     sc = UpdateMatrixDirs(sc, dir=on_disk_path)
   }, enable=verbose)
 }
+
+# Get image names
+# At the moment an image is associated with only one assay.
+# For other assays, we plot all images.
+image_names = SeuratObject::Images(sc, assay=default_assay)
+if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
 ## Cell metadata
@@ -160,71 +166,99 @@ export_metadata = param("export_metadata")
 
 # Create CSV files that can be imported
 if (export_metadata) {
-  dir.create(file.path(module_dir, "results", "csv"), showWarnings=FALSE, recursive=TRUE)
+  dir.create(file.path(module_dir, "results", "export_csv"), showWarnings=FALSE, recursive=TRUE)
   
-  # Cell metadata to export (ignore categories based on sketch assay)
+  # Cell metadata to export for default assay
   categories_to_export = colnames(sc[[]])
-  categories_to_export = categories_to_export[!grepl("\\.sketch$", categories_to_export)]
+  categories_to_export = categories_to_export[!grepl("[A-Z]sketch", categories_to_export)]
   categories_to_export = categories_to_export[categories_to_export != "orig_barcode"]
   
-  # Embeddings to export (ignore embeddings that were done based on sketch assays)
-  embeddings_to_export = purrr::discard(SeuratObject::Reductions(sc), function(r) {
-    return(grepl("\\.sketch$", Seurat::DefaultAssay(sc[[r]])))
+  # Embeddings to export for default assay
+  embeddings_to_export = purrr::keep(SeuratObject::Reductions(sc), function(r) {
+    return(SeuratObject::DefaultAssay(sc[[r]]) == default_assay)
   })
+  
+  # Only consider barcodes of the default assay
+  bcs = SeuratObject::Cells(sc[[default_assay]])
+  barcode_metadata = sc[[]][bcs, ]
   
   #
   # Per dataset
   #
   for(smp in levels(sc$orig.ident)) {
-    dir.create(file.path(module_dir, "results", "csv", smp), showWarnings=FALSE, recursive=TRUE)
+    dir.create(file.path(module_dir, "results", "export_csv", smp), showWarnings=FALSE, recursive=TRUE)
     
-    # Get sample barcodes
-    barcodes = sc[[]] %>% 
+    # Get sample barcodes to extract and their original barcodes
+    barcodes = barcode_metadata %>% 
       dplyr::filter(orig.ident == smp) %>% 
       rownames()
+    original_barcodes = barcode_metadata%>% 
+      dplyr::filter(orig.ident == smp) %>% 
+      dplyr::pull(orig_barcode)
     
     # Cell metadata
-    categorial_data = sc[[]][barcodes, c("orig_barcode", categories_to_export)]
+    categorial_data = barcode_metadata[barcodes, c("orig_barcode", categories_to_export)]
     col_nms = colnames(categorial_data)
     col_nms[1] = "barcode"
     colnames(categorial_data) = col_nms
-    readr::write_csv(x=categorial_data, file=file.path(module_dir, "results", "csv", smp, "Cell_metadata.csv.gz"))
+    readr::write_csv(x=categorial_data, file=file.path(module_dir, "results", "export_csv", smp, "Cell_metadata.csv.gz"))
     
     # Embeddings
     for( r in embeddings_to_export) {
-      emb = SeuratObject::Embeddings(sc, r)[barcodes, 1:2] %>%
+      # Get embedding
+      emb = SeuratObject::Embeddings(sc, r)
+      
+      # Subset for sample barcodes
+      i = which(rownames(emb) %in% barcodes)
+      emb = emb[i, 1:2] %>%
         as.data.frame() %>%
         tibble::rownames_to_column(var="barcode")
-      emb$barcode = categorial_data$barcode
+      
+      # Replace barcode with original barcode
+      i = match(emb$barcode, barcodes)
+      emb$barcode = original_barcodes[i]
+      
+      # Write
       readr::write_csv(x=emb,
-                file=file.path(module_dir, "results", "csv", smp, paste0("Cell_projection_", r, ".csv.gz")))
+                file=file.path(module_dir, "results", "export_csv", smp, paste0("Cell_projection_", r, ".csv.gz")))
     }
   }
   
   #
   # For the aggregated analysis
   #
-  dir.create(file.path(module_dir, "results", "csv", "all"), showWarnings=FALSE, recursive=TRUE)
+  dir.create(file.path(module_dir, "results", "export_csv", "all"), showWarnings=FALSE, recursive=TRUE)
 
+  # Get original barcodes
+  barcodes = rownames(barcode_metadata)
+  original_barcodes = barcode_metadata$orig_barcode
+  
   # Cell metadata
-  categorial_data = sc[[]][, c("orig_barcode", categories_to_export)]
+  categorial_data = barcode_metadata[, c("orig_barcode", categories_to_export)]
   col_nms = colnames(categorial_data)
   col_nms[1] = "barcode"
   colnames(categorial_data) = col_nms
   readr::write_csv(x=categorial_data, 
-            file=file.path(module_dir, "results", "csv", "all", "Cell_metadata.csv.gz"))
+            file=file.path(module_dir, "results", "export_csv", "all", "Cell_metadata.csv.gz"))
   
   # Embeddings
   for( r in embeddings_to_export) {
-    emb = SeuratObject::Embeddings(sc, r)[, 1:2] %>%
+    # Get embedding
+    emb = SeuratObject::Embeddings(sc, r)
+    emb = emb[, 1:2] %>%
       as.data.frame() %>%
       tibble::rownames_to_column(var="barcode")
-    emb$barcode = categorial_data$barcode
+    
+    # Replace barcode with original barcode
+    i = match(emb$barcode, barcodes)
+    emb$barcode = original_barcodes[i]
+    
+    # Write
     readr::write_csv(x=emb,
-              file=file.path(module_dir, "results", "csv", "all", paste0("Cell_projection_", r, ".csv.gz")))
+              file=file.path(module_dir, "results", "export_csv", "all", paste0("Cell_projection_", r, ".csv.gz")))
   }
   
-  CalloutBox("Cell metadata can be imported into other tools (such as an active Loupe Cell Browser session). The directory 'csv/datasets' contains files for the individual datasets. The directory 'csv/all' contains files for the aggregated analysis.", type="note")
+  CalloutBox("Cell metadata can be imported into other tools (such as an active Loupe Cell Browser session). The directory 'export_csv/datasets' contains files for the individual datasets. The directory 'export_csv/all' contains files for the aggregated analysis.", type="note")
 } else {
   CalloutBox("Cell metadata was not exported.", type="note")
 }
@@ -251,28 +285,32 @@ create_loupe_file = param("create_loupe_file")
 
 # Create a cloupe file for the Loupe Browser (only 10x, 10x_visium and 10x_xenium)
 if (create_loupe_file & all(grepl("10x", sc$technology))) {
-  dir.create(file.path(module_dir, "results", "loupe"), showWarnings=FALSE, recursive=TRUE)
+  dir.create(file.path(module_dir, "results", "export_loupe"), showWarnings=FALSE, recursive=TRUE)
   
-  # Cell metadata to export (ignore categories based on sketch assay)
+  # Cell metadata to export for default assay
   # Note: Loupe does not support numeric columns
   categories_to_export = colnames(sc[[]])
-  categories_to_export = categories_to_export[!grepl("\\.sketch$", categories_to_export)]
+  categories_to_export = categories_to_export[!grepl("[A-Z]sketch", categories_to_export)]
   categories_to_export = categories_to_export[categories_to_export != "orig_barcode"]
   
-  # Embeddings to export (ignore embeddings that were done based on sketch assays)
-  embeddings_to_export = purrr::discard(SeuratObject::Reductions(sc), function(r) {
-    return(grepl("\\.sketch$", Seurat::DefaultAssay(sc[[r]])))
+  # Embeddings to export for default assay
+  embeddings_to_export = purrr::keep(SeuratObject::Reductions(sc), function(r) {
+    return(SeuratObject::DefaultAssay(sc[[r]]) == default_assay)
   })
+  
+  # Only consider barcodes of the default assay
+  bcs = SeuratObject::Cells(sc[[default_assay]])
   
   # Export as loupe file
   ExportLoupe(sc, 
               assay=SeuratObject::DefaultAssay(sc), 
               categories=categories_to_export, 
-              embeddings=embeddings_to_export, 
-              output_dir=file.path(module_dir, "results", "loupe"),
+              embeddings=embeddings_to_export,
+              barcodes=bcs,
+              output_dir=file.path(module_dir, "results", "export_loupe"),
               output_name="scrnaseq2")
   
-  CalloutBox("The following cloupe file can be loaded directly into the Loupe Cell Browser: 'loupe/scrnaseq2.cloupe'.", type="note")
+  CalloutBox("The following cloupe file can be loaded directly into the Loupe Cell Browser: 'export_loupe/scrnaseq2.cloupe'.", type="note")
 } else {
   CalloutBox("Creating cloupe files for the Loupe Cell Browser was deactivated or is supported only for datasets of technology '10x', '10x_xenium' or '10x_visium'.", type="note")
 }
@@ -292,21 +330,26 @@ export_xenium_analysis_file = param("export_xenium_analysis_file")
 
 if (length(SeuratObject::Images(sc)) > 0) {
   if (export_xenium_analysis_file & all(grepl("10x_xenium", sc$technology))) {
-    dir.create(file.path(module_dir, "results", "xenium"), showWarnings=FALSE, recursive=TRUE)
+    dir.create(file.path(module_dir, "results", "export_xenium"), showWarnings=FALSE, recursive=TRUE)
     
     # Cell metadata to export (ignore categories based on sketch assay)
     # Note: Xenium Explorer does not support numeric columns
     categories_to_export = colnames(sc[[]])
-    categories_to_export = categories_to_export[!grepl("\\.sketch$", categories_to_export)]
+    categories_to_export = categories_to_export[!grepl("[A-Z]sketch", categories_to_export)]
     categories_to_export = categories_to_export[categories_to_export != "orig_barcode"]
     
+    # Only consider barcodes of the default assay
+    bcs = SeuratObject::Cells(sc[[default_assay]])
+    
     # Export as analysis.zarr.zip files
-    ExportXeniumExplorer(sc, 
+    ExportXeniumExplorer(sc,
+                         assay=SeuratObject::DefaultAssay(sc),
                          categories=categories_to_export, 
-                         output_dir=file.path(module_dir, "results", "xenium"), 
+                         barcodes=bcs,
+                         output_dir=file.path(module_dir, "results", "export_xenium"),
                          output_name="analysis.zarr.zip")
     
-    CalloutBox("Cell metadata was exported per dataset as analysis.zarr.zip file in the 'xenium' directory. Replace the original analysis.zarr.zip in the respective Xenium dataset (make a backup) to include the results of this analysis in the Xenium Explorer.", type="note")
+    CalloutBox("Cell metadata was exported per dataset as analysis.zarr.zip file in the 'export_xenium' directory. Replace the original analysis.zarr.zip in the respective Xenium dataset (make a backup) to include the results of this analysis in the Xenium Explorer.", type="note")
   } else {
     CalloutBox("Exporting to Xenium Explorer is supported only for datasets of technology '10x_xenium'.", type="note")
   }
@@ -327,21 +370,30 @@ export_cellxgene = param("export_cellxgene")
 
 # Create an adata.h5ad file for cellxgene
 if (export_cellxgene) {
-  dir.create(file.path(module_dir, "results", "cellxgene"), showWarnings=FALSE)
+  dir.create(file.path(module_dir, "results", "export_cellxgene"), showWarnings=FALSE)
   
-  # Use only default assay, drop all other
-  adata = sc
-  assays_to_drop = setdiff(SeuratObject::Assays(adata), default_assay)
-  for(a in assays_to_drop) adata[[a]] = NULL
+  # Create a Seurat object with only the default assay and the old Seurat assay format (so that sceasy can convert to adata)
+  layer_data = SeuratObject::GetAssayData(sc, assay=default_assay, layer="data")
+  layer_data = as(layer_data, "dgCMatrix")
+  adata = SeuratObject::CreateAssayObject(data=layer_data, assay=default_assay)
+  adata = Seurat::CreateSeuratObject(adata, assay=default_assay)
   
-  # Convert back to old Seurat assay format
-  adata[["tmp"]] = as(object = adata[[default_assay]], Class = "Assay")
-  SeuratObject::DefaultAssay(adata) = "tmp"
-  adata[[default_assay]] = NULL
-  adata = SeuratObject::RenameAssays(adata, tmp=default_assay)
-  adata$orig_barcode = NULL
-  colour_lists = ScColours(adata)
-
+  # Add barcode metadata for barcodes that are in the assay
+  bcs = SeuratObject::Cells(adata[[default_assay]])
+  barcode_metadata = sc[[]][bcs,]
+  adata = SeuratObject::AddMetaData(adata, barcode_metadata)
+  
+  # Prepare custom colours (see https://chanzuckerberg.github.io/cellxgene/posts/prepare)
+  colour_lists = purrr::map(ScColours(sc), function(l) {
+    # Port color names to hex colour codes
+    is_color_name = l %in% colors()
+    if (any(is_color_name)) l[is_color_name] = gplots::col2hex(l[is_color_name])
+    
+    l = reticulate::np_array(unname(l), dtype="<U7")
+    return(l)
+  })
+  names(colour_lists) = paste0(names(colour_lists), "_colors")
+  
   # Replace NA with "NA" in barcode metadata categorial and character columns (cellxgene cannot deal with them)
   # Also add a colour for "NA" if there are custom colours
   na_columns = purrr::keep(adata[[]], function(x) return(!is.numeric(x) & any(is.na(x)))) %>% colnames()
@@ -352,27 +404,22 @@ if (export_cellxgene) {
     }
   }
   
-  
-  # Prepare custom colours (see https://chanzuckerberg.github.io/cellxgene/posts/prepare)
-  colour_lists = purrr::map(colour_lists, function(l) {
-    # Port color names to hex colour codes
-    is_color_name = l %in% colors()
-    if (any(is_color_name)) l[is_color_name] = gplots::col2hex(l[is_color_name])
-    
-    l = reticulate::np_array(unname(l), dtype="<U7")
-    return(l)
+  # Get embeddings for default assay and add
+  embeddings_to_export = purrr::keep(SeuratObject::Reductions(sc), function(r) {
+    return(SeuratObject::DefaultAssay(sc[[r]]) == default_assay)
   })
-  names(colour_lists) = paste0(names(colour_lists), "_colors")
-  
+  for (emb in embeddings_to_export) {
+    adata[[emb]] = sc[[emb]]
+  }
   
   # Convert Seurat single cell object to python anndata object which will be accessible via reticulate here
   # Add colours
   # Write to h5ad file
   adata = sceasy::convertFormat(adata, from="seurat", to="anndata", outFile=NULL, assay=default_assay)
   adata$uns = reticulate::dict(colour_lists)
-  adata$write(file.path(module_dir, "results", "cellxgene", "cellxgene.h5ad"), compression="gzip")
+  adata$write(file.path(module_dir, "results", "export_cellxgene", "cellxgene.h5ad"), compression="gzip")
 
-  CalloutBox("The cellxgene file is: 'cellxgene/cellxgene.h5ad'.", type="note")
+  CalloutBox("The cellxgene file is: 'export_cellxgene/cellxgene.h5ad'.", type="note")
   
 } else {
   CalloutBox("The cellxgene file was not produced.", type="note")
@@ -392,7 +439,7 @@ export_sc = param("export_sc")
 # Export Seurat object
 if (export_sc) {
   # Save Seurat object and layer data
-  outdir = file.path(module_dir, "results", "sc")
+  outdir = file.path(module_dir, "results", "export_sc")
   with_progress({
     SaveSeuratRdsWrapper(sc,
                          outdir=outdir,
@@ -402,7 +449,7 @@ if (export_sc) {
                          )
   }, enable=verbose)
   
-    CalloutBox("The Seurat object was exported to: 'sc/sc.rds' (there might be on-disk directories as well).", type="note")
+    CalloutBox("The Seurat object was exported to: 'export_sc/sc.rds' (there might be on-disk directories as well).", type="note")
 } else {
   CalloutBox("The Seurat object was not exported.", type="note")
 }

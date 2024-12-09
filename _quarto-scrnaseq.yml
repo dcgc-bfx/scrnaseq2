@@ -79,6 +79,9 @@ params:
       spatial_coordinate_type:
         - "centroids"
         - "segmentations"
+      visiumhd_bin_sizes:
+      - 8
+      - 16
 
     qc_filtering_rna:
       barcode_qc_cor:
@@ -109,7 +112,7 @@ params:
       integration_methods: null
       CCAIntegration: null
       RPCAIntegration: null
-      HarmonyIntegration: null
+      HarmonyIntegration:
       FastMNNIntegration: null
       scVIIntegration: null
 

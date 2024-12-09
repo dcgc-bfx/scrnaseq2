@@ -128,6 +128,12 @@ if (on_disk_counts & on_disk_use_tmp) {
     sc = UpdateMatrixDirs(sc, dir=on_disk_path)
   }, enable=verbose)
 }
+
+# Get image names
+# At the moment an image is associated with only one assay.
+# For other assays, we plot all images.
+image_names = SeuratObject::Images(sc, assay=default_assay)
+if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
 ## Samples per cluster
@@ -135,11 +141,14 @@ if (on_disk_counts & on_disk_use_tmp) {
 ```{r}
 #| label: cluster_composition_samples_per_cluster
 
-# Count cells per cluster and sample 
-cell_samples = sc[[]] %>% dplyr::pull(orig.ident) %>% levels()
-cell_clusters = sc[[]] %>% dplyr::pull(seurat_clusters) %>% levels()
+bcs = SeuratObject::Cells(sc[[default_assay]])
+barcode_metadata = sc[[]][bcs, ]
 
-tbl = dplyr::count(sc[[c("orig.ident", "seurat_clusters")]], orig.ident, seurat_clusters) %>% tidyr::pivot_wider(names_from="seurat_clusters", names_prefix="Cl_", values_from=n, values_fill=0) %>% as.data.frame()
+# Count cells per cluster and sample 
+cell_samples = barcode_metadata %>% dplyr::pull(orig.ident) %>% levels()
+cell_clusters = barcode_metadata %>% dplyr::pull(seurat_clusters) %>% levels()
+
+tbl = dplyr::count(barcode_metadata, orig.ident, seurat_clusters) %>% tidyr::pivot_wider(names_from="seurat_clusters", names_prefix="Cl_", values_from=n, values_fill=0) %>% as.data.frame()
 rownames(tbl) = paste0(tbl[,"orig.ident"],"_n")
 tbl[,"orig.ident"] = NULL
 
@@ -163,7 +172,7 @@ tbl = tbl[order(rownames(tbl)),, drop=FALSE]
 tbl_bar = tbl[paste0(cell_samples, "_perc"), , drop=FALSE] %>% 
   tibble::rownames_to_column(var="Sample") %>%
   tidyr::pivot_longer(tidyr::starts_with("Cl"), names_to="Cluster", values_to="Percentage")
-tbl_bar$Cluster = tbl_bar$Cluster %>% gsub(pattern="^Cl_", replacement="", perl=TRUE) %>% factor(levels=sc$seurat_clusters %>% levels())
+tbl_bar$Cluster = tbl_bar$Cluster %>% gsub(pattern="^Cl_", replacement="", perl=TRUE) %>% factor(levels=barcode_metadata$seurat_clusters %>% levels())
 tbl_bar$Sample = tbl_bar$Sample %>% gsub(pattern="_perc$", replacement="", perl=TRUE) %>% as.factor()
 tbl_bar$Percentage = as.numeric(tbl_bar$Percentage)
 p = ggplot(tbl_bar, aes(x=Cluster, y=Percentage, fill=Sample)) + 
