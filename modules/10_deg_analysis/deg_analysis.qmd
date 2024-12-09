@@ -188,7 +188,11 @@ if (on_disk_counts & on_disk_use_tmp) {
 default_assay = param("default_assay")
 if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
 Seurat::DefaultAssay(sc) = default_assay
+```
 
+```{r}
+#| label: deg_analysis_setup
+#| 
 # Parse the contrasts information
 if (is.character(param("constrasts")) && file.exists(param("contrasts"))) {
   # Read from file
@@ -197,7 +201,7 @@ if (is.character(param("constrasts")) && file.exists(param("contrasts"))) {
   # Sheet number appended?
   sheet = 1
   if (grepl(":\\d+$", deg_contrasts_file)) {
-    sheet = gsub(pattern=".+:(\\d+)$", replacement="\\1", x=contrasts_file)
+    sheet = gsub(pattern=".+:(\\d+)$", replacement="\\1", x=contrasts_file) %>% as.integer()
     contrasts_file = gsub(pattern=":\\d+$", replacement="", x=contrasts_file)
   }
   
@@ -222,54 +226,66 @@ if (is.character(param("constrasts")) && file.exists(param("contrasts"))) {
   })
 }
 
-# Set up a contrasts list. Check if there is enough information for each contrast and if contrasts are valid. 
+# For each comparison, collect the necessary information (which groups to compare, the assay to use, etc).
+# Each list entry is a comparison. If a comparison is done for multiple subsets (subset_column/subset_group), each subset is a separate entry.
 contrasts_list = NewContrastsList(sc, contrasts_list)
 
-# Prepare (subset) Seurat objects for each contrast. Bulk-aggregate if requested. Downsample if requested.
+# For each comparison, prepare an individual Seurat object with counts and data. Bulk-aggregate if requested. Downsample if requested.
 contrasts_list = PrepareContrastsListObjects(sc, contrasts_list)
 
 # Which contrasts should be DEG tested?
 run_deg_tests = param("run_deg_tests")
+deg_tests_idx = c()
 if (is.logical(run_deg_tests) && run_deg_tests) {
+    # if TRUE all, else none
     if (run_deg_tests) {
         deg_tests_idx = seq(contrasts_list)
     } else {
         deg_tests_idx = c()
     }
 } else if (is.character(run_deg_tests)) {
-  deg_tests_idx = seq(contrasts_list) %>% 
+    # if character, only those
+    deg_tests_idx = seq(contrasts_list) %>% 
       purrr::keep(function(i) return(contrasts_list[[i]]$name %in% run_deg_tests))
 }
 have_deg_comparisons = length(deg_tests_idx) > 0
 
 # For the contrasts that are DEG tested: for which should also over-representation analysis be run?
 run_deg_ora = param("run_deg_ora")
+deg_ora_idx = c()
 if (is.logical(run_deg_ora)) {
+    # if TRUE all, else none
     if (run_deg_ora) {
         deg_ora_idx = deg_tests_idx
     } else {
         deg_ora_idx = c()
     }
 } else if (is.character(run_deg_ora)) {
-  deg_ora_idx = seq(contrasts_list) %>% 
+    # if character, only those
+    deg_ora_idx = seq(contrasts_list) %>% 
       purrr::keep(function(i) return(contrasts_list[[i]]$name %in% run_deg_ora))
 }
 if (!all(deg_ora_idx %in% deg_tests_idx)) {
   stop("Not all contrasts for over-representation analysis are also tested for DEGs.")
 }
+have_ora = length(deg_ora_idx) > 0
 
 # Which contrasts should be analysed with GSEA?
 run_gsea = param("run_gsea")
+gsea_idx = c()
 if (is.logical(run_gsea)) {
+    # if TRUE all, else none
     if (run_gsea) {
         gsea_idx = seq(contrasts_list)
     } else {
         gsea_idx = c()
     }
 } else if (is.character(run_gsea)) {
-  gsea_idx = seq(contrasts_list) %>% 
+    # if character, only those
+    gsea_idx = seq(contrasts_list) %>% 
       purrr::keep(function(i) return(contrasts_list[[i]]$name %in% run_gsea))
 }
+have_gsea_comparisons = length(gsea_idx) > 0
 ```
 
 ## DEG Analysis
@@ -295,6 +311,10 @@ if (have_deg_comparisons) {
         result[["volcano_plot"]] = DegsVolcanoPlot(result)
         return(result)
     })
+    
+    # Regroup list so that subset comparisons are grouped together
+    deg_results_list = split(deg_results_list,
+                             purrr::map_chr(deg_results_list, function(r) return(r$name)) )
 } else {
     deg_results_list = list()
     CalloutBox("No DEG tests requested.", type="note")
@@ -308,7 +328,7 @@ if (have_deg_comparisons) {
 #| include: !expr have_deg_comparisons
 
 # Create a summary table of all DEG comparisons
-deg_summary_table = purrr::map_dfr(deg_results_list, function(result) {
+deg_summary_table = purrr::map_depth(deg_results_list, 2, function(result) {
     # Get comparison name, condition column and values, subset column and subset group. . If multiple, join by '+'.
     summary_table = data.frame(Comparison=result[["name"]],
                Condition=result[["condition_column"]], 
@@ -329,7 +349,7 @@ deg_summary_table = purrr::map_dfr(deg_results_list, function(result) {
     summary_table$DEG_down = sum(deg_table$avg_log2FC<0)
     
     return(summary_table)
-})
+}) %>% dplyr::bind_rows()
 
 if ("Subset" %in% colnames(deg_summary_table)) {
     deg_summary_table = deg_summary_table %>% 
@@ -337,39 +357,102 @@ if ("Subset" %in% colnames(deg_summary_table)) {
 }
 
 gt::gt(deg_summary_table) %>%
-    gt::sub_missing(columns = 1:ncol(deg_summary_table),
-    missing_text = ""
-  )
+    gt::sub_missing(columns=1:ncol(deg_summary_table), missing_text="")
 ```
 
 ```{r}
-#| label: deg_analysis_generate_reports
+#| label: deg_analysis_results
 #| results: asis
 #| eval: !expr have_deg_comparisons
 #| include: !expr have_deg_comparisons
 
 # Generate report sections for each DEG comparison
 if (have_deg_comparisons) {
-    for(i in seq(deg_results_list)) {
-        result = deg_results_list[[i]]
-        DegsGenerateReport(result, i)
-    }
+    # Generate chunk templates
     
-    # Set up layout and automatically generate chunks
-    chunk_template = "
+    # 1. for the overview part (at the beginning of the contrast section)
+    chunk_template_overview = "
 \`\`\`{r}
-
 ### {{name}}
 
-#| label: fig-cluster_annotation_known_list{{i}}_{{gene_patched}}
-#| fig-cap: {{gene}}
-#| echo: false
-#| fig-width: 4
-#| fig-height: 3
+This is the general configuration for the DEG analysis for this comparison:
 
-plist[['{{gene}}']]
+* condition column: {{condition_column}}
+* condition group 1: {{condition_group1}}
+* condition group 2: {{condition_group2}}
+* assay: {{assay}}
+* slot: {{slot}}
+* test: {{test}}
+* maximum adjusted p-value: {{padj}}
+* minimum absolute log2 foldchange: {{log2FC}}
+* minimum percentage of cells: {{min_pct}}
+* latent vars: {{latent_vars}}
+* output file: degs_{{name}}_results.xlsx
+
+Here is the overview of the results:
+
+\`\`\`{r}
+#| label: tbl-deg_analysis_{{name}}
+#| tbl-cap: Results for comparison {{name}}
+
+deg_results_table = deg_summary_table %>% 
+    dplyr::filter(Comparison == '{{name}}') %>%
+    dplyr::select(Condition, Group1, Group2, Subset, SubsetGroup, DEG, DEG_up, DEG_down)
+    
+gt::gt(deg_results_table) %>%
+    gt::sub_missing(columns=1:ncol(deg_results_table), missing_text="")
 \`\`\`
 "
+    # 2. for the results(s) obtained for the contrast (can be more if multiple subsets were analysed)
+    chunk_template_comparison = "
+#### 
+    
+\`\`\`{r}
+#| label: tbl-deg_analysis_{{name}}_{{j}}
+#| tbl-cap: Cap
+#| fig-height: 3
+
+plist[['{{i}}']]
+\`\`\`
+
+
+\`\`\`{r}
+#| label: fig-deg_analysis_results_{{name}}_{{j}}
+#| fig-cap: Cap
+#| fig-height: 3
+
+plist[['{{i}}']]
+\`\`\`
+"
+    # Iterate over the comparisons
+    for (deg_results in deg_results_list) {
+        # Result(s) for this comparison
+        # deg_results
+        
+        # Fill in the overview chunk template and render/knit
+        chunk_filled =  knitr::knit_expand(text=chunk_template_overview,
+                                           condition_column=deg_results[[1]]$condition_column,
+                                           condition_group1=deg_results[[1]]$condition_group1,
+                                           condition_group2=deg_results[[1]]$condition_group2,
+                                           assay=deg_results[[1]]$assay,
+                                           slot=deg_results[[1]]$slot,
+                                           test=deg_results[[1]]$test,
+                                           padj=deg_results[[1]]$padj,
+                                           log2FC=deg_results[[1]]$log2FC,
+                                           min_pct=deg_results[[1]]$min_pct,
+                                           latent_vars=deg_results[[1]]$latent_vars,
+                                           name=name)
+        if(interactive()) {
+            print(EvalKnitrChunk(chunk_filled))
+        } else {
+            chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+            cat('\n', chunk_filled, '\n', sep='\n')
+        }
+        
+        # Now iterate over the result(s) for this comparison. If multiple subsets were analysed, there will be multiple results.
+        for (result in deg_results) {
+        }
+    }
 }
 ```
 

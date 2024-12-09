@@ -22,7 +22,7 @@ book:
   - "modules/7_cluster_annotation/cluster_annotation.qmd"
   - "modules/8_cluster_composition/cluster_composition.qmd"
   - "modules/10_deg_analysis/deg_analysis.qmd"
-  - "modules/9_export/export.qmd"
+  #- "modules/9_export/export.qmd"
   - "references.qmd"
 
 ####################
@@ -49,8 +49,8 @@ params:
 
     # Technical
     verbose: true
-    on_disk_counts: false
-    on_disk_use_tmp: false
+    on_disk_counts: true
+    on_disk_use_tmp: true
     cores: 8
 
     # Analysis

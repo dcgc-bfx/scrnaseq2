@@ -73,7 +73,7 @@ NewContrastsList = function(sc, contrasts_list) {
             # Sheet number/name appended?
             sheet = 1
             if (grepl(":[^:]+$", condition_group1)) {
-                sheet = gsub(pattern=".+:([^:]+)$", replacement="\\1", x=condition_group1)
+                sheet = gsub(pattern=".+:([^:]+)$", replacement="\\1", x=condition_group1) %>% as.integer()
                 condition_group1 = gsub(pattern=":[^:]+$", replacement="", x=condition_group1)
             }
             
@@ -151,7 +151,7 @@ NewContrastsList = function(sc, contrasts_list) {
             # Sheet number appended?
             sheet = 1
             if (grepl(":\\d+$", condition_group2)) {
-                sheet = gsub(pattern=".+:(\\d+)$", replacement="\\1", x=condition_group2)
+                sheet = gsub(pattern=".+:(\\d+)$", replacement="\\1", x=condition_group2) %>% as.integer()
                 condition_group2 = gsub(pattern=":\\d+$", replacement="", x=condition_group2)
             }
             
@@ -230,7 +230,7 @@ NewContrastsList = function(sc, contrasts_list) {
                 # Sheet number appended?
                 sheet = 1
                 if (grepl(":\\d+$", subset_group)) {
-                    sheet = gsub(pattern=".+:(\\d+)$", replacement="\\1", x=subset_group)
+                    sheet = gsub(pattern=".+:(\\d+)$", replacement="\\1", x=subset_group) %>% as.integer()
                     subset_group = gsub(pattern=":\\d+$", replacement="", x=subset_group)
                 }
                 
@@ -297,6 +297,7 @@ NewContrastsList = function(sc, contrasts_list) {
         
         # pseudobulk_samples
         if ("pseudobulk_samples" %in% names(contrast)) {
+            contrast[["pseudobulk_samples"]] = as.integer(contrast[["pseudobulk_samples"]])
             assertthat::assert_that(contrast[["pseudobulk_samples"]] > 1,
                                     msg=FormatString("The number of pseudobulk samples ('pseudobulk_samples') must be greater than 1 (for comparison {i}/{name})."))
         }
@@ -360,7 +361,7 @@ NewContrastsList = function(sc, contrasts_list) {
 
         # downsample_barcodes
         if ("downsample_barcodes" %in% names(contrast)) {
-            contrast[["downsample_barcodes"]] = as.numeric(contrast[["downsample_barcodes"]])
+            contrast[["downsample_barcodes"]] = as.integer(contrast[["downsample_barcodes"]])
         }
         
         # covariate
@@ -418,8 +419,8 @@ NewContrastsList = function(sc, contrasts_list) {
     return(contrasts_list)
 }
 
-#' Given a list with contrasts, prepares Seurat objects. For each contrast, it extracts all relevant data and if requested bulk-aggregates and downsamples barcodes.
-#' When running tests in parallel, this will save a lot of memory since it is not neccessary to copy the entire Seurat object for each parallel computation.
+#' Given a list with contrasts, prepares Seurat objects. For each contrast, it extracts all 
+#' relevant data and if requested bulk-aggregates and downsamples barcodes.
 #' 
 #' @param sc A Seurat single cell object.
 #' @param contrasts_list A list of contrasts. Must have been set up with NewContrastsList.
@@ -768,7 +769,7 @@ DegsScatterPlot = function(result) {
                            labels=c(none='none', up='up', down='down')) +
         xlim(lims) + 
         ylim(lims) +
-        AddPlotStyle(ylab=group1, xlab=group2, legend_position="bottom")
+        AddPlotStyle(ylab=group1, xlab=group2, legend_position="none")
     
     # If there is a log2 threshold > 0, add lines
     if (log2FC > 0) {
@@ -818,7 +819,7 @@ DegsVolcanoPlot = function(result) {
         ggrepel::geom_text_repel(data=top10_deg_table, aes(x=avg_log2FC, y=p_val_log10_n, col=deg_status, label=gene)) +
         scale_color_manual("Gene status", values=c(none="grey", up="darkgoldenrod1", down="steelblue"), 
                            labels=c(none='none', up='up', down='down')) +
-        AddPlotStyle(xlab="log2FoldChange", ylab="-log10(pvalue)", legend_position="bottom")
+        AddPlotStyle(xlab="log2FoldChange", ylab="-log10(pvalue)", legend_position="none")
     
     # If there is a log2 threshold > 0, add vertical lines
     if (log2FC > 0) {
@@ -916,7 +917,7 @@ DegsAvgData = function(object, cells=NULL, genes=NULL, slot="data") {
 #' @param annotation Gene annotation to include in the tables. Will be merged using the rownames. Can be NULL.
 #' @param additional_readme A data.frame for describing additional columns. Should contain columns 'Column' and 'Description'. Can be NULL.
 #' @return Output file name.
-DegsWriteToFile = function(degs, file, annotation=NULL, additional_readme=NULL) {
+DegsWriteToFile = function(degs_lst, file, annotation=NULL, additional_readme=NULL) {
     # Convert to list if not already
     if (is.data.frame(degs_lst)) degs_lst = list(degs_lst)
     
