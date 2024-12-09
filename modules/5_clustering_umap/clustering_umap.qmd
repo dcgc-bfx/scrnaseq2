@@ -827,7 +827,7 @@ gt(sessioninfo)
 ## Parameter
 
 ```{r}
-#| label: read_data_save_parameter  
+#| label: clustering_save_parameter  
 
 paraminfo = ScrnaseqParamsInfo(param()) %>% as.data.frame()
 gt(paraminfo)
