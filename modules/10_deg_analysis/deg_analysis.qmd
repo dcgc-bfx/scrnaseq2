@@ -315,6 +315,24 @@ if (have_deg_comparisons) {
     # Regroup list so that subset comparisons are grouped together
     deg_results_list = split(deg_results_list,
                              purrr::map_chr(deg_results_list, function(r) return(r$name)) )
+    
+    # Write results to files
+    for (i in seq_along(deg_results_list)) {
+        deg_results = deg_results_list[[i]]
+        
+        # Get DEG tables and add names if multiple subsets were analysed
+        deg_tables = purrr::map(deg_results, function(deg_result) return(deg_result$results))
+        if ("subset_column" %in% names(deg_results[[1]])) {
+            deg_table_names = purrr::map_chr(deg_results, function(deg_result) {
+                return(paste(deg_result$subset_group, collapse=","))
+            }) %>% strtrim(31)
+            names(deg_tables) = deg_table_names
+        }
+        
+        # Add annotation to the DEG tables
+        
+        DegsWriteToFile(deg_results, file.path(module_dir, "results"))
+    }
 } else {
     deg_results_list = list()
     CalloutBox("No DEG tests requested.", type="note")
@@ -368,69 +386,46 @@ gt::gt(deg_summary_table) %>%
 
 # Generate report sections for each DEG comparison
 if (have_deg_comparisons) {
-    # Generate chunk templates
-    
-    # 1. for the overview part (at the beginning of the contrast section)
-    chunk_template_overview = "
-\`\`\`{r}
+    # Iterate over the comparisons
+    for (deg_results in deg_results_list) {
+        # deg_results: Result list for this comparison
+        
+        # Show an overview of the comparison
+        # Chunk template
+        chunk_template_overview = "
 ### {{name}}
 
 This is the general configuration for the DEG analysis for this comparison:
 
-* condition column: {{condition_column}}
-* condition group 1: {{condition_group1}}
-* condition group 2: {{condition_group2}}
-* assay: {{assay}}
-* slot: {{slot}}
-* test: {{test}}
-* maximum adjusted p-value: {{padj}}
-* minimum absolute log2 foldchange: {{log2FC}}
-* minimum percentage of cells: {{min_pct}}
-* latent vars: {{latent_vars}}
-* output file: degs_{{name}}_results.xlsx
+* **condition column**: '{{condition_column}}'
+* **condition group 1**: '{{condition_group1}}'
+* **condition group 2**: '{{condition_group2}}'
+* **assay**: '{{assay}}'
+* **slot**: '{{slot}}'
+* **test**: '{{test}}'
+* **maximum adjusted p-value**: '{{padj}}'
+* **minimum absolute log2 foldchange**: '{{log2FC}}'
+* **minimum percentage of cells**: '{{min_pct}}'
+* **latent vars**: '{{latent_vars}}'
+* **output file**: 'degs_{{name}}_results.xlsx'
 
 Here is the overview of the results:
 
 \`\`\`{r}
 #| label: tbl-deg_analysis_{{name}}
-#| tbl-cap: Results for comparison {{name}}
+#| tbl-cap: DEG results for comparison '{{name}}'
 
 deg_results_table = deg_summary_table %>% 
     dplyr::filter(Comparison == '{{name}}') %>%
     dplyr::select(Condition, Group1, Group2, Subset, SubsetGroup, DEG, DEG_up, DEG_down)
     
 gt::gt(deg_results_table) %>%
-    gt::sub_missing(columns=1:ncol(deg_results_table), missing_text="")
+    gt::sub_missing(columns=1:ncol(deg_results_table), missing_text='')
 \`\`\`
 "
-    # 2. for the results(s) obtained for the contrast (can be more if multiple subsets were analysed)
-    chunk_template_comparison = "
-#### 
-    
-\`\`\`{r}
-#| label: tbl-deg_analysis_{{name}}_{{j}}
-#| tbl-cap: Cap
-#| fig-height: 3
-
-plist[['{{i}}']]
-\`\`\`
-
-
-\`\`\`{r}
-#| label: fig-deg_analysis_results_{{name}}_{{j}}
-#| fig-cap: Cap
-#| fig-height: 3
-
-plist[['{{i}}']]
-\`\`\`
-"
-    # Iterate over the comparisons
-    for (deg_results in deg_results_list) {
-        # Result(s) for this comparison
-        # deg_results
         
         # Fill in the overview chunk template and render/knit
-        chunk_filled =  knitr::knit_expand(text=chunk_template_overview,
+        chunk_filled = knitr::knit_expand(text=chunk_template_overview,
                                            condition_column=deg_results[[1]]$condition_column,
                                            condition_group1=deg_results[[1]]$condition_group1,
                                            condition_group2=deg_results[[1]]$condition_group2,
@@ -441,7 +436,7 @@ plist[['{{i}}']]
                                            log2FC=deg_results[[1]]$log2FC,
                                            min_pct=deg_results[[1]]$min_pct,
                                            latent_vars=deg_results[[1]]$latent_vars,
-                                           name=name)
+                                           name=deg_results[[1]]$name)
         if(interactive()) {
             print(EvalKnitrChunk(chunk_filled))
         } else {
@@ -449,8 +444,47 @@ plist[['{{i}}']]
             cat('\n', chunk_filled, '\n', sep='\n')
         }
         
-        # Now iterate over the result(s) for this comparison. If multiple subsets were analysed, there will be multiple results.
-        for (result in deg_results) {
+        # Now show the result(s) for this comparison. If multiple subsets were analysed, there will be multiple results.
+        for (j in seq_along(deg_results)) {
+            deg_result = deg_results[[j]]
+            # deg_result: Each result for this comparison
+            
+            # Add a header if there are multiple subsets
+            if ("subset_column" %in% names(deg_result)) {
+                cat(FormatString("#### Subset {deg_result$subset_column}: {deg_result$subset_group*}"), '\n\n')
+            }
+
+            # Show top 5 genes as well as a scatter and volcano plot
+            # Chunk template
+            chunk_template_comparison = "
+\`\`\`{r}
+#| label: tbl-deg_analysis_{{name}}_{{j}}
+#| tbl-cap: Top five genes tested for comparison '{{name}}' 
+
+top5_degs = deg_result$results %>% 
+    dplyr::select(gene, avg_log2FC, p_val_adj, condition1, condition2) %>%
+    head(5)
+    
+gt::gt(top5_degs)
+\`\`\`
+
+
+\`\`\`{r}
+#| label: fig-deg_analysis_results_{{name}}_{{j}}
+#| fig-cap: Scatter and volcano plot for comparison '{{name}}'
+#| fig-height: 4
+
+patchwork::wrap_plots(deg_result$scatter_plot, deg_result$volcano_plot)
+\`\`\`
+"
+            # Fill in the comparison chunk template and render/knit
+            chunk_filled =  knitr::knit_expand(text=chunk_template_comparison, name=deg_result$name, j=j)
+            if(interactive()) {
+                print(EvalKnitrChunk(chunk_filled))
+            } else {
+                chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+                cat('\n', chunk_filled, '\n', sep='\n')
+            }
         }
     }
 }
