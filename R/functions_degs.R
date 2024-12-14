@@ -915,9 +915,9 @@ DegsAvgData = function(object, cells=NULL, genes=NULL, slot="data") {
 #' @param degs Table with DEG analysis results. Can also be a list of tables so that each table is written into an extra Excel tab.
 #' @param file Output file name.
 #' @param annotation Gene annotation to include in the tables. Will be merged using the rownames. Can be NULL.
-#' @param additional_readme A data.frame for describing additional columns. Should contain columns 'Column' and 'Description'. Can be NULL.
+#' @param parameter A data.frame for describing test parameter. Can be NULL.
 #' @return Output file name.
-DegsWriteToFile = function(degs_lst, file, annotation=NULL, additional_readme=NULL) {
+DegsWriteToFile = function(degs_lst, file, annotation=NULL, parameter=NULL) {
     # Convert to list if not already
     if (is.data.frame(degs_lst)) degs_lst = list(degs_lst)
     
@@ -932,6 +932,11 @@ DegsWriteToFile = function(degs_lst, file, annotation=NULL, additional_readme=NU
         })
     }
     
+    # Add parameter
+    if (!is.null(parameter)) {
+      degs_lst = c(list("Parameter"=parameter), degs_lst)
+    }
+    
     # Add README
     readme_table = data.frame(Column=c("gene"), Description=c("Gene"))
     readme_table = rbind(readme_table, 
@@ -944,7 +949,6 @@ DegsWriteToFile = function(degs_lst, file, annotation=NULL, additional_readme=NU
                          c("condition2", "Average normalized expression in condition 2"),
                          c("cluster", "Cluster (not always applicable)"),
                          c("...", "Additional annotation (if provided)"))
-    if (!is.null(additional_readme)) readme_table = dplyr::bind_rows(readme_table, additional_readme)
     degs_lst = c(list("README"=readme_table), degs_lst)
     
     # Fix names that are more than 31bp (which is too long for Excel)

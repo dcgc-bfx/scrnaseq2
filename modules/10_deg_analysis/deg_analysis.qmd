@@ -87,9 +87,7 @@ params:
   contrasts_file: null
   
   # Run DEG tests: True, false or a list with contrast names
-  run_deg_tests:
-      - Comparison1
-      - Comparison3
+  run_deg_tests: true
   
   # Run over-representation analysis (ORA) for DEG results: True, false or a list with contrast names
   run_deg_ora: true
@@ -301,37 +299,58 @@ if (have_deg_comparisons) {
     deg_results_list = DegsRunTests(contrasts_list[deg_tests_idx])
     
     # Generate scatter plots
-    deg_results_list = purrr::map(deg_results_list, function(result) {
-        result[["scatter_plot"]] = DegsScatterPlot(result)
-        return(result)
+    deg_results_list = purrr::map(deg_results_list, function(deg_result) {
+        deg_result[["scatter_plot"]] = DegsScatterPlot(deg_result)
+        return(deg_result)
     })
     
     # Generate volcano plots
-    deg_results_list = purrr::map(deg_results_list, function(result) {
-        result[["volcano_plot"]] = DegsVolcanoPlot(result)
-        return(result)
+    deg_results_list = purrr::map(deg_results_list, function(deg_result) {
+        deg_result[["volcano_plot"]] = DegsVolcanoPlot(deg_result)
+        return(deg_result)
     })
     
     # Regroup list so that subset comparisons are grouped together
     deg_results_list = split(deg_results_list,
-                             purrr::map_chr(deg_results_list, function(r) return(r$name)) )
+                             purrr::map_chr(deg_results_list, function(deg_result) return(deg_result$name)) )
     
     # Write results to files
     for (i in seq_along(deg_results_list)) {
-        deg_results = deg_results_list[[i]]
+      deg_results = deg_results_list[[i]]
         
-        # Get DEG tables and add names if multiple subsets were analysed
-        deg_tables = purrr::map(deg_results, function(deg_result) return(deg_result$results))
-        if ("subset_column" %in% names(deg_results[[1]])) {
-            deg_table_names = purrr::map_chr(deg_results, function(deg_result) {
-                return(paste(deg_result$subset_group, collapse=","))
-            }) %>% strtrim(31)
-            names(deg_tables) = deg_table_names
-        }
-        
-        # Add annotation to the DEG tables
-        
-        DegsWriteToFile(deg_results, file.path(module_dir, "results"))
+      # Get DEG tables and add names if multiple subsets were analysed
+      deg_tables = purrr::map(deg_results, function(deg_result) return(deg_result$results))
+      if ("subset_column" %in% names(deg_results[[1]])) {
+          deg_table_names = purrr::map_chr(deg_results, function(deg_result) {
+              return(paste(deg_result$subset_group, collapse=","))
+          }) %>% strtrim(31)
+          names(deg_tables) = deg_table_names
+      }
+      
+      # Add annotation to the DEG tables
+      # This table has 0 columns if no Ensembl was used
+      assay = deg_results[[1]]$assay
+      annot_ensembl = sc[[assay]][[]] %>% dplyr::select(dplyr::starts_with("ensembl_"))
+      
+      # Collect configuration
+      config_names = c("condition_column", "condition_group1", "condition_group2", "bulk_by", "pseudobulk_samples", "assay", "test", "padj", "log2FC", "min_pct", "covariate", "downsample_n")
+      config_values = ifelse(config_names %in% names(deg_results[[1]]), deg_results[[1]][config_names], NA) %>% unlist()
+      if ("subset_column" %in% names(deg_results[[1]])) {
+        config_names = c(config_names, "subset_column")
+        config_values[["subset_column"]] = deg_results[[1]]$subset_column
+        config_names = c(config_names, "subset_groups")
+        config_values[["subset_group"]] = purrr::map_chr(deg_results, function(deg_result) return(paste(deg_result$subset_group, collapse="+"))) %>% paste(collapse=", ")
+      }
+      config_df = data.frame(Config=config_names,
+                             Value=config_values)
+      rownames(config_df) = NULL
+      
+      # Write to file
+      outfile = paste0("degs_", deg_results[[1]]$name, "_results.xlsx")
+      DegsWriteToFile(deg_tables,
+                      annotation=annot_ensembl,
+                      file=file.path(module_dir, "results", outfile),
+                      parameter=config_df)
     }
 } else {
     deg_results_list = list()
@@ -397,17 +416,22 @@ if (have_deg_comparisons) {
 
 This is the general configuration for the DEG analysis for this comparison:
 
-* **condition column**: '{{condition_column}}'
-* **condition group 1**: '{{condition_group1}}'
-* **condition group 2**: '{{condition_group2}}'
-* **assay**: '{{assay}}'
-* **slot**: '{{slot}}'
-* **test**: '{{test}}'
-* **maximum adjusted p-value**: '{{padj}}'
-* **minimum absolute log2 foldchange**: '{{log2FC}}'
-* **minimum percentage of cells**: '{{min_pct}}'
-* **latent vars**: '{{latent_vars}}'
-* **output file**: 'degs_{{name}}_results.xlsx'
+* condition column: '{{condition_column}}'
+* condition group 1: '{{condition_group1}}'
+* condition group 2: '{{condition_group2}}'
+* subset column: '{{subset_column}}'
+* subset groups: '{{subset_group}}'
+* bulk by: '{{bulk_by}}'
+* pseudobulk samples: '{{pseudobulk_samples}}'
+* assay: '{{assay}}'
+* slot: '{{slot}}'
+* test: '{{test}}'
+* maximum adjusted p-value: '{{padj}}'
+* minimum absolute log2 foldchange: '{{log2FC}}'
+* minimum percentage of cells: '{{min_pct}}'
+* covariate: '{{covariate}}'
+* downsample n: '{{downsample_n}}'
+* output file: 'degs_{{name}}_results.xlsx'
 
 Here is the overview of the results:
 
@@ -424,19 +448,32 @@ gt::gt(deg_results_table) %>%
 \`\`\`
 "
         
+        if ("subset_column" %in% names(deg_results[[1]])) {
+          subset_column = deg_results[[1]]$subset_column
+          subset_groups = purrr::map_chr(deg_results, function(deg_result) return(paste(deg_result$subset_group, collapse="+"))) %>% paste(collapse=", ")
+        } else {
+          subset_column = ""
+          subset_groups = ""
+        }
+        
         # Fill in the overview chunk template and render/knit
         chunk_filled = knitr::knit_expand(text=chunk_template_overview,
-                                           condition_column=deg_results[[1]]$condition_column,
-                                           condition_group1=deg_results[[1]]$condition_group1,
-                                           condition_group2=deg_results[[1]]$condition_group2,
-                                           assay=deg_results[[1]]$assay,
-                                           slot=deg_results[[1]]$slot,
-                                           test=deg_results[[1]]$test,
-                                           padj=deg_results[[1]]$padj,
-                                           log2FC=deg_results[[1]]$log2FC,
-                                           min_pct=deg_results[[1]]$min_pct,
-                                           latent_vars=deg_results[[1]]$latent_vars,
-                                           name=deg_results[[1]]$name)
+                                          condition_column=deg_results[[1]]$condition_column,
+                                          condition_group1=deg_results[[1]]$condition_group1,
+                                          condition_group2=deg_results[[1]]$condition_group2,
+                                          subset_column=subset_column,
+                                          subset_group=subset_groups,
+                                          bulk_by=deg_results[[1]]$bulk_by,
+                                          pseudobulk_samples=deg_results[[1]]$pseudobulk_samples,
+                                          assay=deg_results[[1]]$assay,
+                                          slot=deg_results[[1]]$slot,
+                                          test=deg_results[[1]]$test,
+                                          padj=deg_results[[1]]$padj,
+                                          log2FC=deg_results[[1]]$log2FC,
+                                          min_pct=deg_results[[1]]$min_pct,
+                                          covariate=deg_results[[1]]$covariate,
+                                          downsample_n=deg_results[[1]]$downsample_n,
+                                          name=deg_results[[1]]$name)
         if(interactive()) {
             print(EvalKnitrChunk(chunk_filled))
         } else {
@@ -447,11 +484,18 @@ gt::gt(deg_results_table) %>%
         # Now show the result(s) for this comparison. If multiple subsets were analysed, there will be multiple results.
         for (j in seq_along(deg_results)) {
             deg_result = deg_results[[j]]
+            name = deg_result$name
+            
             # deg_result: Each result for this comparison
             
             # Add a header if there are multiple subsets
             if ("subset_column" %in% names(deg_result)) {
-                cat(FormatString("#### Subset {deg_result$subset_column}: {deg_result$subset_group*}"), '\n\n')
+              subset_column = deg_result$subset_column
+              subset_group = paste(deg_result$subset_group, collapse="+")
+              cat(FormatString("#### Subset {subset_column}: {subset_group}"), '\n\n')
+            } else {
+              subset_column = ""
+              subset_group = ""
             }
 
             # Show top 5 genes as well as a scatter and volcano plot
@@ -459,7 +503,7 @@ gt::gt(deg_results_table) %>%
             chunk_template_comparison = "
 \`\`\`{r}
 #| label: tbl-deg_analysis_{{name}}_{{j}}
-#| tbl-cap: Top five genes tested for comparison '{{name}}' 
+#| tbl-cap: Top five genes tested for comparison '{{name_subset}}'
 
 top5_degs = deg_result$results %>% 
     dplyr::select(gene, avg_log2FC, p_val_adj, condition1, condition2) %>%
@@ -471,14 +515,17 @@ gt::gt(top5_degs)
 
 \`\`\`{r}
 #| label: fig-deg_analysis_results_{{name}}_{{j}}
-#| fig-cap: Scatter and volcano plot for comparison '{{name}}'
+#| fig-cap: Scatter and volcano plot for comparison '{{name_subset}}'
 #| fig-height: 4
 
 patchwork::wrap_plots(deg_result$scatter_plot, deg_result$volcano_plot)
 \`\`\`
 "
             # Fill in the comparison chunk template and render/knit
-            chunk_filled =  knitr::knit_expand(text=chunk_template_comparison, name=deg_result$name, j=j)
+            chunk_filled =  knitr::knit_expand(text=chunk_template_comparison, 
+                                               name=name,
+                                               name_subset=ifelse(nchar(subset_group)>0, paste0(name,": ", subset_group), name),
+                                               j=j)
             if(interactive()) {
                 print(EvalKnitrChunk(chunk_filled))
             } else {
