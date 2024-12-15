@@ -16,10 +16,12 @@ NewContrastsList = function(sc, contrasts_list) {
         # Trim whitespace
         contrast = purrr::map(contrast, trimws)
         
-        # name
+        # name: should only contain alphanumeric characters, underscores and hyphens
         assertthat::assert_that("name" %in% names(contrast), 
                                 msg=FormatString("The name ('name') is missing (for comparison {i})."))
         name = contrast[["name"]]
+        assertthat::assert_that(grepl("^[[:alnum:]_\\-]+$", name),
+                                msg=FormatString("The name ('name') must only contain alphanumeric characters, underscores and hyphens (for comparison {i})."))
         
         # condition_column
         assertthat::assert_that("condition_column" %in% names(contrast),

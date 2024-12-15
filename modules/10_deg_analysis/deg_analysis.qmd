@@ -316,6 +316,7 @@ if (have_deg_comparisons) {
     
     # Write results to files
     for (i in seq_along(deg_results_list)) {
+        i = 1
       deg_results = deg_results_list[[i]]
         
       # Get DEG tables and add names if multiple subsets were analysed
@@ -334,7 +335,7 @@ if (have_deg_comparisons) {
       
       # Collect configuration
       config_names = c("condition_column", "condition_group1", "condition_group2", "bulk_by", "pseudobulk_samples", "assay", "test", "padj", "log2FC", "min_pct", "covariate", "downsample_n")
-      config_values = ifelse(config_names %in% names(deg_results[[1]]), deg_results[[1]][config_names], NA) %>% unlist()
+      config_values = ifelse(config_names %in% names(deg_results[[1]]), deg_results[[1]][config_names], "-") %>% unlist()
       if ("subset_column" %in% names(deg_results[[1]])) {
         config_names = c(config_names, "subset_column")
         config_values[["subset_column"]] = deg_results[[1]]$subset_column
@@ -415,29 +416,29 @@ if (have_deg_comparisons) {
 ### {{name}}
 
 This is the general configuration for the DEG analysis for this comparison:
-
-* condition column: '{{condition_column}}'
-* condition group 1: '{{condition_group1}}'
-* condition group 2: '{{condition_group2}}'
-* subset column: '{{subset_column}}'
-* subset groups: '{{subset_group}}'
-* bulk by: '{{bulk_by}}'
-* pseudobulk samples: '{{pseudobulk_samples}}'
-* assay: '{{assay}}'
-* slot: '{{slot}}'
-* test: '{{test}}'
-* maximum adjusted p-value: '{{padj}}'
-* minimum absolute log2 foldchange: '{{log2FC}}'
-* minimum percentage of cells: '{{min_pct}}'
-* covariate: '{{covariate}}'
-* downsample n: '{{downsample_n}}'
-* output file: 'degs_{{name}}_results.xlsx'
+    
+* condition column: {{condition_column}}
+* condition group 1: {{condition_group1}}
+* condition group 2: {{condition_group2}}
+* subset column: {{subset_column}}
+* subset groups: {{subset_group}}
+* bulk by: {{bulk_by}}
+* pseudobulk samples: {{pseudobulk_samples}}
+* assay: {{assay}}
+* data: {{slot}}
+* test: {{test}}
+* maximum adjusted p-value: {{padj}}
+* minimum absolute log2 foldchange: {{log2FC}}
+* minimum percentage of expressing cells: {{min_pct}}
+* covariate: {{covariate}}
+* downsample n: {{downsample_n}}
+* output file: degs_{{name}}_results.xlsx
 
 Here is the overview of the results:
 
 \`\`\`{r}
-#| label: tbl-deg_analysis_{{name}}
-#| tbl-cap: DEG results for comparison '{{name}}'
+#| label: tbl-deg_analysis_results_{{name}}
+#| tbl-cap: DEG results for comparison
 
 deg_results_table = deg_summary_table %>% 
     dplyr::filter(Comparison == '{{name}}') %>%
@@ -452,8 +453,8 @@ gt::gt(deg_results_table) %>%
           subset_column = deg_results[[1]]$subset_column
           subset_groups = purrr::map_chr(deg_results, function(deg_result) return(paste(deg_result$subset_group, collapse="+"))) %>% paste(collapse=", ")
         } else {
-          subset_column = ""
-          subset_groups = ""
+          subset_column = NULL
+          subset_groups = NULL
         }
         
         # Fill in the overview chunk template and render/knit
@@ -461,18 +462,18 @@ gt::gt(deg_results_table) %>%
                                           condition_column=deg_results[[1]]$condition_column,
                                           condition_group1=deg_results[[1]]$condition_group1,
                                           condition_group2=deg_results[[1]]$condition_group2,
-                                          subset_column=subset_column,
-                                          subset_group=subset_groups,
-                                          bulk_by=deg_results[[1]]$bulk_by,
-                                          pseudobulk_samples=deg_results[[1]]$pseudobulk_samples,
+                                          subset_column=subset_column %||% "-",
+                                          subset_group=subset_groups %||% "-",
+                                          bulk_by=deg_results[[1]]$bulk_by %||% "-",
+                                          pseudobulk_samples=deg_results[[1]]$pseudobulk_samples %||% 0,
                                           assay=deg_results[[1]]$assay,
                                           slot=deg_results[[1]]$slot,
                                           test=deg_results[[1]]$test,
                                           padj=deg_results[[1]]$padj,
                                           log2FC=deg_results[[1]]$log2FC,
                                           min_pct=deg_results[[1]]$min_pct,
-                                          covariate=deg_results[[1]]$covariate,
-                                          downsample_n=deg_results[[1]]$downsample_n,
+                                          covariate=deg_results[[1]]$covariate %||% "-",
+                                          downsample_n=deg_results[[1]]$downsample_n %||% 0,
                                           name=deg_results[[1]]$name)
         if(interactive()) {
             print(EvalKnitrChunk(chunk_filled))
@@ -502,8 +503,8 @@ gt::gt(deg_results_table) %>%
             # Chunk template
             chunk_template_comparison = "
 \`\`\`{r}
-#| label: tbl-deg_analysis_{{name}}_{{j}}
-#| tbl-cap: Top five genes tested for comparison '{{name_subset}}'
+#| label: tbl-deg_analysis_results_{{name}}_{{j}}
+#| tbl-cap: \"Top five genes tested for comparison\"
 
 top5_degs = deg_result$results %>% 
     dplyr::select(gene, avg_log2FC, p_val_adj, condition1, condition2) %>%
@@ -515,7 +516,7 @@ gt::gt(top5_degs)
 
 \`\`\`{r}
 #| label: fig-deg_analysis_results_{{name}}_{{j}}
-#| fig-cap: Scatter and volcano plot for comparison '{{name_subset}}'
+#| fig-cap: \"Scatter and volcano plot for comparison\"
 #| fig-height: 4
 
 patchwork::wrap_plots(deg_result$scatter_plot, deg_result$volcano_plot)
@@ -524,7 +525,7 @@ patchwork::wrap_plots(deg_result$scatter_plot, deg_result$volcano_plot)
             # Fill in the comparison chunk template and render/knit
             chunk_filled =  knitr::knit_expand(text=chunk_template_comparison, 
                                                name=name,
-                                               name_subset=ifelse(nchar(subset_group)>0, paste0(name,": ", subset_group), name),
+                                               name_subset=ifelse(nchar(subset_group)>0, paste0(name,", ", subset_column, ": ", subset_group), name),
                                                j=j)
             if(interactive()) {
                 print(EvalKnitrChunk(chunk_filled))
