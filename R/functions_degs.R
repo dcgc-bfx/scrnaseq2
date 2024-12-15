@@ -1,17 +1,19 @@
-#' Sets up a list with contrasts for analysis. Makes sure that all required information is available. Does basic checks.
+#' Sets up a list with contrasts for analysis. Makes sure that all required information is available. Sets default and does basic checks.
 #' 
 #' @param sc A Seurat single cell object.
 #' @param contrasts_list A list of contrasts. Must at least contain 'name', condition_column', 'condition_group1' and 'condition_group2'.
-#' @return A updated list with contrasts.
+#' @return A list with contrasts. Each list entry is a list either of length 1 (if there is only one comparison per contrast) or of length >1 
+#' (if comparisons are done for multiple subsets for a contrast)
 NewContrastsList = function(sc, contrasts_list) {
-    barcode_metadata = sc[[]]
-    
     # If empty, return empty list
     if (length(contrasts_list) == 0) return(list())
     
     # Convert into list, do checks and set up defaults
     contrasts_list = purrr::map(seq(contrasts_list), function(i) {
         contrast = contrasts_list[[i]]
+        
+        # Get barcode metadata
+        barcode_metadata = sc[[]]
         
         # Trim whitespace
         contrast = purrr::map(contrast, trimws)
@@ -22,6 +24,24 @@ NewContrastsList = function(sc, contrasts_list) {
         name = contrast[["name"]]
         assertthat::assert_that(grepl("^[[:alnum:]_\\-]+$", name),
                                 msg=FormatString("The name ('name') must only contain alphanumeric characters, underscores and hyphens (for comparison {i})."))
+        
+        # assay 
+        if (!"assay" %in% names(contrast)) contrast[["assay"]] = Seurat::DefaultAssay(sc)
+        contrast[["assay"]] = contrast[["assay"]] %>% 
+            trimws()
+        valid_assays = Seurat::Assays(sc)
+        valid_reductions = Seurat::Reductions(sc)
+        assertthat::assert_that(contrast[["assay"]] %in% valid_assays | 
+                                    contrast[["assay"]] %in% valid_reductions | 
+                                    contrast[["assay"]] %in% names(barcode_metadata),
+                                msg=FormatString("The assay ('assay') must be one of the assays {valid_assays*}, one of the reductions {valid_reductions*} or barcode metadata columns (for comparison {i}/{name})."))
+        assay = contrast[["assay"]]
+        
+        # Subset barcode metadata for assay/reduction
+        if (assay %in% valid_assays | assay %in% valid_reductions) {
+            bcs = SeuratObject::Cells(sc[[assay]])
+            barcode_metadata = barcode_metadata[bcs, ]
+        }
         
         # condition_column
         assertthat::assert_that("condition_column" %in% names(contrast),
@@ -325,17 +345,7 @@ NewContrastsList = function(sc, contrasts_list) {
         if (!"min_pct" %in% names(contrast)) contrast[["min_pct"]] = 0.05
         contrast[["min_pct"]] = as.numeric(contrast[["min_pct"]])
         
-        # assay, also decide on method to bulk if bulk_by or pseudobulk_samples is set
-        if (!"assay" %in% names(contrast)) contrast[["assay"]] = Seurat::DefaultAssay(sc)
-        assay = contrast[["assay"]] %>% 
-            strsplit(split="\\,") %>% 
-            unlist() %>% 
-            trimws()
-        valid_assays = Seurat::Assays(sc)
-        valid_reductions = Seurat::Reductions(sc)
-        assertthat::assert_that(all(contrast[["assay"]] %in% valid_assays) | all(contrast[["assay"]] %in% valid_reductions) | all(assay %in% names(barcode_metadata)),
-                                msg=FormatString("The assay ('assay') must be one of the assays {valid_assays*}, one of the reductions {valid_reductions*} or barcode metadata columns (for comparison {i}/{name})."))
-        
+        # bulk if bulk_by or pseudobulk_samples is set
         if ("bulk_by" %in% names(contrast) | "pseudobulk_samples" %in% names(contrast)) {
             contrast[["bulk_method"]] = dplyr::case_when(
                 all(assay %in% valid_assays) ~ "aggregate",
@@ -416,18 +426,18 @@ NewContrastsList = function(sc, contrasts_list) {
             contrasts_expanded = list(contrast)
         }
         return(contrasts_expanded)
-    }) %>% purrr::flatten()
+    })
     
     return(contrasts_list)
 }
 
-#' Given a list with contrasts, prepares Seurat objects. For each contrast, it extracts all 
+#' Given a contrast configuration, prepares a Seurat object. The function extracts all 
 #' relevant data and if requested bulk-aggregates and downsamples barcodes.
 #' 
 #' @param sc A Seurat single cell object.
-#' @param contrasts_list A list of contrasts. Must have been set up with NewContrastsList.
+#' @param contrast A contrast Must have been set up with NewContrastsList where e
 #' @return A updated list with contrasts with an 'object' entry (.
-PrepareContrastsListObjects = function(sc, contrasts_list) {
+PrepareContrast = function(sc, contrasts_list) {
     barcode_metadata = sc[[]]
     
     contrasts_list = purrr::map(seq(contrasts_list), function(i){

@@ -29,7 +29,7 @@ params:
   # Number of cores to use for computations
   cores: 4
   
-  # Contrasts to find differentially expressed genes
+  # Contrasts
   # Add entries below 'value'.
   # Each entry has a unique name and the following keys:
   #
@@ -61,9 +61,9 @@ params:
   # padj: Maximum adjusted p-value (default: 0.05)
   # log2FC: Minimum absolute log2 fold change (default: 0)
   # min_pct: Minimum percentage of barcodes expressing a feature in one group (default: 0.05)
-  # test: Type of test. Can be 'wilcox', 'bimod', 'roc', 't', 'negbinom', 'poisson', 'LR', 'MAST', 'DESeq2' (default: 'wilcox').
+  # test: Type of test for identifying differentially expressed genes. Can be 'wilcox', 'bimod', 'roc', 't', 'negbinom', 'poisson', 'LR', 'MAST', 'DESeq2' (default: 'wilcox').
   # downsample_barcodes: Downsample each group to at most n barcodes (default: null)
-  # covariate: One or two columns (comma-separated) to include as covariates (default: null)
+  # covariate: One or two columns (comma-separated) to include as covariates for testing (default: null)
   #
   contrasts:
       value:
@@ -89,8 +89,12 @@ params:
   # Run DEG tests: True, false or a list with contrast names
   run_deg_tests: true
   
-  # Run over-representation analysis (ORA) for DEG results: True, false or a list with contrast names
-  run_deg_ora: true
+  # Run over-representation analysis (ORA) for DEG results: True, false or a list with contrast names.
+  # ORA uses genesets from MSigDB (https://www.gsea-msigdb.org/gsea/msigdb) or user-defined genesets (see below).
+  run_ora: true
+  
+  # User-defined genesets in Excel or CSV to use instead MSigDB  The files should have these columns: gs_cat, gs_subcat, gene_id, gene_symbol.
+  ora_geneset_files: null
     
 # Module execution
 execute:
@@ -224,16 +228,16 @@ if (is.character(param("constrasts")) && file.exists(param("contrasts"))) {
   })
 }
 
-# For each comparison, collect the necessary information (which groups to compare, the assay to use, etc).
-# Each list entry is a comparison. If a comparison is done for multiple subsets (subset_column/subset_group), each subset is a separate entry.
+# For each contrast, collect the necessary information (which groups to compare, the assay to use, etc).
+# Note: Each list entry is a list either of length 1 (if there is only one comparison) or of length >1 (if multiple subsets are analysed).
 contrasts_list = NewContrastsList(sc, contrasts_list)
 
-# For each comparison, prepare an individual Seurat object with counts and data. Bulk-aggregate if requested. Downsample if requested.
-contrasts_list = PrepareContrastsListObjects(sc, contrasts_list)
+# For each contrast, prepare an individual Seurat object(s - if multiple subsets analysed) with counts and data. 
+# Bulk-aggregate if requested. Downsample if requested.
+contrasts_list = purrr::map_depth(contrasts_list, 2, function(c) return(PrepareContrast(sc)
 
 # Which contrasts should be DEG tested?
 run_deg_tests = param("run_deg_tests")
-deg_tests_idx = c()
 if (is.logical(run_deg_tests) && run_deg_tests) {
     # if TRUE all, else none
     if (run_deg_tests) {
@@ -249,19 +253,19 @@ if (is.logical(run_deg_tests) && run_deg_tests) {
 have_deg_comparisons = length(deg_tests_idx) > 0
 
 # For the contrasts that are DEG tested: for which should also over-representation analysis be run?
-run_deg_ora = param("run_deg_ora")
+run_ora = param("run_ora")
 deg_ora_idx = c()
-if (is.logical(run_deg_ora)) {
+if (is.logical(run_ora)) {
     # if TRUE all, else none
-    if (run_deg_ora) {
+    if (run_ora) {
         deg_ora_idx = deg_tests_idx
     } else {
         deg_ora_idx = c()
     }
-} else if (is.character(run_deg_ora)) {
+} else if (is.character(run_ora)) {
     # if character, only those
     deg_ora_idx = seq(contrasts_list) %>% 
-      purrr::keep(function(i) return(contrasts_list[[i]]$name %in% run_deg_ora))
+      purrr::keep(function(i) return(contrasts_list[[i]]$name %in% run_ora))
 }
 if (!all(deg_ora_idx %in% deg_tests_idx)) {
   stop("Not all contrasts for over-representation analysis are also tested for DEGs.")
@@ -316,7 +320,6 @@ if (have_deg_comparisons) {
     
     # Write results to files
     for (i in seq_along(deg_results_list)) {
-        i = 1
       deg_results = deg_results_list[[i]]
         
       # Get DEG tables and add names if multiple subsets were analysed
@@ -539,6 +542,12 @@ patchwork::wrap_plots(deg_result$scatter_plot, deg_result$volcano_plot)
 ```
 
 ## Software
+
+- geneset_file:
+- gs_msigdb:
+- gs_cat:
+- gs_subcat:
+
 
 ```{r}
 #| label: deg_analysis_save_software
