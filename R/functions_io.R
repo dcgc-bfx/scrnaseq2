@@ -1859,7 +1859,9 @@ UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL, update_tool_saves
 #' @param output_name Name of the Loupe file (cloupe.cloupe).
 ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, output_dir=".", output_name="cloupe.cloupe") {
   # Setup eula and download executable for loupeR.
-  # Needs to be done only once but cannot be done automatically.
+  loupeR::setup()
+  
+  # It it does not work automatically, it must be done manually
   louper_status = loupeR:::needs_setup()
   if (!louper_status$success) stop(louper_status$msg)
   
