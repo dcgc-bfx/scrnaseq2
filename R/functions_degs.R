@@ -1,4 +1,5 @@
-#' Sets up a list with contrasts for analysis. Makes sure that all required information is available. Sets default and does basic checks.
+#' Sets up a list with contrasts for analysis. Makes sure that all required information is available. Sets default and does basic checks. 
+#' Each contrast entry is a list either of length 1 (if there is only one comparison) or of length >1 (if the comparison is done for multiple subsets).
 #' 
 #' @param sc A Seurat single cell object.
 #' @param contrasts_list A list of contrasts. Must at least contain 'name', condition_column', 'condition_group1' and 'condition_group2'.
@@ -7,13 +8,13 @@
 NewContrastsList = function(sc, contrasts_list) {
     # If empty, return empty list
     if (length(contrasts_list) == 0) return(list())
+  
+    # Get barcode metadata
+    barcode_metadata = sc[[]]
     
     # Convert into list, do checks and set up defaults
     contrasts_list = purrr::map(seq(contrasts_list), function(i) {
         contrast = contrasts_list[[i]]
-        
-        # Get barcode metadata
-        barcode_metadata = sc[[]]
         
         # Trim whitespace
         contrast = purrr::map(contrast, trimws)
@@ -37,10 +38,11 @@ NewContrastsList = function(sc, contrasts_list) {
                                 msg=FormatString("The assay ('assay') must be one of the assays {valid_assays*}, one of the reductions {valid_reductions*} or barcode metadata columns (for comparison {i}/{name})."))
         assay = contrast[["assay"]]
         
-        # Subset barcode metadata for assay/reduction
+        # Identify barcodes that are in assay/reduction. Result is a boolean vector that will be used later to get the correct barcodes.
         if (assay %in% valid_assays | assay %in% valid_reductions) {
-            bcs = SeuratObject::Cells(sc[[assay]])
-            barcode_metadata = barcode_metadata[bcs, ]
+            barcodes_in_assay = rownames(barcode_metadata) %in% SeuratObject::Cells(sc[[assay]])
+        } else {
+            barcodes_in_assay = rep(TRUE, nrow(barcode_metadata))
         }
         
         # condition_column
@@ -88,7 +90,7 @@ NewContrastsList = function(sc, contrasts_list) {
             contrast[["condition_group1"]] = condition_group1
             
             # Get indices of condition_group1
-            contrast[["condition_group1_idx"]] = which(barcode_metadata[, condition_column] %in% condition_group1)
+            contrast[["condition_group1_idx"]] = which(barcodes_in_assay & barcode_metadata[, condition_column] %in% condition_group1)
         } else {
             condition_group1 = contrast[["condition_group1"]]
             
@@ -166,7 +168,7 @@ NewContrastsList = function(sc, contrasts_list) {
             contrast[["condition_group2"]] = condition_group2
             
             # Get indices of condition_group2
-            contrast[["condition_group2_idx"]] = which(barcode_metadata[, condition_column] %in% condition_group2)
+            contrast[["condition_group2_idx"]] = which(barcodes_in_assay & barcode_metadata[, condition_column] %in% condition_group2)
         } else {
             condition_group2 = contrast[["condition_group2"]]
             
@@ -246,7 +248,7 @@ NewContrastsList = function(sc, contrasts_list) {
                 
                 # Get indices of subset_group
                 contrast[["subset_group_idx"]] = purrr::map(subset_group, function(s) {
-                    which(barcode_metadata[, subset_column] %in% s)
+                    return(which(barcodes_in_assay & barcode_metadata[, subset_column] %in% s))
                 })
             } else {
                 # Sheet number appended?
@@ -405,266 +407,405 @@ NewContrastsList = function(sc, contrasts_list) {
     # Expand subsets list so that there is now one entry per subset
     # Also get barcode indices per subset
     contrasts_list = purrr::map(contrasts_list, function(contrast) {
-        if ("subset_group" %in% names(contrast)) {
-            contrasts_expanded = purrr::map(seq(contrast[["subset_group"]]), function(i) {
-                # Set up new contrast with just the subset group and barcodes indices
-                con = contrast
-                con[["subset_group"]] = contrast[["subset_group"]][[i]]
-                con[["subset_group_idx"]] = contrast[["subset_group_idx"]][[i]]
-                
-                # Filter barcodes (condition_group1_idx and condition_group2_idx) so that they are in the subset group
-                subset_group_barcodes = rownames(barcode_metadata[con[["subset_group_idx"]], ]) %>% unique()
-                
-                k = rownames(barcode_metadata[contrast[["condition_group1_idx"]], ]) %in% subset_group_barcodes
-                con[["condition_group1_idx"]] = contrast[["condition_group1_idx"]][k]
-                
-                k = rownames(barcode_metadata[contrast[["condition_group2_idx"]], ]) %in% subset_group_barcodes
-                con[["condition_group2_idx"]] = contrast[["condition_group2_idx"]][k]
-                return(con)
-            })
-        } else {
-            contrasts_expanded = list(contrast)
-        }
-        return(contrasts_expanded)
+      if ("subset_group" %in% names(contrast)) {
+          contrasts_expanded = purrr::map(seq(contrast[["subset_group"]]), function(i) {
+              # Set up new contrast with just the subset group and barcodes indices
+              con = contrast
+              con[["subset_group"]] = contrast[["subset_group"]][[i]]
+              con[["subset_group_idx"]] = contrast[["subset_group_idx"]][[i]]
+              
+              # Filter barcodes (condition_group1_idx and condition_group2_idx) so that they are in the subset group
+              subset_group_barcodes = rownames(barcode_metadata[con[["subset_group_idx"]], ]) %>% unique()
+              
+              k = rownames(barcode_metadata[contrast[["condition_group1_idx"]], ]) %in% subset_group_barcodes
+              con[["condition_group1_idx"]] = contrast[["condition_group1_idx"]][k]
+              
+              k = rownames(barcode_metadata[contrast[["condition_group2_idx"]], ]) %in% subset_group_barcodes
+              con[["condition_group2_idx"]] = contrast[["condition_group2_idx"]][k]
+              return(con)
+          })
+          names(contrasts_expanded) = purrr::map(contrast[["subset_group"]], paste, collapse="+") %>% unlist()
+      } else {
+          contrasts_expanded = list(contrast)
+      }
+      return(contrasts_expanded)
     })
+    
+    # Add names for contrasts
+    contrasts_names = purrr::map_chr(contrasts_list, function(contrast) {
+        return(contrast[[1]][["name"]])
+    })
+    names(contrasts_list) = contrasts_names
     
     return(contrasts_list)
 }
 
 #' Given a contrast configuration, prepares a Seurat object. The function extracts all 
-#' relevant data and if requested bulk-aggregates and downsamples barcodes.
+#' relevant data and if requested bulk-aggregates and downsamples barcodes. Note that if
+#' a contrast has multiple comparisons (for each subset), this function needs to be run on each of them separately.
 #' 
 #' @param sc A Seurat single cell object.
-#' @param contrast A contrast Must have been set up with NewContrastsList where e
-#' @return A updated list with contrasts with an 'object' entry (.
-PrepareContrast = function(sc, contrasts_list) {
+#' @param contrast A contrast configuration. Must have been set up with NewContrastsList.
+#' @return A contrast configuration with an 'object' entry for the Seurat object.
+PrepareContrast = function(sc, contrast) {
     barcode_metadata = sc[[]]
     
-    contrasts_list = purrr::map(seq(contrasts_list), function(i){
-        contrast = contrasts_list[[i]]
-        name = contrast[["name"]]
+    name = contrast[["name"]]
         
-        # If condition_group1_idx or condition_group2_idx is empty, return
-        if (length(contrast[["condition_group1_idx"]]) == 0 | length(contrast[["condition_group2_idx"]]) == 0) return(contrast)
+    # If condition_group1_idx or condition_group2_idx is empty, return
+    if (length(contrast[["condition_group1_idx"]]) == 0 | length(contrast[["condition_group2_idx"]]) == 0) return(contrast)
         
-        # Get barcodes indices and barcode names
-        condition_group1_idx = contrast[["condition_group1_idx"]]
-        condition_group1 = rownames(barcode_metadata[condition_group1_idx, ])
-        condition_group2_idx = contrast[["condition_group2_idx"]]
-        condition_group2 = rownames(barcode_metadata[condition_group2_idx, ])
+    # Get barcodes indices and barcode names
+    condition_group1_idx = contrast[["condition_group1_idx"]]
+    condition_group1 = rownames(barcode_metadata[condition_group1_idx, ])
+    condition_group2_idx = contrast[["condition_group2_idx"]]
+    condition_group2 = rownames(barcode_metadata[condition_group2_idx, ])
+    
+    # When creating a new Seurat, do not calculate nCounts and nFeatures (not needed); restore default on exit
+    op = options(Seurat.object.assay.calcn = FALSE)
+    on.exit(expr = options(op), add = TRUE)
         
-        # When creating a new Seurat, do not calculate nCounts and nFeatures (not needed); restore default on exit
-        op = options(Seurat.object.assay.calcn = FALSE)
-        on.exit(expr = options(op), add = TRUE)
+    # Extract relevant data and save it as
+    if (all(contrast[["assay"]] %in% Seurat::Assays(sc))) {
+        # Get assay
+        assay_obj = suppressWarnings({subset(sc[[contrast[["assay"]]]],
+                           cells=unique(c(condition_group1_idx, condition_group2_idx)))})
         
-        # Extract relevant data and save it as
-        if (all(contrast[["assay"]] %in% Seurat::Assays(sc))) {
-            # Get assay
-            assay_obj = suppressWarnings({subset(sc[[contrast[["assay"]]]],
-                               cells=unique(c(condition_group1_idx, condition_group2_idx)))})
-            
-            # Remove scale.data layer (never needed and saves a lot of memory)
-            SeuratObject::LayerData(assay_obj, layer="scale.data") = NULL
-        } else if (all(contrast[["assay"]] %in% Seurat::Reductions(sc))) {
-            # Convert reduction into assay
-            reduction = Seurat::Embeddings(sc, reduction=contrast[["assay"]])
-            reduction = reduction[unique(c(condition_group1_idx, condition_group2_idx)), , drop=FALSE] %>% 
-                as.matrix() %>%
-                as("dgCMatrix") %>%
-                Matrix::t()
+        # Remove scale.data layer (never needed and saves a lot of memory)
+        SeuratObject::LayerData(assay_obj, layer="scale.data") = NULL
+    } else if (all(contrast[["assay"]] %in% Seurat::Reductions(sc))) {
+        # Convert reduction into assay
+        reduction = Seurat::Embeddings(sc, reduction=contrast[["assay"]])
+        reduction = reduction[unique(c(condition_group1_idx, condition_group2_idx)), , drop=FALSE] %>% 
+            as.matrix() %>%
+            as("dgCMatrix") %>%
+            Matrix::t()
 
-            assay_obj = SeuratObject::CreateAssay5Object(data=reduction)
-            assay_obj = SeuratObject::AddMetaData(assay_obj, metadata=data.frame(feature_name=rownames(reduction), row.names=rownames(assay_obj)))
-        } else {
-            # Use barcode metadata
-            metadata_columns = contrast[["assay"]]
-            metadata = sc[[data_columns]][unique(c(condition_group1_idx, condition_group2_idx)), , drop=FALSE] %>%
-                as.matrix() %>%
-                as("dgCMatrix") %>%
-                Matrix::t()
-            
-            assay_obj = SeuratObject::CreateAssay5Object(data=metadata)
-            assay_obj = SeuratObject::AddMetaData(assay_obj, metadata=data.frame(feature_name=rownames(metadata), row.names=rownames(assay_obj)))
-        }
+        assay_obj = SeuratObject::CreateAssay5Object(data=reduction)
+        assay_obj = SeuratObject::AddMetaData(assay_obj, metadata=data.frame(feature_name=rownames(reduction), row.names=rownames(assay_obj)))
+    } else {
+        # Use barcode metadata
+        metadata_columns = contrast[["assay"]]
+        metadata = sc[[data_columns]][unique(c(condition_group1_idx, condition_group2_idx)), , drop=FALSE] %>%
+            as.matrix() %>%
+            as("dgCMatrix") %>%
+            Matrix::t()
         
-        # Get metadata columns
-        metadata_columns = c(contrast[["condition_column"]], contrast[["subset_column"]], contrast[["bulk_by"]], contrast[["covariate"]])
-        metadata_columns = metadata_columns[metadata_columns %in% colnames(barcode_metadata)]
+        assay_obj = SeuratObject::CreateAssay5Object(data=metadata)
+        assay_obj = SeuratObject::AddMetaData(assay_obj, metadata=data.frame(feature_name=rownames(metadata), row.names=rownames(assay_obj)))
+    }
+        
+    # Get metadata columns
+    metadata_columns = c(contrast[["condition_column"]], contrast[["subset_column"]], contrast[["bulk_by"]], contrast[["covariate"]])
+    metadata_columns = metadata_columns[metadata_columns %in% colnames(barcode_metadata)]
 
-        # Create subsetted Seurat object
-        sc_subset = SeuratObject::CreateSeuratObject(assay_obj, meta.data=barcode_metadata[unique(c(condition_group1_idx, condition_group2_idx)), metadata_columns, drop=FALSE])
+    # Create subsetted Seurat object
+    sc_subset = SeuratObject::CreateSeuratObject(assay_obj, meta.data=barcode_metadata[unique(c(condition_group1_idx, condition_group2_idx)), metadata_columns, drop=FALSE])
+    
+    # Add a condition column and update idents
+    conditions = dplyr::case_when(
+        SeuratObject::Cells(sc_subset) %in% condition_group1 ~ "condition1",
+        SeuratObject::Cells(sc_subset) %in% condition_group2 ~ "condition2",
+        TRUE ~ NA
+    ) %>% factor(levels=c("condition1", "condition2"))
+    
+    assertthat::assert_that(!"condition_groups" %in% names(sc_subset[[]]),
+                            msg=FormatString("The column 'condition_groups' is reserved, please use another column name (for comparison {i}/{name})."))
+    sc_subset[["condition_groups"]] = conditions
+    Seurat::Idents(sc_subset) = "condition_groups"
         
-        # Add a condition column and update idents
-        conditions = dplyr::case_when(
-            SeuratObject::Cells(sc_subset) %in% condition_group1 ~ "condition1",
-            SeuratObject::Cells(sc_subset) %in% condition_group2 ~ "condition2",
-            TRUE ~ NA
-        ) %>% factor(levels=c("condition1", "condition2"))
+    # Bulk/pseudo-bulk if requested
+    if ("bulk_by" %in% names(contrast) | "pseudobulk_samples" %in% names(contrast)) {
+        categorial_covariates = contrast[["covariate"]] %>% purrr::keep(function(c) is.factor(barcode_metadata[, c]))
+        numeric_covariates = contrast[["covariate"]] %>% purrr::keep(function(c) is.numeric(barcode_metadata[, c]))
+        barcode_metadata = sc_subset[[]]
         
-        assertthat::assert_that(!"condition_groups" %in% names(sc_subset[[]]),
-                                msg=FormatString("The column 'condition_groups' is reserved, please use another column name (for comparison {i}/{name})."))
-        sc_subset[["condition_groups"]] = conditions
-        Seurat::Idents(sc_subset) = "condition_groups"
-        
-        # Bulk/pseudo-bulk if requested
-        if ("bulk_by" %in% names(contrast) | "pseudobulk_samples" %in% names(contrast)) {
-            categorial_covariates = contrast[["covariate"]] %>% purrr::keep(function(c) is.factor(barcode_metadata[, c]))
-            numeric_covariates = contrast[["covariate"]] %>% purrr::keep(function(c) is.numeric(barcode_metadata[, c]))
+        if ("bulk_by" %in% names(contrast)) {
+            # These columns will be aggregated
+            bulk_by = unique(c("condition_groups", contrast[["bulk_by"]], categorial_covariates))
+            
+            # Downsample by groups (if requested by 'downsample_n')
+            if ("downsample_n" %in% names(contrast)) {
+                sampled_barcodes = barcode_metadata %>% 
+                    dplyr::group_by(dplyr::across(dplyr::all_of(bulk_by))) %>% 
+                    dplyr::slice_sample(n=contrast[["downsample_n"]]) %>% 
+                    rownames()
+                sc_subset = subset(sc_subset, cells=sampled_barcodes)
+                barcode_metadata = sc_subset[[]]
+            }
+            
+        } else if ("pseudobulk_samples" %in% names(contrast)) {
+            # Group by condition column ('condition_groups') and categorial covariate columns
+            # Then divide each group into pseudobulk_samples subgroups
+            num_pseudobulk_samples = contrast[["pseudobulk_samples"]]
+            bulk_by = unique(c("condition_groups", categorial_covariates))
+            
+            # Add a column for the pseudo-bulk sample
+            barcode_metadata = barcode_metadata %>%
+                dplyr::mutate(pseudobulk_sample=((1:dplyr::n()) %% num_pseudobulk_samples) + 1) %>%
+                dplyr::mutate(pseudobulk_sample=paste0("s", pseudobulk_sample))
+            barcode_metadata$pseudobulk_sample = factor(barcode_metadata$pseudobulk_sample, levels=paste0("s", 1:num_pseudobulk_samples))
+            sc_subset = SeuratObject::AddMetaData(sc_subset, metadata=barcode_metadata$pseudobulk_sample, col.name="pseudobulk_sample")
             barcode_metadata = sc_subset[[]]
             
-            if ("bulk_by" %in% names(contrast)) {
-                # These columns will be aggregated
-                bulk_by = unique(c("condition_groups", contrast[["bulk_by"]], categorial_covariates))
-                
-                # Downsample by groups (if requested by 'downsample_n')
-                if ("downsample_n" %in% names(contrast)) {
-                    sampled_barcodes = barcode_metadata %>% 
-                        dplyr::group_by(dplyr::across(dplyr::all_of(bulk_by))) %>% 
-                        dplyr::slice_sample(n=contrast[["downsample_n"]]) %>% 
-                        rownames()
-                    sc_subset = subset(sc_subset, cells=sampled_barcodes)
-                    barcode_metadata = sc_subset[[]]
-                }
-                
-            } else if ("pseudobulk_samples" %in% names(contrast)) {
-                # Group by condition column ('condition_groups') and categorial covariate columns
-                # Then divide each group into pseudobulk_samples subgroups
-                num_pseudobulk_samples = contrast[["pseudobulk_samples"]]
-                bulk_by = unique(c("condition_groups", categorial_covariates))
-                
-                # Add a column for the pseudo-bulk sample
-                barcode_metadata = barcode_metadata %>%
-                    dplyr::mutate(pseudobulk_sample=((1:dplyr::n()) %% num_pseudobulk_samples) + 1) %>%
-                    dplyr::mutate(pseudobulk_sample=paste0("s", pseudobulk_sample))
-                barcode_metadata$pseudobulk_sample = factor(barcode_metadata$pseudobulk_sample, levels=paste0("s", 1:num_pseudobulk_samples))
-                sc_subset = SeuratObject::AddMetaData(sc_subset, metadata=barcode_metadata$pseudobulk_sample, col.name="pseudobulk_sample")
-                barcode_metadata = sc_subset[[]]
-                
-                # These columns will be aggregated
-                bulk_by = unique(c("condition_groups", categorial_covariates, "pseudobulk_sample"))
-                
-                # Downsample by groups (if requested by 'downsample_n')
-                if ("downsample_n" %in% names(contrast)) {
-                    bulk_by = unique(c("condition_groups", categorial_covariates), "pseudobulk_sample")
-                    sampled_barcodes = barcode_metadata %>% 
-                        dplyr::group_by(dplyr::across(dplyr::all_of(bulk_by))) %>%
-                        dplyr::slice_sample(n=contrast[["downsample_n"]]) %>%
-                        rownames()
-                        
-                    sc_subset = subset(sc_subset, cells=rownames(sampled_barcodes))
-                    barcode_metadata = sc_subset[[]]
-                }
-            }
+            # These columns will be aggregated
+            bulk_by = unique(c("condition_groups", categorial_covariates, "pseudobulk_sample"))
             
-            # Then aggregate expression
-            sc_subset_agg = Seurat::PseudobulkExpression(object=sc_subset, 
-                                                         return.seurat=TRUE, 
-                                                         group.by=bulk_by,
-                                                         layer="counts",
-                                                         method=contrast[["bulk_method"]],
-                                                         normalization.method="LogNormalize",
-                                                         verbose=FALSE)
-            for(c in bulk_by) {
-                sc_subset_agg[[]][, c] = factor(sc_subset_agg[[]][, c], levels=levels(barcode_metadata[, c]))
-            }
-            Seurat::Idents(sc_subset_agg) = "condition_groups"
-            
-            # Numeric covariates need to be aggregated for each group by averaging, then added
-            if (length(numeric_covariates) > 0) {
-                numeric_covariate_data = barcode_metadata %>%
+            # Downsample by groups (if requested by 'downsample_n')
+            if ("downsample_n" %in% names(contrast)) {
+                bulk_by = unique(c("condition_groups", categorial_covariates), "pseudobulk_sample")
+                sampled_barcodes = barcode_metadata %>% 
                     dplyr::group_by(dplyr::across(dplyr::all_of(bulk_by))) %>%
-                    dplyr::summarise(dplyr::across(dplyr::all_of(numeric_covariates), ~ mean(., na.rm=TRUE)))
-                
-                numeric_covariate_data = dplyr::left_join(sc_subset_agg[[]], numeric_covariate_data, by=bulk_by)
-                rownames(numeric_covariate_data) = numeric_covariate_data$orig.ident
-                sc_subset_agg = SeuratObject::AddMetaData(sc_subset_agg, metadata=numeric_covariate_data[, numeric_covariates, drop=FALSE])
+                    dplyr::slice_sample(n=contrast[["downsample_n"]]) %>%
+                    rownames()
+                    
+                sc_subset = subset(sc_subset, cells=rownames(sampled_barcodes))
+                barcode_metadata = sc_subset[[]]
             }
-            
-            # Remove scale.data layer (never needed and saves a lot of memory)
-            SeuratObject::LayerData(sc_subset_agg, assay=SeuratObject::DefaultAssay(sc_subset_agg), layer="scale.data") = NULL
-            
-            sc_subset = sc_subset_agg
         }
         
-        contrast[["sc_subset"]] = sc_subset
-        return(contrast)
-    })
+        # Then aggregate expression
+        sc_subset_agg = Seurat::PseudobulkExpression(object=sc_subset, 
+                                                     return.seurat=TRUE, 
+                                                     group.by=bulk_by,
+                                                     layer="counts",
+                                                     method=contrast[["bulk_method"]],
+                                                     normalization.method="LogNormalize",
+                                                     verbose=FALSE)
+        for(c in bulk_by) {
+            sc_subset_agg[[]][, c] = factor(sc_subset_agg[[]][, c], levels=levels(barcode_metadata[, c]))
+        }
+        Seurat::Idents(sc_subset_agg) = "condition_groups"
+        
+        # Numeric covariates need to be aggregated for each group by averaging, then added
+        if (length(numeric_covariates) > 0) {
+            numeric_covariate_data = barcode_metadata %>%
+                dplyr::group_by(dplyr::across(dplyr::all_of(bulk_by))) %>%
+                dplyr::summarise(dplyr::across(dplyr::all_of(numeric_covariates), ~ mean(., na.rm=TRUE)))
+            
+            numeric_covariate_data = dplyr::left_join(sc_subset_agg[[]], numeric_covariate_data, by=bulk_by)
+            rownames(numeric_covariate_data) = numeric_covariate_data$orig.ident
+            sc_subset_agg = SeuratObject::AddMetaData(sc_subset_agg, metadata=numeric_covariate_data[, numeric_covariates, drop=FALSE])
+        }
+        
+        # Remove scale.data layer (never needed and saves a lot of memory)
+        SeuratObject::LayerData(sc_subset_agg, assay=SeuratObject::DefaultAssay(sc_subset_agg), layer="scale.data") = NULL
+        
+        sc_subset = sc_subset_agg
+    }
+        
+    contrast[["sc_subset"]] = sc_subset
     
-    return(contrasts_list)
+    return(contrast)
 }
 
-#' Given a list with contrasts, run DEG tests for each contrast.
+#' Given a contrast configuration, runs a DEG test.
+#' Note that if a contrast has multiple comparisons (for each subset), this function needs to be run on each of them separately.
 #' 
-#' @param contrasts_list A list of contrasts. Must have been set up with NewContrastsList followed by PrepareContrastsListObjects.
-#' @return A updated list.
-DegsRunTests = function(contrasts_list) {
-    # Set up a progress bar
-    msg = paste("Run DEG test for each contrast")
-    progr = progressr::progressor(along=contrasts_list, message=msg)
-
-    deg_results_list = purrr::map(contrasts_list, function(contrast) {
-    # deg_results_list = furrr::future_map(contrasts_list, function(contrast) {
-        progr()
-        
-        op = options(Seurat.object.assay.calcn=FALSE)
-        on.exit(expr = options(op), add = TRUE)
-        name = contrast[["name"]]
-        
-        # Set up arguments list for FindMarkers
-        arguments = list(object=contrast[["sc_subset"]],
-                         test.use=contrast[["test"]], 
-                         logfc.threshold=contrast[["log2FC"]], 
-                         min.pct=contrast[["min_pct"]], 
-                         ident.1="condition1",
-                         ident.2="condition2",
-                         slot=contrast[["layer"]],
-                         random.seed=getOption("random_seed"))
-        if ("bulk_by" %in% names(contrast)) arguments[["densify"]] = TRUE
-        if ("covariate" %in% names(contrast)) arguments[["latent.vars"]] = contrast[["covariate"]]
-        
-        # Run FindMarkers
-        # Check that there are enough samples in each group (>=2), if not, add an error message and skip
-        # Seurat object in contrast[["sc_subset"]]
-        condition_counts = SeuratObject::Idents(contrast[["sc_subset"]]) %>% table()
-        if (condition_counts["condition1"] >= 2 & condition_counts["condition2"] >= 2) {
-            deg_results = do.call(Seurat::FindMarkers, arguments)
-            deg_results$gene = rownames(deg_results)
-        } else {
-            deg_results = data.frame(p_val=as.numeric(), avg_log2FC=as.numeric(), pct.1=as.numeric(), pct.2=as.numeric(), p_val_adj=as.numeric(), gene=as.character())
-            contrast[["message"]] = FormatString("There are fewer than two samples in at least one group for comparison {name}.")
-        }
-        
-        # Sort results
-        deg_results = deg_results %>% 
-            DegsSort()
-        
-        # Add normalised expression values
-        avg_df = Seurat::AggregateExpression(object=contrast[["sc_subset"]], verbose=FALSE, return.seurat=TRUE) %>%
-            SeuratObject::LayerData(layer="data") %>% 
-            as.data.frame() %>%
-            tibble::rownames_to_column(var="gene")
-        #colnames(avg_df) = c("gene", contrast[["condition_group1"]], contrast[["condition_group2"]])
-        colnames(avg_df) = c("gene", "condition1", "condition2")
-        deg_results = dplyr::inner_join(deg_results, avg_df, by="gene")
-        
-        # Remove Seurat object
-        contrast[["sc_subset"]] = NULL
-        
-        # Add rownames
-        rownames(deg_results) = deg_results$gene
-        
-        # Reorder the columns
-        deg_results = deg_results %>% 
-            dplyr::select(gene, p_val, p_val_adj, avg_log2FC, pct.1, pct.2, condition1, condition2)
-        
-        # Add results to contrast
-        contrast[["results"]] = deg_results
-        
-        return(contrast)
-    })#, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c()))
-    progr(type='finish')
+#' @param contrast A contrast configuration. Must have been set up with NewContrastsList followed by PrepareContrast.
+#' @return A contrast with DEG results.
+DegsRunTest = function(contrast) {
+    # When running FindMarkers, do not calculate nCounts and nFeatures (not needed); restore default on exit
+    op = options(Seurat.object.assay.calcn=FALSE)
+    on.exit(expr = options(op), add = TRUE)
+    name = contrast[["name"]]
     
-    return(deg_results_list)
+    # Set up arguments list for FindMarkers
+    arguments = list(object=contrast[["sc_subset"]],
+                     test.use=contrast[["test"]], 
+                     logfc.threshold=contrast[["log2FC"]], 
+                     min.pct=contrast[["min_pct"]], 
+                     ident.1="condition1",
+                     ident.2="condition2",
+                     slot=contrast[["layer"]],
+                     random.seed=getOption("random_seed"),
+                     min.cells.group=2)
+    if ("bulk_by" %in% names(contrast)) arguments[["densify"]] = TRUE
+    if ("covariate" %in% names(contrast)) {
+      if (contrast[["test"]] == "DESeq2") {
+        # Seurat's standard function for running DESeq2 does not allow covariates/batches
+        # Replace Seurats standard function for DESeq2 with a modified version that can include a covariate as batch.
+        assignInNamespace("DESeq2DETest",DESeq2DETest_covariate, ns="Seurat")
+        
+        # Pass batch information
+        barcode_metadata = contrast[["sc_subset"]][[]]
+        arguments[["batch"]] = barcode_metadata[,contrast[["covariate"]]]
+        names(arguments[["batch"]]) = rownames(barcode_metadata)
+      } else {
+        # Other tests use the argument latent.vars (if possible)
+        arguments[["latent.vars"]] = contrast[["covariate"]]
+      }
+    }
+    
+    # Run FindMarkers
+    # Check that there are enough samples in each group (>=2), if not, add an error message and skip
+    # Seurat object in contrast[["sc_subset"]]
+    condition_counts = SeuratObject::Idents(contrast[["sc_subset"]]) %>% table()
+    if (condition_counts["condition1"] >= 2 & condition_counts["condition2"] >= 2) {
+        deg_results = do.call(Seurat::FindMarkers, arguments)
+        deg_results$gene = rownames(deg_results)
+    } else {
+        deg_results = data.frame(p_val=as.numeric(), avg_log2FC=as.numeric(), pct.1=as.numeric(), pct.2=as.numeric(), p_val_adj=as.numeric(), gene=as.character())
+        contrast[["message"]] = FormatString("There are fewer than two samples in at least one group for comparison {name}.")
+    }
+    
+    # Sort results
+    deg_results = deg_results %>% 
+        DegsSort()
+    
+    # Add means of normalised expression values
+    avg_df = Seurat::AggregateExpression(object=contrast[["sc_subset"]], verbose=FALSE, return.seurat=TRUE) %>%
+        SeuratObject::LayerData(layer="data") %>% 
+        as.data.frame() %>%
+        tibble::rownames_to_column(var="gene")
+    #colnames(avg_df) = c("gene", contrast[["condition_group1"]], contrast[["condition_group2"]])
+    colnames(avg_df) = c("gene", "condition1", "condition2")
+    deg_results = dplyr::inner_join(deg_results, avg_df, by="gene")
+    
+    # If bulk_by or pseudobulk_samples is set, add the bulked expression values
+    if ("bulk_by" %in% names(contrast) | "pseudobulk_samples" %in% names(contrast)) {
+      bulk_df = SeuratObject::GetAssayData(contrast[["sc_subset"]], layer="data") %>%
+        as.data.frame() %>%
+        tibble::rownames_to_column(var="gene")
+      deg_results = dplyr::inner_join(deg_results, bulk_df, by="gene")
+    }
+    
+    # Remove Seurat object
+    contrast[["sc_subset"]] = NULL
+    
+    # Add rownames
+    rownames(deg_results) = deg_results$gene
+    
+    # Reorder the columns
+    deg_results = deg_results %>% 
+        dplyr::relocate(gene, p_val, p_val_adj, avg_log2FC, p_val_adj_score, pct.1, pct.2, condition1, condition2)
+    
+    # Add results to contrast
+    contrast[["results"]] = deg_results
+    
+    return(contrast)
+}
+
+
+#' Runs an over-representation analysis (ORA) for an DEG result produced by DegsRunTest.
+#' Note that if there are multiple results (e.g. for each subset), this function needs to be run on each of them separately.
+#' 
+#' @param deg_result A DEG result produced by DegsRunTest.
+#' @param term2gene_db A data frame with genesets to be used for ORA. Must contain the columns 'gs_cat' (category of the geneset), 'gs_subcat' (sub-category of the geneset), 'gs_name' (name of the geneset), 'gene_symbol' (symbol of the gene in the geneset). See clusterProfiler documentation for more information.
+#' @param genesets A character vector specifying the genesets to be used for the ORA. Each entry specifies one analysis. Entries should have the form gs_cat:gs_subcat:gs_name and can contain wildcards (e.g. C5:GO:BP:*).
+#' @return A list with one or more ORA results.
+DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
+    # Get DEGs
+    degs = deg_result$results %>% 
+      dplyr::filter(p_val_adj < deg_result$padj & abs(avg_log2FC) >= deg_result$log2FC) %>%
+      dplyr::pull(gene) %>%
+      unique()
+    
+    # Get universe
+    universe = deg_result$results %>%
+      dplyr::pull(gene) %>%
+      unique()
+    
+    # If there are no DEGs or universe, return NULL
+    if (length(degs) == 0 | length(universe) == 0) return(NULL)
+    
+    # Search the genesets specified by the genesets argument
+    search_vector = paste(term2gene_db$gs_cat, term2gene_db$gs_subcat, term2gene_db$gs_name, sep=":")
+    term2gene = purrr::map(genesets, function(term) {
+      i = which(grepl(term, search_vector))
+      tg = term2gene_db[i,] %>% dplyr::select(gs_name, gene_symbol)
+      return(tg)
+    })
+    names(term2gene) = genesets
+    
+    # Run ORA (for one or more genesets)
+    ora_result = purrr::map(term2gene, function(t2g) {
+      # Run ORA
+      ora = clusterProfiler::enricher(gene=degs, universe=universe, TERM2GENE=t2g, minGSSize=10, maxGSSize=500)
+      
+      # Sort by descreasing FoldEnrichment
+      ora@result = ora@result[order(ora@result$FoldEnrichment, decreasing=TRUE),]
+      
+      # Fix factor levels accordingly for plots
+      ora@result$ID = factor(ora@result$ID, levels=unique(ora@result$ID))
+      ora@result$Description = factor(ora@result$Description, levels=unique(ora@result$Description))
+      
+      return(ora)
+    })
+    
+    return(ora_result)
+}
+
+#' Runs a geneset enrichment analysis (GSEA) for a constrast produced by PrepareContrast.
+#' Note that if there are multiple contrasts (e.g. for each subset), this function needs to be run on each of them separately.
+#' 
+#' @param contrast A contrast produced by PrepareContrast.
+#' @param term2gene_db A data frame with genesets to be used for GSEA. Must contain the columns 'gs_cat' (category of the geneset), 'gs_subcat' (sub-category of the geneset), 'gs_name' (name of the geneset), 'gene_symbol' (symbol of the gene in the geneset). See clusterProfiler documentation for more information.
+#' @param genesets A character vector specifying the genesets to be used for the GSEA. Each entry specifies one analysis. Entries should have the form gs_cat:gs_subcat:gs_name and can contain wildcards (e.g. C5:GO:BP:*).
+#' @return A list with one or more GSEA results.
+DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
+  # Calculate fold changes
+  fold_changes = Seurat::FoldChange(object=contrast$sc_subset,
+                                    ident.1="condition1",
+                                    ident.2="condition2",
+                                    assay=contrast$assay,
+                                    slot=contrast$layer,
+                                    pseudocount.use=1,
+                                    base=2)
+  fold_changes = setNames(fold_changes$avg_log2FC, rownames(fold_changes))
+  fold_changes = fold_changes[order(fold_changes, decreasing=TRUE)]
+  
+  # Search the genesets specified by the genesets argument
+  search_vector = paste(term2gene_db$gs_cat, term2gene_db$gs_subcat, term2gene_db$gs_name, sep=":")
+  term2gene = purrr::map(genesets, function(term) {
+    i = which(grepl(term, search_vector))
+    tg = term2gene_db[i,] %>% dplyr::select(gs_name, gene_symbol)
+    return(tg)
+  })
+  names(term2gene) = genesets
+  
+  # Run GSEA
+  gsea = purrr::map(term2gene, function(t2g) return(clusterProfiler::GSEA(geneList=fold_changes, TERM2GENE=t2g, minGSSize=10, maxGSSize=500)))
+  
+  return(gsea)
+}
+
+#' Copy of the Seurat::DESeq2DETest function with the addition of a covariate argument.
+#' 
+#' Needs to replaced in the Seurat namespace in the main code.
+#' 
+#' @param data.use Counts matrix.
+#' @param cells.1 Cell names for group 1.
+#' @param cells.2 Cell names for group 2.
+#' @param batch Vector with batch information where names are cell names.
+#' @param verbose Print progress.
+#' @return A data frame with p-values.
+DESeq2DETest_covariate = function (data.use, cells.1, cells.2, batch=NULL, verbose=TRUE, ...) {
+  SeuratObject::CheckDots(..., fxns = "DESeq2::results")
+  group.info <- data.frame(row.names = c(cells.1, cells.2))
+  group.info[cells.1, "group"] <- "Group1"
+  group.info[cells.2, "group"] <- "Group2"
+  group.info[, "group"] <- factor(x = group.info[, "group"])
+  
+  # Improvements:
+  # - Add batch variable to DESeq2 coldata
+  # - Set design variable
+  # - Add batch to design
+  design = "~group"
+  if (!is.null(batch)) {
+    group.info[, "batch"] <- factor(as.character(batch[rownames(group.info)]))
+    design = paste0(design, "+batch")
+  }
+  group.info$wellKey <- rownames(x = group.info)
+  dds1 <- DESeq2::DESeqDataSetFromMatrix(countData = data.use, 
+                                         colData = group.info, design = as.formula(design))
+  dds1 <- DESeq2::estimateSizeFactors(object = dds1)
+  dds1 <- DESeq2::estimateDispersions(object = dds1, fitType = "local")
+  dds1 <- DESeq2::nbinomWaldTest(object = dds1)
+  res <- DESeq2::results(object = dds1, contrast = c("group", 
+                                                     "Group1", "Group2"), alpha = 0.05, ...)
+  to.return <- data.frame(p_val = res$pvalue, row.names = rownames(res))
+  return(to.return)
 }
     
 #' Sorts table of differentially expressed genes per performed test. Introduces a signed p-value score calculated as follows:
@@ -748,8 +889,9 @@ DegsUpDisplayTop = function(degs, n=5, column_1="p_val_adj_score", column_2="pct
 #' Creates a DEG scatterplot.
 #' 
 #' @param result A list entry with DEG results obtained with RunDEGTests
+#' @param font_size The base font size. Default is 11.
 #' @return A ggplot scatterplot
-DegsScatterPlot = function(result) {
+DegsScatterPlot = function(result, font_size=11) {
     # Get condition names. If multiple, join by '+'.
     group1 = paste(result[["condition_group1"]], collapse="+")
     group2 = paste(result[["condition_group2"]], collapse="+")
@@ -773,15 +915,18 @@ DegsScatterPlot = function(result) {
         dplyr::slice_min(order_by=abs(p_val ), n=5)
     
     # Make plot
+    # Note: Font size in theme is measured in pt but font size in geom_text is measured in mm.
+    # Ggplot2 provided '.pt' as conversion factor: mm = pt / .pt OR pt = mm * .pt
+    # https://ggplot2.tidyverse.org/articles/ggplot2-specs.html#text
     p = ggplot(deg_table, aes(x=condition1, y=condition2, col=deg_status)) + 
         geom_abline(slope=1, intercept=0, col="lightgrey") +
         geom_point() +
-        ggrepel::geom_text_repel(data=top10_deg_table, aes(x=condition1, y=condition2, col=deg_status, label=gene)) +
+        ggrepel::geom_text_repel(data=top10_deg_table, aes(x=condition1, y=condition2, col=deg_status, label=gene), size=font_size / .pt) +
         scale_color_manual("Gene status", values=c(none="grey", up="darkgoldenrod1", down="steelblue"), 
                            labels=c(none='none', up='up', down='down')) +
         xlim(lims) + 
         ylim(lims) +
-        AddPlotStyle(ylab=group1, xlab=group2, legend_position="none")
+        AddPlotStyle(ylab=group1, xlab=group2, legend_position="none", font_size=font_size)
     
     # If there is a log2 threshold > 0, add lines
     if (log2FC > 0) {
@@ -795,8 +940,9 @@ DegsScatterPlot = function(result) {
 #' Creates a DEG volcano plot
 #' 
 #' @param result A list entry with DEG results obtained with RunDEGTests
+#' @param font_size The base font size. Default is 11.
 #' @return A ggplot volcano plot
-DegsVolcanoPlot = function(result) {
+DegsVolcanoPlot = function(result, font_size=11) {
     # Get condition names. If multiple, join by '+'.
     group1 = paste(result[["condition_group1"]], collapse="+")
     group2 = paste(result[["condition_group2"]], collapse="+")
@@ -826,12 +972,15 @@ DegsVolcanoPlot = function(result) {
         dplyr::slice_min(order_by=abs(p_val ), n=5)
     
     # Make plot
+    # Note: Font size in theme is measured in pt but font size in geom_text is measured in mm.
+    # Ggplot2 provided '.pt' as conversion factor: mm = pt / .pt OR pt = mm * .pt
+    # https://ggplot2.tidyverse.org/articles/ggplot2-specs.html#text
     p = ggplot(deg_table, aes(x=avg_log2FC, y=p_val_log10_n, col=deg_status)) + 
         geom_point() +
-        ggrepel::geom_text_repel(data=top10_deg_table, aes(x=avg_log2FC, y=p_val_log10_n, col=deg_status, label=gene)) +
+        ggrepel::geom_text_repel(data=top10_deg_table, aes(x=avg_log2FC, y=p_val_log10_n, col=deg_status, label=gene), size=font_size / .pt) +
         scale_color_manual("Gene status", values=c(none="grey", up="darkgoldenrod1", down="steelblue"), 
                            labels=c(none='none', up='up', down='down')) +
-        AddPlotStyle(xlab="log2FoldChange", ylab="-log10(pvalue)", legend_position="none")
+        AddPlotStyle(xlab="log2FoldChange", ylab="-log10(pvalue)", legend_position="none", font_size=font_size)
     
     # If there is a log2 threshold > 0, add vertical lines
     if (log2FC > 0) {
@@ -970,6 +1119,86 @@ DegsWriteToFile = function(degs_lst, file, annotation=NULL, parameter=NULL) {
     openxlsx::write.xlsx(degs_lst, file=file)
     return(file)
 }
+
+#' Write ORA (over-representation analysis) results to an Excel file.
+#' 
+#' @param degs Table with ORA results. Can also be a list of tables so that each table is written into an extra Excel tab.
+#' @param file Output file name.
+#' @param parameter A data.frame for describing test parameter. Can be NULL.
+#' @return Output file name.
+DegsWriteOraToFile = function(ora_lst, file, parameter=NULL) {
+  # Convert to list if not already
+  if (is.data.frame(ora_lst)) ora_lst = list(ora_lst)
+  
+  # Add parameter
+  if (!is.null(parameter)) {
+    ora_lst = c(list("Parameter"=parameter), ora_lst)
+  }
+  
+  # Add README
+  readme_table = data.frame(Column=c("GeneSet"), Description=c("Geneset name"))
+  readme_table = rbind(readme_table, 
+                       c("ID", "ID of the term tested"),
+                       c("Description", "Description of the geneset term tested"),
+                       c("GeneRatio", "Number of genes in the input list that are annotated to the term / Number of genes in the input list"),
+                       c("BgRatio", "Number of genes in the background gene list that are annotated to the term / Number of genes in the background gene list"),
+                       c("RichFactor", "Number of genes in the input list that are annotated to the term / Number of genes that are annotated to the term"),
+                       c("FoldEnrichment", "Fold enrichment defined as GeneRatio / BgRatio"),
+                       c("zScore", "Z-Score"),
+                       c("pvalue", "Over-representation assessed using hypogeometric distribution (one sided Fisher's exact test)"),
+                       c("p.adjust", "Hypergeometric p-value after correction for multiple testing (BH)"),
+                       c("qvalue", "FDR adjusted p-value"),
+                       c("geneID", "Gene IDs in the geneset that are annotated to the term"),
+                       c("Count", "Number of genes in the geneset that are annotated to the term"),
+                       c("...", "Additional annotation (if provided)"))
+                       ora_lst = c(list("README"=readme_table), ora_lst)
+  
+  # Fix names that are more than 31bp (which is too long for Excel)
+  names(ora_lst) = strtrim(names(ora_lst), 31)
+  
+  # Output in Excel sheet
+  openxlsx::write.xlsx(ora_lst, file=file)
+  return(file)
+}
+
+#' Write geneset enrichment analysis (GSEA) results to an Excel file.
+#' 
+#' @param gsea_lst Table with GSEA results. Can also be a list of tables so that each table is written into an extra Excel tab.
+#' @param file Output file name.
+#' @param parameter A data.frame for describing test parameter. Can be NULL.
+#' @return Output file name.
+DegsWriteGseaToFile = function(gsea_lst, file, parameter=NULL) {
+  # Convert to list if not already
+  if (is.data.frame(gsea_lst)) ora_lst = list(gsea_lst)
+  
+  # Add parameter
+  if (!is.null(parameter)) {
+    gsea_lst = c(list("Parameter"=parameter), gsea_lst)
+  }
+  
+  # Add README
+  readme_table = data.frame(Column=c("GeneSet"), Description=c("Geneset name"))
+  readme_table = rbind(readme_table, 
+                       c("ID", "ID of the term tested"),
+                       c("Description", "Description of the geneset term tested"),
+                       c("setSize", "Number of genes in geneset"),
+                       c("enrichmentScore", "Represents the degree to which a set S is over-represented at the top (positive fold change) or bottom (negative fold change)"),
+                       c("pvalue", "Significance of the enrichment score determined by a permutation test"),
+                       c("p.adjust", " Permutation p-value after correction for multiple testing (BH)"),
+                       c("qvalue", "FDR adjusted p-value"),
+                       c("rank", "Mean rank"),
+                       c("leading_edge", "Leading edge (see GSEA doc)"),
+                       c("core_enrichment", "Core enrichment (see GSEA doc)"))
+  gsea_lst = c(list("README"=readme_table), gsea_lst)
+  
+  # Fix names that are more than 31bp (which is too long for Excel)
+  names(gsea_lst) = strtrim(names(gsea_lst), 31)
+  
+  # Output in Excel sheet
+  openxlsx::write.xlsx(gsea_lst, file=file)
+  return(file)
+}
+
 
 #' Plot the number of DEGs per test.
 #' 
