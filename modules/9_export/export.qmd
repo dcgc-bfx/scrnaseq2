@@ -162,6 +162,7 @@ Results of the analysis are exported into a format that can be read by the Loupe
 
 # Export files for the Loupe Browser (only 10x, 10x_visium and 10x_xenium)
 if (export_loupe & all(grepl("10x", sc$technology))) {
+  #loupeR::setup()
   
   dir.create(file.path(module_dir, "results", "loupe"), showWarnings=FALSE)
   
