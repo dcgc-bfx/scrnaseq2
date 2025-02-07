@@ -7,11 +7,12 @@
 #' @param legend_position The legend position.
 #' @param xlab The title of the x-axis.
 #' @param ylab The title of the y-axis.
+#' @param font_size The base font size. Default is 11.
 #' @return None, add as theme.
-AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, legend_position=NULL, xlab=NULL, ylab=NULL) {
+AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, legend_position=NULL, xlab=NULL, ylab=NULL, font_size=11) {
   style = list(
     # Basic theme
-    ggplot2::theme_light(11),
+    ggplot2::theme_light(font_size),
     ggplot2::theme(panel.border = element_blank())
   )
   
