@@ -1147,26 +1147,55 @@ WriteCounts_MatrixDir = function(counts, path, overwrite=FALSE) {
 #' @param counts A counts matrix. Format can be a standard matrix, a sparse matrix, AnnDataMatrixH5 (when reading anndata.h5ad) or MatrixSubset (when reading hdf5).
 #' @param path Where to write counts on disk.
 #' @param overwrite Overwrite existing output paths. Default is FALSE.
-#' @param metadata If TRUE write barcode and feature metadata. Default is FALSE.
-WriteCounts_MatrixMarket = function(counts, path, overwrite=FALSE, metadata=FALSE) {
+#' @param barcode_data If not NULL, do not write the colnames to barcodes.tsv.gz. Instead write barcode_data to barcodes.tsv.gz. Make sure it matches the counts matrix.
+#' @param feature_data If not NULL, do not write the rownames to features.tsv.gz. Instead write feature_data to features.tsv.gz. Make sure it matches the counts matrix. 
+#' @return A matrix market directory with matrix.mtx.gz, barcodes.tsv.gz and features.tsv.gz
+WriteCounts_MatrixMarket = function(counts, path, overwrite=FALSE, barcode_data=NULL, feature_data=NULL) {
   if (!dir.exists(path) | overwrite==TRUE) {
     if (!is(counts, "dgCMatrix")) {
       counts = as(counts, "dgCMatrix")
     }
     
+    # Create directory
     d = file.path(path)
     dir.create(d, showWarnings=FALSE)
     
+    # Write matrix.mtx.gz
     mh = file.path(d, "matrix.mtx")
     Matrix::writeMM(counts, file=mh)
     R.utils::gzip(mh, overwrite=TRUE)
     
+    # Write barcodes and barcode metadata
+    if (is.null(barcode_data)) {
+      barcode_data = data.frame(barcode=colnames(counts))
+    } else {
+      assertthat::assert_that(ncol(counts) == nrow(barcode_data),
+                              msg=FormatString("The number of rows in barcode_data differs from the number of columns in the counts matrix."))
+    }
+    
     bh = gzfile(file.path(d, "barcodes.tsv.gz"), open="wb")
-    write(colnames(counts), file=bh)
+    if (ncol(barcode_data) > 1) {
+      comment_line = paste(colnames(barcode_data), collapse = " ")
+      comment_line = paste("#", comment_line)
+      writeLines(comment_line, con=bh)
+    }
+    write.table(barcode_data, file=bh, sep="\t", col.names=FALSE, row.names=FALSE, quote=FALSE)
     close(bh)
     
+    if (is.null(feature_data)) {
+      feature_data = data.frame(id=rownames(counts), name=rownames(counts))
+    } else{
+      assertthat::assert_that(nrow(counts) == nrow(feature_data),
+                              msg=FormatString("The number of rows in feature_data differs from the number of rows in the counts matrix."))
+    }
+    
     fh = gzfile(file.path(d, "features.tsv.gz"), open="wb")
-    write.table(assay_feature_meta_data_df, file=fh, row.names=FALSE, col.names=FALSE, quote=FALSE, sep="\t")
+    if (ncol(feature_data) > 1) {
+      comment_line = paste(colnames(feature_data), collapse = " ")
+      comment_line = paste("#", comment_line)
+      writeLines(comment_line, con=fh)
+    }
+    write.table(feature_data, file=fh, sep="\t", col.names=FALSE, row.names=FALSE, quote=FALSE)
     close(fh)
   }
 }
