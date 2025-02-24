@@ -45,6 +45,7 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
                 if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
                 totals = Matrix::colSums(counts)
                 
+                # See here: https://stackoverflow.com/questions/59545714/r-matrix-package-meaning-of-the-attributes-in-the-dgcmatrix-class-for-sparse-ma
                 d = diff(counts@p) 
                 col_lst = split(as.integer(counts@x)*(-1), rep.int(1:ncol(counts), d))  ## columns to list
                 col_lst = lapply(col_lst, function(x) return(sort(x)*(-1)))
