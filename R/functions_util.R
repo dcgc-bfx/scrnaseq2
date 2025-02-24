@@ -418,7 +418,7 @@ PrepareBarcodeFilter = function(filter, orig_idents, metadata) {
 #' @param filter Filter from yaml configuration
 #' @param orig_idents The samples in the analysis
 #' @return A filter with entries for each sample
-PrepareFeatureFilter = function(filter, orig_idents, metadata) {
+PrepareFeatureFilter = function(filter, orig_idents) {
   if (is.null(filter) | length(filter) == 0) {
     return(NULL)
   }

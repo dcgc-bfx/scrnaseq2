@@ -30,10 +30,10 @@ params:
   #                                   b) Specify 'ENSEMBL' to fetch gene information from Ensembl (gene features only), c) Leave empty or specify 'NO' to not rename features.
   #                                   If a dataset contains multiple assays, this option can be specified multiple times (comma-separated). 
   # - barcode_suffix (can be empty): Suffix to add to the barcodes. If left empty, numeric suffixes will be added ('-1', '-2', etc). If set to 'NO', no suffixes are added.
-  datasets_file: "datasets/10x_xenium_mouse_brain.xlsx"
+  datasets_file: "datasets/10x_pbmc_datasets.xlsx"
   
   # Default assay. If null, will be set to the first assay.
-  default_assay: null
+  default_assay: "RNA"
   
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. Computations will access only the relevant parts of the data. Once done, matrix directories will be saved together with the Seurat object in the module directory.
   on_disk_counts: false
@@ -713,7 +713,6 @@ all_assays = purrr::map_depth(counts_lst, 2, attr, "assay") %>%
   unique()
 
 default_assay = param("default_assay")
-if (is.null(default_assay)) default_assay = all_assays[1]
 assertthat::assert_that(default_assay %in% all_assays,
                         msg=FormatString("Default assay {default_assay} not found. Available assays are: {all_assays*}."))
 all_assays = c(default_assay, setdiff(all_assays, default_assay))
@@ -900,7 +899,6 @@ For spatial datasets, we read the image information and add it to the Seurat obj
 
 # Per dataset
 for (i in 1:nrow(datasets)) {
-  i = 1
   # Experiment = orig.ident, technology and path
   orig_ident = datasets$experiment[i]
   technology = datasets$technology[i]
@@ -1032,23 +1030,18 @@ for (a in Seurat::Assays(sc)) {
 # Calculate for each assay
 for (a in Seurat::Assays(sc)) {
   # And each layer (dataset)
-  for (l in SeuratObject::Layers(sc[[a]], "^counts\\.")) {
+  for (l in SeuratObject::Layers(sc[[a]], search="^counts\\.")) {
     # Get data for layer (sample)
     counts = sc[[a]][l]
     
     # Calculate feature filters
     num_bcs_expr = rowSums(counts >= 1)
     
-    # Calculate median percentage of counts per feature
-    # TODO: maybe move to functions?
-    calculate_perc = function(mat) {
-      totals = colSums(mat)
-      totals = ifelse(totals>0, totals, 1)
-      return(t(t(mat) / totals) * 100)
-    }
-    
+    # Split counts into batches of 2000 barcodes. 
+    # Then for each batch calculate the percentage of counts for each feature per barcode. 
+    # Then return the median for each feature.
     with_progress({
-      counts_median = CalculateMedians(counts, margin=1, chunk_size=2000, fun=calculate_perc)
+      counts_median = CalculateMedians(counts, margin=1, chunk_size=2000, fun=CalculateColumnPerc)
     }, enable=verbose)
     
     # Add to metadata

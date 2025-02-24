@@ -146,6 +146,16 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
     return(top_n_counts)
 }
 
+#' Calculate percentage per column in a matrix.
+#'
+#' @param matrix Sparse (dgCMatrix)
+#' @return A matrix with percentages
+CalculateColumnPerc = function(mat) {
+  totals = colSums(mat)
+  totals = ifelse(totals>0, totals, 1)
+  return(t(t(mat) / totals) * 100)
+}
+
 #' Calculates the median of rows or columns of a sparse (dgCMatrix) or iterable (IterableMatrix) matrix. 
 #'
 #' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
@@ -158,7 +168,7 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
   assertthat::assert_that(margin %in% c("1", "2"),
                           msg="Margin can only be 1 - rows or 2 - columns.")
   
-  # Define chunks
+  # Split data into chunks of size chunk_size for parallel processing
   chunks = NULL
   if (!is.null(chunk_size)) {
     if (margin == 1) {
@@ -181,20 +191,33 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
   }
   
   if (!is.null(chunks)) {
-    # Analyse chunks
+    # Analyse chunks in parallel
+    # The number of workers can be configured with future::plan (at top level)
     msg = paste("Calculate medians per ", ifelse(margin==1, "barcodes", "features"))
     progr = progressr::progressor(along=chunks, message=msg)
     medians = furrr::future_map(chunks, function(counts) {
       progr()
       if (margin == 1) {
-        # Per barcode
+        # Analyse columns (per barcode)
+        
+        # If data is still an on-disk IterableMatrix, convert to sparse matrix
         if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
+        
+        # Apply user-defined function stored in variable 'fun'
         if (!is.null(fun)) counts = fun(counts)
+        
+        # Calculate medians with function for sparse matrices
         mds = sparseMatrixStats::rowMedians(counts)
       } else {
-        # Per feature
+        # Analyse rows (per feature)
+        
+        # If data is still an on-disk IterableMatrix, convert to sparse matrix
         if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
+        
+        # Apply user-defined function stored in variable 'fun'
         if (!is.null(fun)) counts = fun(counts)
+        
+        # 
         mds = sparseMatrixStats::colMedians(counts)
       }
       return(mds)
@@ -202,11 +225,11 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
       purrr::flatten_dbl()
     progr(type='finish')
   } else {
-    # Convert to sparse matrix
-    if (!is(matrix, "dgCMatrix")) {
-      matrix = as(matrix, "dgCMatrix")
-      if (!is.null(fun)) matrix = fun(matrix)
-    }
+    # If data is still an on-disk IterableMatrix, convert to sparse matrix
+    if (!is(matrix, "dgCMatrix")) matrix = as(matrix, "dgCMatrix")
+    
+    # Apply user-defined function stored in variable 'fun'
+    if (!is.null(fun)) matrix = fun(matrix)
     
     # Calculate medians
     if (margin == 1) {
@@ -820,9 +843,6 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
     # Method call
     integration_method_arg = "CCAIntegration"
     
-    # Normalization method argument
-    if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="sct", x=assay), "SCT", "LogNormalize")
-    
     # Reduction title
     new_reduct_title = "CCA"
   } else if (integration_method == "RPCAIntegration") {
@@ -834,9 +854,6 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
     
     # Method call
     integration_method_arg = "RPCAIntegration"
-    
-    # Normalization method
-    if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="sct", x=assay), "SCT", "LogNormalize")
     
     # Reduction title
     new_reduct_title = "RPCA"
@@ -889,6 +906,9 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
     # Reduction title
     new_reduct_title = "scVII"
   }
+  
+  # Normalization method argument
+  if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="sct", x=assay), "SCT", "LogNormalize")
   
   # Additional suffix for name or new reduction
   if (!is.null(new_reduct_suffix)) {
@@ -967,10 +987,10 @@ scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers
   adata <- sc$AnnData(X = scipy$sparse$csr_matrix(counts_matrix), obs = batches, var = object[[]][features,])
   
   # Set number of workers and batch size
-  num_workers = future::nbrOfWorkers()
-  scvi$settings$dl_num_workers = as.integer(num_workers)
-  scvi$settings$num_threads = as.integer(num_workers)
-  scvi$settings$batch_size = as.integer(512)
+  num_workers <- future::nbrOfWorkers()
+  scvi$settings$dl_num_workers <- as.integer(num_workers)
+  scvi$settings$num_threads <- as.integer(num_workers)
+  scvi$settings$batch_size <- as.integer(512)
   
   scvi$model$SCVI$setup_anndata(adata, batch_key = "batch")
   model <- scvi$model$SCVI(adata = adata, n_latent = as.integer(x = ndims), 

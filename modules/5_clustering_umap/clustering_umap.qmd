@@ -332,7 +332,7 @@ if (use_sketching) {
                              sketched.assay=sketched_assay,
                              sketched.reduction=sketched_reduct,
                              full.reduction=full_reduct,
-                             normalization.method	= ifelse(grepl(pattern="sct", x=default_assay), "SCT", "LogNormalize"),
+                             normalization.method=ifelse(grepl(pattern="sct", x=default_assay), "SCT", "LogNormalize"),
                              dims=1:dim_n,
                              recompute.neighbors=TRUE,
                              recompute.weights=TRUE,

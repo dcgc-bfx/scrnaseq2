@@ -599,7 +599,7 @@ if (use_sketching) {
 
   # Finally reset default assay to non-sketched assay
   SeuratObject::DefaultAssay(sc) = ifelse(normalization_method=="SCT", 
-                                          paste0(default_assay, ".sct"), 
+                                          paste0(default_assay, "sct"), 
                                           default_assay)
 } else {
   CalloutBox("Sketching was not applied.", type="note")

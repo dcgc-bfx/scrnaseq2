@@ -112,7 +112,7 @@ params:
       integration_methods: null
       CCAIntegration: null
       RPCAIntegration: null
-      HarmonyIntegration:
+      HarmonyIntegration: null
       FastMNNIntegration: null
       scVIIntegration: null
 
