@@ -38,7 +38,7 @@ execute:
   freeze: auto
 ---
 
-# Subclustering
+# Merging and subclustering
 
 ```{r}
 #| label: setup
@@ -132,22 +132,25 @@ barcodes_removed = FALSE
 <!-- 
 ## Remove cells
 
-USER_INPUT: Add explanation here
+USER_INPUT:
+
+- Remove the HTML comments
+- Set eval in the chunk options to true
+- Add explanation why barcodes are remove here
 
 ```{r}
 #| label: subclustering_remove_barcodes_1
 #| results: asis
+#| eval: false
 
 # Use this chunk to remove barcodes from the analysis.
-# However note that it might be better to remove this barcode already in the QC module.
+# However note that it might be better to remove these barcodes already in the QC module.
 
-# Get barcode metadata for assay
+# USER INPUT: 
+# - Specify which barcodes of the default assay to remove
 bcs = SeuratObject::Cells(sc[[default_assay]])
 barcode_metadata = sc[[]][bcs, ]
 
-# USER INPUT: 
-# - Specify what barcodes to remove here
-# - barcodes_to_remove should contain the barcodes to remove
 barcodes_to_remove = barcode_metadata %>%
   dplyr::filter(seurat_clusters == "1") %>%
   rownames()
@@ -179,11 +182,13 @@ CalloutBox(x=FormatString("Removed {length(barcodes_to_remove)} barcodes from th
 ```
 
 ```{r}
-#| label: fig-subclustering_remove_barcodes_1
+#| label: fig-subclustering_remove_barcodes_2
 #| fig-cap: 'Clusters after removing barcodes'
+#| eval: false
 
 # Plot a UMAP
-DimPlot(sc, label=TRUE)
+DimPlot(sc, label=TRUE) + 
+  AddPlotStyle()
 ```
 
 -->
@@ -191,43 +196,425 @@ DimPlot(sc, label=TRUE)
 <!--
 ## Merge/rename cluster
 
-USER_INPUT: Add explanation here
+USER_INPUT:
+
+- Remove the HTML comments
+- Set eval in the chunk options to true
+- Add explanation why clusters are merged/renamed here
 
 ```{r}
 #| label: subclustering_merge_rename_cluster_1
-#| results: asis
+#| tbl-cap: 'Clusters after merging and/or renaming'
+#| eval: false
 
 # Use this chunk to merge or rename clusters in the Seurat object
 
-# Get barcodes for assay
+# Get barcodes for default assay
 bcs = SeuratObject::Cells(sc[[default_assay]])
 
 # USER_INPUT: 
-# - Set/update cluster column and what clusters to merge/rename
-# - Always keep the first condition since it ensures that only barcodes of the current assay are affected
-# - Keep the last argument as it handles all other cases
-sc$subclustering = dplyr::case_when(
-  !SeuratObject::Cells(sc) %in% bcs ~ NA,
-  
-  sc$seurat_clusters %in% c("1", "2", "3") ~ "1-3",
-  sc$seurat_clusters %in% c("4", "5", "6") ~ "4-6",
-  
-  .default = sc$seurat_clusters
-)
+# - Set cluster column and what clusters to merge/rename into a new column 'merged_clusters'
+cluster_column = "seurat_clusters"
+
+# Always keep: 
+# - Clusters that are not merged or re-named remain the same as before
+# - Barcodes that are not part of the default assay will be set to NA
+sc$merged_clusters = ifelse(SeuratObject::Cells(sc) %in% bcs, 
+                            sc[[cluster_column, drop=TRUE]] %>% as.character(), 
+                            NA)
+
+# Specify what to merge/rename
+n = sc[[]] %>% 
+  dplyr::filter(merged_clusters %in% c("1", "2", "3")) %>%
+  rownames()
+sc$merged_clusters[n] = "1-3"
+
+n = sc[[]] %>% 
+  dplyr::filter(merged_clusters %in% c("4", "5", "6")) %>%
+  rownames()
+sc$merged_clusters[n] = "4-6"
+
+# Make a table what was merged/renamed
+merge_rename_results = sc[[c(cluster_column, "merged_clusters")]]
+merge_rename_results = merge_rename_results[bcs, ]
+merge_rename_results = merge_rename_results %>% 
+  dplyr::count(!!sym(cluster_column), merged_clusters)
+
+gt::gt(merge_rename_results)
 ```
 
 ```{r}
 #| label: fig-subclustering_merge_rename_cluster_2
 #| fig-cap: 'Clusters after merging and/or renaming'
+#| eval: false
 
-# Plot a UMAP
-DimPlot(sc, group.by="subclustering", label=TRUE)
+# Plot a UMAP with the merged/renamed clusters
+DimPlot(sc, group.by="merged_clusters", label=TRUE) + 
+  AddPlotStyle()
 ```
 
 -->
 
+## Subclustering
+
+USER_INPUT:
+
+- Remove the HTML comments
+- Set eval in the chunk options to true
+
+```{r}
+#| label: subclustering_split_cluster_1
+#| eval: true
+
+# Chunk initalizes the subclustering column. Needs to be run only once at the beginning.
+
+# USER_INPUT: 
+# - Set the name of the column containing the clusters to be subclustered
+cluster_column = "seurat_clusters"
+
+# Get barcodes for default assay
+bcs = SeuratObject::Cells(sc[[default_assay]])
+
+# Initialize the column for subclustering but only for the barcodes of the affected assay
+sc$subclustering = ifelse(SeuratObject::Cells(sc) %in% bcs, 
+                            sc[[cluster_column, drop=TRUE]] %>% as.character(), 
+                            NA)
+
+# Set idents to column "subclustering"
+SeuratObject::Idents(sc) = "subclustering"
+```
+
+<!--
+### Simple - Cluster 10
+
+USER_INPUT:
+
+- Remove the HTML comments
+- Set eval in the chunk options to true
+- Add explanation which cluster is split into what
+
+```{r}
+#| label: subclustering_split_cluster_2
+#| eval: false
+
+# Simple subclustering: Use the existing neighbors graph and split a cluster into subclusters. This method is the fastest. However, note that the neighbors graph is based on the dimensionality reduction of the top variable features of the WHOLE dataset. It might not be suitable for more fine-grained substructures within clusters. In such cases, a full subclustering of the cluster should be performed. 
+
+# USER_INPUT:
+# - Set the name of the cluster to be split
+# - Set the name of the neighbors graph that was used for clustering
+#  (see sc@commands$FindClusters, typically "RNA_snn" or "RNA_pca_snn")
+# - Set the subclustering resolution
+# - Provide a list of markers to verify the results 
+cluster_to_split = "10"
+graph_name = "RNA_snn"
+clustering_resolution = 1
+known_markers = list(CelltypeA=c("F3", "SYT6"), 
+                     CelltypeB=c("WDR3", "REG4"))
+
+# Do subclustering
+set.seed(getOption("random_seed"))
+SeuratObject::Idents(sc) = "subclustering"
+sc = Seurat::FindSubCluster(sc, 
+                            cluster=cluster_to_split,
+                            graph.name=graph_name,
+                            subcluster.name="sub.cluster",
+                            resolution=clustering_resolution,
+                            algorithm=4)
+
+# Get names of subclusters
+subcluster_names = unique(sc$sub.cluster) %>% 
+  grep(paste0(cluster_to_split, "_\\d+$"), v=T, x=.) 
+index = gsub(".+_(\\d+)$", "\\1", subcluster_names) %>% as.integer()
+subcluster_names = subcluster_names[order(index)]
+
+# Decide which subcluster is what
+SeuratObject::Idents(sc) = "sub.cluster"
+
+# DotPlot of known markers
+DotPlot(sc, 
+        features=known_markers,
+        assay=default_assay,
+        idents=subcluster_names) + 
+  AddPlotStyle(title="Known markers per subcluster")
+
+# Also calculate top10 markers between subclusters as additional information
+if (length(subcluster_names) > 1) {
+  markers = purrr::map_dfr(subcluster_names, function(cl) {
+    num_cells = sum(SeuratObject::Idents(sc) == cl)
+    if (num_cells<3) return(NULL)
+    
+    other_cl = setdiff(subcluster_names, cl)
+    num_cells = sum(SeuratObject::Idents(sc) %in% other_cl)
+    
+    mrk = Seurat::FindMarkers(sc,
+                              assay=default_assay,
+                              ident.1=cl, 
+                              ident.2=other_cl, 
+                              only.pos=TRUE,
+                              )
+    mrk$cluster = cl
+    mrk$gene = rownames(mrk)
+    rownames(mrk) = NULL
+    mrk = head(mrk, 10)
+    return(mrk)
+  })
+  markers = markers %>% 
+    dplyr::group_by(cluster) %>%
+    dplyr::relocate(cluster,gene)
+  gt::gt(markers, caption="Top10 markers computed per subcluster") %>% 
+    tab_options(container.height=450)
+}
+
+# Decide which subcluster is what or repeat with different resolution
+n = sc[[]] %>% dplyr::filter(sub.cluster %in% c("10_1")) %>% rownames()
+sc$subclustering[n] = "10a"
+n = sc[[]] %>% dplyr::filter(sub.cluster %in% c("10_2")) %>% rownames()
+sc$subclustering[n] = "10b"
+# ...
+
+# Reset cell identity to subclustering
+SeuratObject::Idents(sc) = "subclustering"
+
+# Write down decisions below this chunk so that you can track these changes
+```
+
+</br>
+
+Which cluster is what:
+
+- cluster 10a: 10_1
+- cluster 10b: 10_2
+-->
+
+<!--
+### K-means - Cluster 9
+
+USER_INPUT:
+
+- Remove the HTML comments
+- Set eval in the chunk options to true
+- Add explanation which cluster is split into what
+
+```{r}
+#| label: subclustering_split_cluster_3
+#| eval: false
+
+# K-means subclustering: Split clusters based on the expression or absence of only a few genes using the k-means algorithm. This method works well if you have marker that separate the data really well. It is also useful when you have only a few genes to define a cell type such as in panels (for example Xenium). A typical approach would be to split clusters following cell type hierarchies from top to bottom.
+
+# USER_INPUT:
+# - Set the name of the cluster to be split
+# - Set the markers to be used for subclustering
+# - Set the number of clusters to be expected
+cluster_to_split = "9"
+num_subcluster = 3
+known_markers = list(CelltypeA=c("F3", "SYT6"), 
+                     CelltypeB=c("WDR3", "REG4"))
+
+# Find out barcodes to be used for subclustering
+SeuratObject::Idents(sc) = "subclustering"
+bcs = SeuratObject::WhichCells(sc, idents=cluster_to_split)
+
+# Get normalized data for barcodes and genes of interest
+normalized_data = SeuratObject::GetAssayData(sc, assay=default_assay, layer="data")
+normalized_data = normalized_data[unique(unlist(known_markers)), bcs]
+normalized_data = as(normalized_data, "dgCMatrix")
+
+# Do k-means and inspect the centers for each gene and cluster
+set.seed(getOption("random_seed"))
+kmeans_res = kmeans(t(normalized_data), centers=num_subcluster)
+#kmeans_res$centers
+#  F3        SYT6      WDR3 REG4
+#1  0 0.000000000 0.4592581    0
+#2  0 0.003277287 0.0000000    0
+
+# Create sub.cluster column for visualisation
+sc$sub.cluster = sc$subclustering
+n = names(kmeans_res$cluster)
+sc$sub.cluster[n] = paste0(cluster_to_split, "_", kmeans_res$cluster[n])
+
+# Get names of subclusters
+subcluster_names = unique(sc$sub.cluster) %>% 
+  grep(paste0(cluster_to_split, "_\\d+$"), v=T, x=.) 
+index = gsub(".+_(\\d+)$", "\\1", subcluster_names) %>% as.integer()
+subcluster_names = subcluster_names[order(index)]
+
+# Make dot plot and verify results
+SeuratObject::Idents(sc) = "sub.cluster"
+DotPlot(sc, 
+        features=known_markers,
+        assay=default_assay,
+        idents=subcluster_names) + 
+  AddPlotStyle(title="Known markers per subcluster")
+SeuratObject::Idents(sc) = "subclustering"
+
+# Decide which subcluster is what or repeat with different cluster number/features
+n = sc[[]] %>% dplyr::filter(sub.cluster %in% c("9_1")) %>% rownames()
+sc$subclustering[n] = "9a"
+n = sc[[]] %>% dplyr::filter(sub.cluster %in% c("9_2", "9_3")) %>% rownames()
+sc$subclustering[n] = "9b"
+# ...
+
+# Reset cell identity to subclustering
+SeuratObject::Idents(sc) = "subclustering"
+
+# Write down decisions below this chunk so that you can track these changes
+```
+
+</br>
+
+Which cluster is what:
+
+- cluster 9a: 9_1
+- cluster 9b: 9_2, 9_3
+-->
+
+### Full - Cluster 1
+
+USER_INPUT:
+
+- Remove the HTML comments
+- Set eval in the chunk options to true
+- Add explanation which cluster is split into what
+
+```{r}
+#| label: subclustering_split_cluster_4
+#| eval: false
+
+# Full subclustering: Subset the cluster of interest and redo normalization, identification of variable features, scaling, PCA, and clustering. This method is useful if you have a more fine-grained subclustering for clusters that cannot be easily split by the other methods. ALso there is more control over the subclustering.
+
+# USER_INPUT:
+# - Set the name of the cluster to be split
+# - Set the subclustering resolution
+# - Provide a list of markers to verify the results 
+cluster_to_split = "1"
+clustering_resolution = 1
+known_markers = list(CelltypeA=c("F3", "SYT6"), 
+                     CelltypeB=c("WDR3", "REG4"))
+
+# Find out barcodes to be used for subclustering
+bcs = SeuratObject::WhichCells(sc, expression=subclustering %in% cluster_to_split)
+
+# Create a new Seurat object for the cluster
+raw_data = SeuratObject::GetAssayData(sc, assay=default_assay, layer="counts")
+raw_data = as(raw_data[,bcs], "dgCMatrix")
+sc_subset = Seurat::CreateSeuratObject(raw_data, 
+                                       assay=default_assay,
+                                       meta.data=sc[[]][bcs,])
+
+# Important: Check list of commands and arguments to see what was done so far
+# Then adjust the following commands accordingly
+sc_commands = sc@commands
+
+# Normalize
+sc_subset = Seurat::NormalizeData(sc_subset)
+
+# Find variable features (not needed if SCTransform was run)
+sc_subset = Seurat::FindVariableFeatures(sc_subset)
+
+# Note: Check the variable features and add features if neccessary.
+
+# Scale data (not needed if SCTransform was run)
+sc_subset = Seurat::ScaleData(sc_subset)
+
+# Run PCA
+sc_subset = Seurat::RunPCA(sc_subset)
+
+# Compute UMAP
+sc_subset = Seurat::RunUMAP(sc_subset, dims=1:10)
+
+# Find neighbors
+sc_subset = Seurat::FindNeighbors(sc_subset, dims=1:10)
+
+# Find clusters and rename them
+sc_subset = Seurat::FindClusters(sc_subset, algorithm=4, resolution=clustering_resolution)
+
+# Rename clusters
+sc_subset$seurat_clusters = factor(sc_subset$seurat_clusters %>% 
+                                     paste0(cluster_to_split, "_", .),
+                                   levels=levels(sc_subset$seurat_clusters) 
+                                   %>% paste0(cluster_to_split, "_", .))
+SeuratObject::Idents(sc_subset) = "seurat_clusters"
+
+# Make dot plot and verify results
+DotPlot(sc_subset, 
+        features=known_markers,
+        assay=default_assay) + 
+  AddPlotStyle(title="Known markers per subcluster")
+
+# Also calculate top10 markers between subclusters as additional information
+markers = Seurat::FindAllMarkers(sc_subset,
+                                 assay=default_assay,
+                                 only.pos=TRUE)
+markers = markers %>% 
+  dplyr::group_by(cluster) %>% 
+  dplyr::slice_head(n=10) %>% 
+  dplyr::relocate(cluster,gene)
+gt::gt(markers, caption="Top10 markers computed per subcluster") %>% 
+  tab_options(container.height=450)
+
+# Decide which subcluster is what or repeat with different resolution
+n = sc_subset[[]] %>% dplyr::filter(seurat_clusters %in% c("1_1")) %>% rownames()
+sc$subclustering[n] = "1a"
+n = sc_subset[[]] %>% dplyr::filter(seurat_clusters %in% c("1_2", "1_3")) %>% rownames()
+sc$subclustering[n] = "1b"
+#...
+
+# Reset cell identity to subclustering
+SeuratObject::Idents(sc) = "subclustering"
+
+# Write down decisions below this chunk so that you can track these changes
+```
+
+</br>
+
+Which cluster is what:
+
+- cluster 1a: 1_1
+- cluster 1b: 1_2, 1_3
 
 
+```{r}
+#| label: subclustering_finalise
+#| eval: true
+
+# This chunk finalises the subclustering. Sets the order of the new clusters and their colors.
+
+# USER_INPUT:
+# - Set the name of the column that contains the original cluster names (will be overwritten)
+# - Set the name of the column that contains the subclustering results: "subclustering" or "merged_clusters".
+cluster_column = "seurat_clusters"
+subcluster_column = "subclustering"
+
+# Get barcodes for default assay
+bcs = SeuratObject::Cells(sc[[default_assay]])
+
+# Overwrite barcodes of the affected assay
+new_cluster_values = ifelse(SeuratObject::Cells(sc) %in% bcs, 
+                            sc[[subcluster_column, drop=TRUE]] %>% as.character(), 
+                            sc[[cluster_column, drop=TRUE]] %>% as.character())
+
+# Convert to factor
+new_cluster_values = factor(new_cluster_values)
+
+# Specify order of clusters, either manually or via function
+levels(new_cluster_values) = levels(new_cluster_values) %>% sort()
+
+# Set new colours, either manually or via this code
+l = levels(new_cluster_values)
+col = ScColours(sc, "seurat_clusters")[1:length(l)]
+names(col) = l
+col = list(col)
+
+# Overwrite cluster column
+sc[[cluster_column]] = new_cluster_values
+
+# Overwrite colours
+names(col) = cluster_column
+sc = ScAddColours(sc, colours=col)
+
+# Update idents
+SeuratObject::Idents(sc) = cluster_column
+```
 
 ## Software
 
@@ -241,14 +628,14 @@ gt(sessioninfo)
 ## Parameter
 
 ```{r}
-#| label: read_data_save_parameter  
+#| label: subclustering_save_parameter  
 
 paraminfo = ScrnaseqParamsInfo(param()) %>% as.data.frame()
 gt(paraminfo)
 ```
 
 ```{r}
-#| label: clusterqc_save_seurat
+#| label: subclustering_save_seurat
 
 # Save Seurat object and layer data
 # Note: counts and normalized data have not been changed in this module, no copying needed
@@ -264,7 +651,7 @@ with_progress({
 ```
 
 ```{r}
-#| label: clusterqc_finish
+#| label: subclustering_finish
 
 # Stop multisession workers
 plan(sequential)
