@@ -468,6 +468,7 @@ Which cluster is what:
 - cluster 9b: 9_2, 9_3
 -->
 
+<!--
 ### Full - Cluster 1
 
 USER_INPUT:
@@ -478,7 +479,7 @@ USER_INPUT:
 
 ```{r}
 #| label: subclustering_split_cluster_4
-#| eval: false
+#| eval: true
 
 # Full subclustering: Subset the cluster of interest and redo normalization, identification of variable features, scaling, PCA, and clustering. This method is useful if you have a more fine-grained subclustering for clusters that cannot be easily split by the other methods. ALso there is more control over the subclustering.
 
@@ -571,11 +572,19 @@ Which cluster is what:
 
 - cluster 1a: 1_1
 - cluster 1b: 1_2, 1_3
+-->
 
+<!--
+## Final clusters
+
+USER_INPUT:
+
+- Remove the HTML comments
+- Set eval in the chunk options to true
 
 ```{r}
 #| label: subclustering_finalise
-#| eval: true
+#| eval: false
 
 # This chunk finalises the subclustering. Sets the order of the new clusters and their colors.
 
@@ -589,9 +598,7 @@ subcluster_column = "subclustering"
 bcs = SeuratObject::Cells(sc[[default_assay]])
 
 # Overwrite barcodes of the affected assay
-new_cluster_values = ifelse(SeuratObject::Cells(sc) %in% bcs, 
-                            sc[[subcluster_column, drop=TRUE]] %>% as.character(), 
-                            sc[[cluster_column, drop=TRUE]] %>% as.character())
+new_cluster_values = sc[[subcluster_column, drop=TRUE]]
 
 # Convert to factor
 new_cluster_values = factor(new_cluster_values)
@@ -615,6 +622,17 @@ sc = ScAddColours(sc, colours=col)
 # Update idents
 SeuratObject::Idents(sc) = cluster_column
 ```
+
+```{r}
+#| label: fig-subclustering_finalise_1
+#| fig-cap: 'Final clusters'
+#| eval: false
+
+# Plot a UMAP
+DimPlot(sc, label=TRUE) + 
+  AddPlotStyle()
+```
+-->
 
 ## Software
 
