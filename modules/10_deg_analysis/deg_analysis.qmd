@@ -30,16 +30,16 @@ params:
   cores: 4
   
   # Contrasts
-  # Add entries below 'value'.
+  # Add entries below keyword 'value'.
   # Each entry has a unique name and the following keys:
   #
   #  condition_column: Categorial column in the barcode metadata (required)
-  #  condition_group1: Condition levels in group 1 (required)
+  #  condition1: Condition levels in group 1 (required)
   #                    Use 'level1+level2' to use multiple levels
   #                    Use '!level1' or '!level1+level2 to use all but these levels (i.e. negate)
   #                    Can also be a Excel/csv file with barcodes with 'barcode' or 'sample:original_barcode' per line. 
   #                    Original barcode refers to the one used in the dataset.
-  #  condition_group2: Condition levels in group 2 (required)
+  #  condition2: Condition levels in group 2 (required)
   #                    Use 'level1,level2' to use multiple levels
   #                    Use '!level1' or '!level1+level2 to use all but these levels (i.e. negate)
   #                    Can also be a Excel/csv file with barcodes with 'barcode' or 'sample:original_barcode' per line. 
@@ -68,59 +68,72 @@ params:
   # downsample_barcodes: Downsample each group to at most n barcodes (default: null)
   # 
   # test: Type of test for identifying differentially expressed genes (default: 'wilcox')
-  #       Can be 'wilcox', 'bimod', 'roc', 't', 'negbinom', 'poisson', 'LR', 'MAST', 'DESeq2'.
-  # covariate: One or two columns (comma-separated) to include as covariates for testing (default: null).
-  #       The following tests can use covariates: 'LR', 'poisson', 'negbinom', 'MAST', 'DESeq2'.
+  #       Can be 'wilcox', 'bimod', 'roc', 't', 'negbinom', 'poisson', 'LR', 'MAST', 'DESeq2', 'DESeq2LRT'.
+  #       Tests 'DESeq2' and 'DESeq2LRT' can only be run with  'bulk_by'/'pseudobulk_samples'. 
+  # covariate: One or more columns to include as covariates (batches) for testing (default: null).
+  #            The following tests can use covariates: 'LR', 'poisson', 'negbinom', 'MAST', 'DESeq2', 'DESeq2LRT'.
+  #
+  # deseq2_design: For DESeq2 tests, specify a design formula for testing. (default: null). 
+  #                Replaces the 'covariate' setting. Include the term 'condition_groups' for the condition.
+  #                For 'DESeq2LRT', specify a design formula for the full model and the reduced model.
+  # deseq2_args: For DESeq2 tests, additional arguments (format key: value) passed to the DESeq2 results function (default: null)
+  # 
   # padj: Maximum adjusted p-value (default: 0.05)
   # log2FC: Minimum absolute log2 fold change (default: 0)
-  #         Only used when testing counts data.
   # min_pct: Minimum percentage of barcodes expressing a feature in one group (default: 0.01)
-  #          Only used when testing counts data.
   #
   # ora_genesets: Genesets to use for over-representation analysis (default: null).
   #               See the global 'ora_genesets' parameter for more information.
   #
   contrasts:
       value:
+          # Compare pbmc_1k vs pbmc_5k
           - Comparison1:
                 condition_column: "orig.ident"
-                condition_group1: "pbmc_1k"
-                condition_group2: "pbmc_5k"
+                condition1: "pbmc_1k"
+                condition2: "pbmc_5k"
+          # Compare pbmc_1k vs pbmc_5k for clusters 1,2,3+4
           - Comparison2:
-                condition_column: "seurat_clusters"
-                condition_group1: "1"
-                condition_group2: "2"
-                downsample_barcodes: 100
-          - Comparison3:
                 condition_column: "orig.ident"
-                condition_group1: "pbmc_1k"
-                condition_group2: "pbmc_5k"
-                bulk_by: "seurat_clusters"
-                pseudobulk_samples: 5
-                covariate: "Phase"
-                test: "DESeq2"
-          - Comparison4:
-                condition_column: "orig.ident"
-                condition_group1: "pbmc_1k"
-                condition_group2: "pbmc_5k"
+                condition1: "pbmc_1k"
+                condition2: "pbmc_5k"
                 subset_column: "seurat_clusters"
                 subset_group: "1,2,3+4"
+          # Compare pbmc_1k vs pbmc_5k. Bulk cells by cluster and condition to generate replicates. 
+          # Use DESeq2 and a specific design that includes seurat_clusters as covariate in the model.
+          - Comparison3:
+                condition_column: "orig.ident"
+                condition1: "pbmc_1k"
+                condition2: "pbmc_5k"
+                bulk_by: "seurat_clusters"
+                test: "DESeq2"
+                deseq2_design: "~ condition_groups + seurat_clusters"
+          # Compare pbmc_1k vs pbmc_5k. Generate 5 pseudo-bulk replicates per cluster and condition. 
+          # Use DESeq2 with a LRT test that compares two different models across seurat_clusters.
+          - Comparison4:
+                condition_column: "orig.ident"
+                condition1: "pbmc_1k"
+                condition2: "pbmc_5k"
+                bulk_by: "seurat_clusters"
+                pseudobulk_samples: 5
+                test: "DESeq2LRT"
+                deseq2_design: 
+                - "~ condition_groups + seurat_clusters"
+                - "~ seurat_clusters"
+          # Compare pbmc_1k vs pbmc_5k. Test for differences in nFeature_RNA and nCount_RNA.
           - Comparison5:
                 condition_column: "orig.ident"
-                condition_group1: "pbmc_1k"
-                condition_group2: "pbmc_5k"
+                condition1: "pbmc_1k"
+                condition2: "pbmc_5k"
                 assay: 
                 - "nFeature_RNA"
                 - "nCount_RNA"
-                test: "wilcox"
-                bulk_by: "seurat_clusters"
+          # Compare pbmc_1k vs pbmc_5k. Test for differences in principal components.
           - Comparison6:
                 condition_column: "orig.ident"
-                condition_group1: "pbmc_1k"
-                condition_group2: "pbmc_5k"
+                condition1: "pbmc_1k"
+                condition2: "pbmc_5k"
                 assay: "pca"
-                test: "wilcox"
-                bulk_by: "seurat_clusters"
 
         
   # Excel or csv file with contrasts
@@ -136,17 +149,19 @@ params:
     - "Comparison6"
   
   # Run over-representation analysis (ORA) on DEGs: True, false or a list with contrast names.
-  # ORA uses genesets from MSigDB (https://www.gsea-msigdb.org/gsea/msigdb) or user-defined genesets (see below).
+  # Uses genesets from MSigDB (https://www.gsea-msigdb.org/gsea/msigdb) or user-defined genesets (see below).
   run_ora:
     - "Comparison1"
     - "Comparison2"
     - "Comparison3"
     - "Comparison4"
   
-  # When using MSigDB, the name of the species in the database. If null, the name will be inferred from the 'species' parameter. For example: homo_sapiens => Homo sapiens
+  # When using MSigDB, the name of the species in the database. If null, the name will be inferred from the 'species' parameter.
+  # For example: homo_sapiens => Homo sapiens
   msigdb_species: null
   
-  # User-defined genesets in Excel or CSV file(s) to use for ORA instead of MSigDB. The files should have these columns: gs_cat, gs_subcat, gs_name, gene_id, gene_symbol. If null, MSigDB will be used.
+  # User-defined genesets in Excel or CSV file(s) to use for ORA instead of MSigDB. The files should have these columns: gs_cat,
+  # gs_subcat, gs_name, gene_id, gene_symbol. If null, MSigDB will be used.
   ora_geneset_files: null
   
   # Genesets to use for ORA. List entries should have the form gs_cat:gs_subcat:gs_name. Wildcards are allowed. 
@@ -157,7 +172,7 @@ params:
   - "C5:GO:MF:*"
   
   # Run geneset enrichment analysis (GSEA) on expressed genes: True, false or a list with contrast names.
-  # GSEA uses genesets from MSigDB (https://www.gsea-msigdb.org/gsea/msigdb) or user-defined genesets (see below).
+  # Uses genesets from MSigDB (https://www.gsea-msigdb.org/gsea/msigdb) or user-defined genesets (see below).
   run_gsea:
     - "Comparison1"
     - "Comparison2"
@@ -431,7 +446,6 @@ if (have_deg_comparisons) {
     
     # Write results to files
     for (i in seq_along(deg_results_list)) {
-      i = 3
       deg_results = deg_results_list[[i]]
         
       # Get DEG tables for each comparison and add names (needed if multiple subsets were analysed)
@@ -448,10 +462,10 @@ if (have_deg_comparisons) {
       }
       
       # Collect configuration
-      config_names = c("condition_column", "condition_group1", "condition_group2", "bulk_by", "pseudobulk_samples", "assay", "test", "padj", "log2FC", "min_pct", "covariate", "downsample_n")
+      config_names = c("condition_column", "condition1", "condition2", "bulk_by", "pseudobulk_samples", "assay", "test", "padj", "log2FC", "min_pct", "covariate", "formula", "downsample_n")
       config_values = purrr::map_chr(config_names, function(n) {
         v = deg_results[[1]][[n]] %||% "-"
-        v = paste(v, collapse=ifelse(n %in% c("condition_group1", "condition_group2"), "+", ","))
+        v = paste(v, collapse=ifelse(n %in% c("condition1", "condition2"), "+", ","))
         return(v)
       })
       if ("subset_column" %in% names(deg_results[[1]])) {
@@ -552,8 +566,8 @@ deg_summary_table = purrr::map_depth(deg_results_list, .depth=2, function(deg_re
     # Get comparison name, condition column and values, subset column and subset group. . If multiple, join by '+'.
     summary_table = data.frame(Comparison=deg_result[["name"]],
                Condition=deg_result[["condition_column"]], 
-               Group1=paste(deg_result[["condition_group1"]], collapse="+"), 
-               Group2=paste(deg_result[["condition_group2"]], collapse="+"))
+               Group1=paste(deg_result[["condition1"]], collapse="+"), 
+               Group2=paste(deg_result[["condition2"]], collapse="+"))
     if ("subset_column" %in% names(deg_result)) {
         summary_table$Subset = deg_result[["subset_column"]]
         summary_table$SubsetGroup = paste(deg_result[["subset_group"]], collapse="+")
@@ -600,8 +614,8 @@ gt::gt(deg_summary_table) %>%
 # Chunk template for the configuration
 chunk_template_configuration = "
 * condition column: {{condition_column}}
-* condition group 1: {{condition_group1}}
-* condition group 2: {{condition_group2}}
+* condition group 1: {{condition1}}
+* condition group 2: {{condition2}}
 * subset column: {{subset_column}}
 * subset groups: {{subset_group}}
 * bulk by: {{bulk_by}}
@@ -693,8 +707,8 @@ if (have_deg_comparisons) {
     cat("This is the general configuration for the DEG analysis for this comparison:\n\n")
     chunk_filled = knitr::knit_expand(text=chunk_template_configuration,
                                       condition_column=deg_results[[1]]$condition_column,
-                                      condition_group1=deg_results[[1]]$condition_group1,
-                                      condition_group2=deg_results[[1]]$condition_group2,
+                                      condition1=deg_results[[1]]$condition1,
+                                      condition2=deg_results[[1]]$condition2,
                                       subset_column=deg_results[[1]]$subset_column %||% "-",
                                       subset_group=names(deg_results) %>% paste(collapse=", "),
                                       bulk_by=deg_results[[1]]$bulk_by %||% "-",
@@ -917,8 +931,8 @@ gsea_summary_table = purrr::map_depth(gsea_results_list, .depth=2, function(gsea
     # Get comparison name, condition column and values, subset column and subset group. . If multiple, join by '+'.
     sum_tbl = data.frame(Comparison=gsea_result[["name"]],
              Condition=gsea_result[["condition_column"]], 
-             Group1=paste(gsea_result[["condition_group1"]], collapse="+"), 
-             Group2=paste(gsea_result[["condition_group2"]], collapse="+"))
+             Group1=paste(gsea_result[["condition1"]], collapse="+"), 
+             Group2=paste(gsea_result[["condition2"]], collapse="+"))
     if ("subset_column" %in% names(gsea_result)) {
       sum_tbl$Subset = gsea_result[["subset_column"]]
       sum_tbl$SubsetGroup = paste(gsea_result[["subset_group"]], collapse="+")
@@ -962,8 +976,8 @@ chunk_template_gsea_configuration = "
 This is the general configuration for the GSEA analysis for this comparison:
     
 * condition column: {{condition_column}}
-* condition group 1: {{condition_group1}}
-* condition group 2: {{condition_group2}}
+* condition group 1: {{condition1}}
+* condition group 2: {{condition2}}
 * subset column: {{subset_column}}
 * subset groups: {{subset_group}}
 * bulk by: {{bulk_by}}
@@ -1025,8 +1039,8 @@ if (have_gsea) {
     # This will include an overview table
     chunk_filled = knitr::knit_expand(text=chunk_template_gsea_configuration,
                                       condition_column=gsea_results[[1]]$condition_column,
-                                      condition_group1=gsea_results[[1]]$condition_group1,
-                                      condition_group2=gsea_results[[1]]$condition_group2,
+                                      condition1=gsea_results[[1]]$condition1,
+                                      condition2=gsea_results[[1]]$condition2,
                                       subset_column=gsea_results[[1]]$subset_column %||% "-",
                                       subset_group=names(gsea_results) %>% paste(collapse=", "),
                                       bulk_by=gsea_results[[1]]$bulk_by %||% "-",
