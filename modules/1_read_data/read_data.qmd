@@ -32,7 +32,7 @@ params:
   # - barcode_suffix (can be empty): Suffix to add to the barcodes. If left empty, numeric suffixes will be added ('-1', '-2', etc). If set to 'NO', no suffixes are added.
   datasets_file: "datasets/10x_pbmc_datasets.xlsx"
   
-  # Default assay. If null, will be set to the first assay.
+  # Default assay. Must be one of the assays listed in the 'assays' column of the datasets file. For VisiumHD, must include the bin size (e.g. RNA008).
   default_assay: "RNA"
   
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. Computations will access only the relevant parts of the data. Once done, matrix directories will be saved together with the Seurat object in the module directory.

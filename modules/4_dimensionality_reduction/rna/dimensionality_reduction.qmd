@@ -347,7 +347,7 @@ plist[['{{dataset}}']]
   
   # Iterate over dimensions
   ncells = length(SeuratObject::Cells(sc[[default_assay]]))
-  key = SeuratObject::Key(sc[[full_reduct]])
+  key = SeuratObject::Key(sc[[DefaultReduct(sc, assay=assay)]])
   
   cat("::: panel-tabset\n\n")
   for(dim in 1:min(min(20, dim_n_compute), ncells)) {
