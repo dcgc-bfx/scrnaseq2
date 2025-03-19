@@ -3,9 +3,10 @@
 #' 
 #' @param sc A Seurat single cell object.
 #' @param contrasts_list A list of contrasts. Must at least contain 'name', condition_column', 'condition1' and 'condition2'.
+#' @param type Type of contrast. Can be 'deg' (for changes in gene expression) or 'compositional' (for changes in cell composition). Default is 'deg'.
 #' @return A list with contrasts. Each list entry is a list either of length 1 (if there is only one comparison per contrast) or of length >1 
 #' (if comparisons are done for multiple subsets for a contrast)
-NewContrastsList = function(sc, contrasts_list) {
+NewContrastsList = function(sc, contrasts_list, type='deg') {
     # If empty, return empty list
     if (length(contrasts_list) == 0) return(list())
   
@@ -26,7 +27,7 @@ NewContrastsList = function(sc, contrasts_list) {
         assertthat::assert_that(grepl("^[[:alnum:]_\\-]+$", name),
                                 msg=FormatString("The name ('name') must only contain alphanumeric characters, underscores and hyphens (for comparison {i})."))
         
-        # assay: data that is tested
+        # assay: data that is tested (not relevant for compositional contrasts)
         if (!"assay" %in% names(contrast)) contrast[["assay"]] = Seurat::DefaultAssay(sc)
         contrast[["assay"]] = unlist(contrast[["assay"]])
         valid_assays = Seurat::Assays(sc)
@@ -37,11 +38,17 @@ NewContrastsList = function(sc, contrasts_list) {
         assay = contrast[["assay"]]
         
         # data_type: which type of data is tested
-        if (length(assay) == 1 && assay %in% valid_assays) {
+        if (type == "compositional") {
+          # cell composition
+          contrast[["data_type"]] = "compositional"
+        } else if (length(assay) == 1 && assay %in% valid_assays) {
+          # feature data
           contrast[["data_type"]] = "feature_data"
         } else if (length(assay) == 1 && assay %in% valid_reductions) {
+          # reduction
           contrast[["data_type"]] = "reduction"
         } else {
+          # barcode metadata
           contrast[["data_type"]] = "barcode_metadata"
         }
         
@@ -52,12 +59,12 @@ NewContrastsList = function(sc, contrasts_list) {
             barcodes_in_assay = rep(TRUE, nrow(barcode_metadata))
         }
         
-        # condition_column
+        # condition_column: barcode metadata column that contains the condition information
         assertthat::assert_that("condition_column" %in% names(contrast),
                                 msg=FormatString("The condition column ('condition_column') is missing (for comparison {i}/{name})."))
         contrast[["condition_column"]] = condition_column = unlist(contrast[["condition_column"]])
         
-        # condition1 and condition2
+        # condition1 and condition2: condition 1 vs condition 2
         assertthat::assert_that("condition1" %in% names(contrast),
                                 msg=FormatString("The condition group 1 ('condition1') is missing or empty (for comparison {i}/{name})."))
         contrast[["condition1"]] = unlist(contrast[["condition1"]])
@@ -131,22 +138,28 @@ NewContrastsList = function(sc, contrasts_list) {
             # Make sure file contains data
             assertthat::assert_that(is.data.frame(barcodes) && nrow(barcodes)>0,
                                     msg=FormatString("The condition group 1 barcode file does not contain barcodes (for comparison {i}/{name})."))
-            barcodes = barcodes[, 1, drop=TRUE] %>% trimws() %>% unique()
-            barcodes = barcodes[!is.na(barcodes)]
             
-            # Parse barcodes with sample information
-            idx = grepl("^[^:]+:.+", barcodes) %>% which()
-            if (length(idx) > 0) {
-                samples = gsub("^([^:]+):.+", "\\1", barcodes[idx])
-                idx = idx[samples %in% levels(barcode_metadata[, "orig.ident"])]
+            # File can contain one column (barcodes) or two columns (sample name and original barcode)
+            if (ncol(barcodes) == 2) {
+                # Get sample names and associated original barcodes
+                sample_names = barcodes[, 1, drop=TRUE] %>% trimws() %>% unique()
+                original_barcodes = barcodes[, 2, drop=TRUE] %>% trimws() %>% unique()
+                i = which(!is.na(original_barcodes) & !is.na(sample_names))
+                sample_names = sample_names[i]
+                original_barcodes = original_barcodes[i]
                 
-                if (length(idx) > 0) {
-                    orig_ident_orig_barcode = paste(barcode_metadata$orig.ident, barcode_metadata$orig_barcode, sep=":")
-                    jdx = match(barcodes[idx], orig_ident_orig_barcode)
-                    assertthat::assert_that(!any(is.na(jdx)),
-                                            msg=FormatString("The condition group 1 barcode file contains barcodes that cannot be found in the barcode metadata (for comparison {i}/{name})."))
-                    contrast[["condition1_idx"]] = jdx
-                }
+                # Assert that all sample names are valid
+                assertthat::assert_that(all(sample_names %in% levels(barcode_metadata$orig.ident)),
+                                        msg=FormatString("The sample names in the condition group 1 barcode file are not levels of the 'orig.ident' column of the barcode metadata (for comparison {i}/{name})."))
+                
+                # Find barcodes indices for which sample name and original barcode match
+                contrast[["condition1_idx"]] = which(barcode_metadata$orig.ident %in% sample_names & barcode_metadata$orig_barcode %in% original_barcodes)
+            } else {
+                barcodes = barcodes[, 1, drop=TRUE] %>% trimws() %>% unique()
+                barcodes = barcodes[!is.na(barcodes)]
+                
+                # Find barcodes indices
+                contrast[["condition1_idx"]] = which(rownames(barcode_metadata) %in% barcodes)
             }
             
             # Add base file name:sheet number or sheet name as 'condition1'
@@ -209,29 +222,35 @@ NewContrastsList = function(sc, contrasts_list) {
             # Make sure file contains data
             assertthat::assert_that(is.data.frame(barcodes) && nrow(barcodes)>0,
                                     msg=FormatString("The condition group 2 barcode file does not contain barcodes (for comparison {i}/{name})."))
-            barcodes = barcodes[, 1, drop=TRUE] %>% trimws() %>% unique()
-            barcodes = barcodes[!is.na(barcodes)]
             
-            # Parse barcodes with sample information
-            idx = grepl("^[^:]+:.+", barcodes) %>% which()
-            if (length(idx) > 0) {
-                samples = gsub("^([^:]+):.+", "\\1", barcodes[idx])
-                idx = idx[samples %in% levels(barcode_metadata[, "orig.ident"])]
-                
-                if (length(idx) > 0) {
-                    orig_ident_orig_barcode = paste(barcode_metadata$orig.ident, barcode_metadata$orig_barcode, sep=":")
-                    jdx = match(barcodes[idx], orig_ident_orig_barcode)
-                    assertthat::assert_that(!any(is.na(jdx)),
-                                            msg=FormatString("The condition group 2 barcode file contains barcodes that cannot be found in the barcode metadata (for comparison {i}/{name})."))
-                    contrast[["condition2_idx"]] = jdx
-                }
+            # File can contain one column (barcodes) or two columns (sample name and original barcode)
+            if (ncol(barcodes) == 2) {
+              # Get sample names and associated original barcodes
+              sample_names = barcodes[, 1, drop=TRUE] %>% trimws() %>% unique()
+              original_barcodes = barcodes[, 2, drop=TRUE] %>% trimws() %>% unique()
+              i = which(!is.na(original_barcodes) & !is.na(sample_names))
+              sample_names = sample_names[i]
+              original_barcodes = original_barcodes[i]
+              
+              # Assert that all sample names are valid
+              assertthat::assert_that(all(sample_names %in% levels(barcode_metadata$orig.ident)),
+                                      msg=FormatString("The sample names in the condition group 2 barcode file are not levels of the 'orig.ident' column of the barcode metadata (for comparison {i}/{name})."))
+              
+              # Find barcodes indices for which sample name and original barcode match
+              contrast[["condition2_idx"]] = which(barcode_metadata$orig.ident %in% sample_names & barcode_metadata$orig_barcode %in% original_barcodes)
+            } else {
+              barcodes = barcodes[, 1, drop=TRUE] %>% trimws() %>% unique()
+              barcodes = barcodes[!is.na(barcodes)]
+              
+              # Find barcodes indices
+              contrast[["condition2_idx"]] = which(rownames(barcode_metadata) %in% barcodes)
             }
             
             # Add base file name:sheet number or sheet name as 'condition1'
-            contrast[["condition2"]] = paste0(basename(contrast[["condition2"]]), ", sheet ", sheet)
+            contrast[["condition1"]] = paste0(basename(contrast[["condition1"]]), ", sheet ", sheet)
         }
         
-        # subset_column and subset_group
+        # subset_column and subset_group: subset_column is a barcode metadata column that contains the subset information, subset_group is a string that contains the subset group(s)
         if ("subset_column" %in% names(contrast)) {
             assertthat::assert_that("subset_group" %in% names(contrast),
                                     msg=FormatString("The 'subset_group' column must be used together with the subset_column column (for comparison {i}/{name})."))
@@ -288,22 +307,28 @@ NewContrastsList = function(sc, contrasts_list) {
                 # Make sure file contains data
                 assertthat::assert_that(is.data.frame(barcodes) && nrow(barcodes)>0,
                                         msg=FormatString("The subset group barcode file does not contain barcodes (for comparison {i}/{name})."))
-                barcodes = barcodes[, 1, drop=TRUE] %>% trimws() %>% unique()
-                barcodes = barcodes[!is.na(barcodes)]
                 
-                # Parse barcodes with sample information
-                idx = grepl("^[^:]+:.+", barcodes) %>% which()
-                if (length(idx) > 0) {
-                    samples = gsub("^([^:]+):.+", "\\1", barcodes[idx])
-                    idx = idx[samples %in% levels(barcode_metadata[, "orig.ident"])]
-                    
-                    if (length(idx) > 0) {
-                        orig_ident_orig_barcode = paste(barcode_metadata$orig.ident, barcode_metadata$orig_barcode, sep=":")
-                        jdx = match(barcodes[idx], orig_ident_orig_barcode)
-                        assertthat::assert_that(!any(is.na(jdx)),
-                                                msg=FormatString("The subset group barcode file contains barcodes that cannot be found in the barcode metadata (for comparison {i}/{name})."))
-                        contrast[["subset_group_idx"]] = list(jdx)
-                    }
+                # File can contain one column (barcodes) or two columns (sample name and original barcode)
+                if (ncol(barcodes) == 2) {
+                  # Get sample names and associated original barcodes
+                  sample_names = barcodes[, 1, drop=TRUE] %>% trimws() %>% unique()
+                  original_barcodes = barcodes[, 2, drop=TRUE] %>% trimws() %>% unique()
+                  i = which(!is.na(original_barcodes) & !is.na(sample_names))
+                  sample_names = sample_names[i]
+                  original_barcodes = original_barcodes[i]
+                  
+                  # Assert that all sample names are valid
+                  assertthat::assert_that(all(sample_names %in% levels(barcode_metadata$orig.ident)),
+                                          msg=FormatString("The sample names in the subset group barcode file are not levels of the 'orig.ident' column of the barcode metadata (for comparison {i}/{name})."))
+                  
+                  # Find barcodes indices for which sample name and original barcode match
+                  contrast[["subset_group_idx"]] = which(barcode_metadata$orig.ident %in% sample_names & barcode_metadata$orig_barcode %in% original_barcodes)
+                } else {
+                  barcodes = barcodes[, 1, drop=TRUE] %>% trimws() %>% unique()
+                  barcodes = barcodes[!is.na(barcodes)]
+                  
+                  # Find barcodes indices
+                  contrast[["subset_group_idx"]] = which(rownames(barcode_metadata) %in% barcodes)
                 }
                 
                 # Add base file name:sheet number or sheet name as 'condition1'
@@ -311,8 +336,9 @@ NewContrastsList = function(sc, contrasts_list) {
             }
         }
         
-        # bulk_by
-        if ("bulk_by" %in% names(contrast)) {
+        # bulk_by: bulk data by a barcode metadata column
+        # (ignored for compositional contrasts)
+        if ("bulk_by" %in% names(contrast) & type != "compositional") {
             contrast[["bulk_by"]] = unlist(contrast[["bulk_by"]])
           
             # Parse bulk_by string and make sure that the columns are factors
@@ -331,17 +357,25 @@ NewContrastsList = function(sc, contrasts_list) {
             contrast[["bulk_by"]] = bulk_by
         }
         
-        # pseudobulk_samples
-        if ("pseudobulk_samples" %in% names(contrast)) {
+        # pseudobulk_samples: create pseudo-bulk samples
+        # (ignored for compositional contrasts)
+        if ("pseudobulk_samples" %in% names(contrast) & type != "compositional") {
             contrast[["pseudobulk_samples"]] = unlist(contrast[["pseudobulk_samples"]])
             contrast[["pseudobulk_samples"]] = as.integer(contrast[["pseudobulk_samples"]])
             assertthat::assert_that(contrast[["pseudobulk_samples"]] > 1,
                                     msg=FormatString("The number of pseudobulk samples ('pseudobulk_samples') must be greater than 1 (for comparison {i}/{name})."))
         }
         
-        # test
-        valid_tests = c("wilcox", "bimod", "t", "negbinom", "poisson", "LR", "MAST", "DESeq2", "DESeq2LRT")
-        if (!"test" %in% names(contrast)) contrast[["test"]] = "wilcox"
+        # test: test to use
+        if (type == "deg") {
+          # valid deg tests
+          valid_tests = c("wilcox", "bimod", "t", "negbinom", "poisson", "LR", "MAST", "DESeq2", "DESeq2LRT")
+          if (!"test" %in% names(contrast)) contrast[["test"]] = "wilcox"
+        } else if (type == "compositional") {
+          # valid compositional tests
+          valid_tests = c("fisher", "sccoda")
+          if (!"test" %in% names(contrast)) contrast[["test"]] = "fisher"
+        }
         contrast[["test"]] = unlist(contrast[["test"]])
         assertthat::assert_that(contrast[["test"]] %in% valid_tests,
                                 msg=FormatString("The test ('test') must be one of: {valid_tests*} (for comparison {i}/{name})."))
@@ -355,12 +389,12 @@ NewContrastsList = function(sc, contrasts_list) {
         contrast[["padj"]] = unlist(contrast[["padj"]])
         contrast[["padj"]] = as.numeric(contrast[["padj"]])
         
-        # log2FC
+        # log2FC (not relevant for compositional contrasts)
         if (!"log2FC" %in% names(contrast)) contrast[["log2FC"]] = 0
         contrast[["log2FC"]] = unlist(contrast[["log2FC"]])
         contrast[["log2FC"]] = as.numeric(contrast[["log2FC"]])
         
-        # min_pct
+        # min_pct (not relevant for compositional contrasts)
         if (!"min_pct" %in% names(contrast)) contrast[["min_pct"]] = 0.01
         contrast[["min_pct"]] = unlist(contrast[["min_pct"]])
         contrast[["min_pct"]] = as.numeric(contrast[["min_pct"]])
@@ -374,7 +408,7 @@ NewContrastsList = function(sc, contrasts_list) {
                 TRUE ~ "average")
         }
             
-        # layer
+        # layer (not relevant for compositional contrasts)
         if (!"layer" %in% names(contrast)) {
             if (contrast[["data_type"]] == "feature_data") {
                 if (contrast[["test"]] %in% c("negbinom", "poisson", "DESeq2")) {
@@ -392,28 +426,28 @@ NewContrastsList = function(sc, contrasts_list) {
         assertthat::assert_that(contrast[["layer"]] %in% c("counts", "data", "scale.data"),
                                 msg=FormatString("The layer ('layer') must be 'counts', 'data', 'scale.data' (for comparison {i}/{name})."))
 
-        # downsample_barcodes
-        if ("downsample_barcodes" %in% names(contrast)) {
+        # downsample_barcodes (ignored for compositional contrasts)
+        if ("downsample_barcodes" %in% names(contrast) & type != "compositional") {
             contrast[["downsample_barcodes"]] = unlist(contrast[["downsample_barcodes"]])
             contrast[["downsample_barcodes"]] = as.integer(contrast[["downsample_barcodes"]])
         }
         
-        # DESeq2 design
-        if ("deseq2_design" %in% names(contrast)) {
+        # design
+        if ("design" %in% names(contrast)) {
           # Parse design formula string
-          contrast[["deseq2_design"]] = deseq2_design = contrast[["deseq2_design"]] %>%
+          contrast[["design"]] = design = contrast[["design"]] %>%
             unlist() %>% 
             trimws() %>% 
             unique()
           
           # Can be one or two design formulas
-          assertthat::assert_that(length(deseq2_design) <= 2,
-                                  msg=FormatString("The parameter 'deseq2_design' can specify at most two design formula: one for the full model and - when doing a LRT test - a second one needs for the reduced model (for comparison {i}/{name})."))
+          assertthat::assert_that(length(design) <= 2,
+                                  msg=FormatString("The parameter 'design' can specify at most two design formula: one for the full model and - when doing a LRT test - a second one needs for the reduced model (for comparison {i}/{name})."))
           # Convert to formula
-          deseq2_design = purrr::map(deseq2_design, as.formula)
+          design = purrr::map(design, as.formula)
           
           # Check that at least one design formula contains the variable 'condition_groups'
-          variables = purrr::map(deseq2_design, all.vars) %>% unlist()
+          variables = purrr::map(design, all.vars) %>% unlist()
           assertthat::assert_that("condition_groups" %in% variables,
                                   msg=FormatString("One design formula must contain the variable 'condition_groups' (for comparison {i}/{name})."))
           
@@ -421,7 +455,7 @@ NewContrastsList = function(sc, contrasts_list) {
           covariate = setdiff(variables, "condition_groups")
           contrast[["covariate"]] = covariate
 
-          contrast[["deseq2_design"]] = deseq2_design
+          contrast[["design"]] = design
         }
         
         # covariate
@@ -444,13 +478,13 @@ NewContrastsList = function(sc, contrasts_list) {
             # - character/factor covariates
             # - numeric covariates
             test = contrast[["test"]]
-            valid_tests = c("LR", "negbinom", "poisson", "MAST", "DESeq2", "DESeq2LRT")
+            valid_tests = c("LR", "negbinom", "poisson", "MAST", "DESeq2", "DESeq2LRT", "sccoda")
             assertthat::assert_that(test %in% valid_tests,
                                     msg=FormatString("Only the following tests allow covariates: {valid_tests*}."))
             
             categorial_covariates = covariate %>% 
               purrr::keep(function(c) is.factor(barcode_metadata[, c, drop=TRUE]))
-            valid_tests = c("LR", "negbinom", "poisson", "MAST", "DESeq2", "DESeq2LRT")
+            valid_tests = c("LR", "negbinom", "poisson", "MAST", "DESeq2", "DESeq2LRT", "sccoda")
             assertthat::assert_that(test %in% valid_tests | length(categorial_covariates) == 0,
                                     msg=FormatString("Only the following tests allow character/categorial covariates: {valid_tests*}."))
             
