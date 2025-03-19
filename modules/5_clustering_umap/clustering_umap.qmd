@@ -14,9 +14,11 @@ params:
   # Default assay. If null, will be set to the default assay of the input Seurat object.
   default_assay: null
   
-  # Which dimensionality reduction(s) to use. If null, will be set to the default reduction of the default assay of the input Seurat object.
+  # Which dimensionality reduction(s) to use. These have to beeen already computed in a previous module.
+  # Examples are 'rna_pca' (just use the PCA of assay RNA), 'rna_cca' (use the CCA integration of assay RNA), ...
+  # If null, will be set to the default reduction of the default assay of the input Seurat object.
   # If multiple are specified, the first one will be used as default.
-  dimensionality_reduction_method: null
+  dimensionality_reductions: null
 
   # Number of dimensions to use. 
   dim_n: 10
@@ -142,8 +144,8 @@ on_disk_counts = param("on_disk_counts")
 # If requested, move on-disk layers to faster temp location for faster access
 #on_disk_use_tmp = param("on_disk_use_tmp")
 
-# Note: counts data is not used in this module, therefore deactivated
-on_disk_use_tmp = FALSE
+# Note: on-disk data is not used in this module, therefore deactivated
+on_disk_use_tmp = on_disk_use_tmp = FALSE
 if (on_disk_counts & on_disk_use_tmp) {
   on_disk_path = tempdir()
   with_progress({
@@ -155,12 +157,18 @@ if (on_disk_counts & on_disk_use_tmp) {
 # If sketching should be used, check for the sketch assay and then set as default
 use_sketching = param("use_sketching")
 if (use_sketching) {
-  sketched_assay = paste(Seurat::DefaultAssay(sc), "sketch", sep=".")
+  sketched_assay = paste0(Seurat::DefaultAssay(sc), "sketch")
   if (!sketched_assay %in% SeuratObject::Assays(sc)) {
     stop(FormatMessage("The option 'use_sketching' is set to true but the sketch assay {sketched_assay} was not found."))
   }
   SeuratObject::DefaultAssay(sc) = sketched_assay
 }
+
+# Get image names
+# At the moment an image is associated with only one assay.
+# For other assays, we plot all images.
+image_names = SeuratObject::Images(sc, assay=default_assay)
+if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
 ## Clustering
@@ -183,82 +191,91 @@ To get a first idea about how different cluster resolution values influence the 
 #| label: clustering
 #| results: asis
 
-dimensionality_reduction_methods = param("dimensionality_reduction_method")
-if (is.null(dimensionality_reduction_methods)) dimensionality_reduction_methods = DefaultReduct(sc, assay=default_assay)
-cluster_resolutions = param("cluster_resolution")
-dim_n = param("dim_n")
+dimensionality_reductions = param("dimensionality_reductions")
+if (is.null(dimensionality_reductions)) dimensionality_reductions = DefaultReduct(sc, assay=default_assay)
+cluster_resolutions = param("cluster_resolution") %>% unlist() %>% as.numeric()
+dim_n = param("dim_n") %>% as.integer()
 
-# Calculate per dimensionality reduction: PCA, CCA integration, ...
-for (method in dimensionality_reduction_methods) {
-  reduct = method
+# Calculate per dimensionality reduction (e.g. rna_pca, rna_cca, ...)
+first_clustering = NULL
+for (reduct in dimensionality_reductions) {
   assay = default_assay
   
-  # Was sketching used and the assay is a sketch
+  # If sketching is used, start with the sketched reduct (e.g. rnasketch_pca)
   if (use_sketching) {
-    reduct = paste0(reduct, ".sketch")
-    assay = paste0(assay, ".sketch")
+    assay = sketched_assay
+    reduct = DefaultReduct(sc, assay=sketched_assay)
   }
   
+  # Graph names (e.g. rna_pca_snn)
+  graph_name = gsub("[^_]+_", "", reduct)
+  graph_name = paste0(assay, "_", graph_name)
+  nn_graph_name = paste0(graph_name, "_nn") %>% tolower()
+  snn_graph_name = paste0(graph_name, "_snn") %>% tolower()
+  
+  # Cluster name prefix (e.g. RNA_pca)
+  cluster_prefix = gsub("[^_]+_", "", reduct)
+  cluster_prefix = paste0(assay, "_", cluster_prefix)
+  
   # Find neighbors for clustering
-  sc = Seurat::FindNeighbors(sc, reduction=reduct, dims=1:dim_n, verbose=verbose, k.param=param("cluster_k"))
+  sc = Seurat::FindNeighbors(sc, 
+                             reduction=reduct, 
+                             dims=1:dim_n, 
+                             verbose=verbose, 
+                             k.param=param("cluster_k"),
+                             graph.name=c(nn_graph_name, snn_graph_name))
 
   # Find clusters based on the neighbors
   sc = Seurat::FindClusters(sc, 
-                            resolution=cluster_resolutions, 
+                            graph.name=snn_graph_name,
+                            resolution=sort(cluster_resolutions),
                             algorithm=4, 
                             verbose=verbose, 
                             method="igraph")
   
   # Rename cluster names and add colours
   for (res in cluster_resolutions) {
-    # Names
-    old_name = paste0(assay, "_snn_res.", res)
-    new_name = paste0(assay, "_", reduct, "_", "snn", res)
-    sc[[]][, new_name] = sc[[]][, old_name]
-    sc@meta.data[old_name] = NULL
-      
-    # Fix levels
-    lvls = levels(sc[[]][, new_name])
-    lvls = lvls %>% as.integer() %>% sort() %>% as.character()
-    levels(sc[[]][, new_name]) = lvls
+    # Rename (e.g. to RNA_pca_snn0.5)
+    old_name = paste0(snn_graph_name, "_res.", res)
+    new_name = paste0(cluster_prefix, "_snn", res)
+    sc@meta.data = sc@meta.data %>% dplyr::rename(dplyr::all_of(setNames(old_name, new_name)))
     
     # Colours
-    l = levels(sc[[]][, new_name])
+    bcs = SeuratObject::Cells(sc[[assay]])
+    barcode_metadata = sc[[]][bcs, ]
+    l = levels(barcode_metadata[, new_name])
     col = ScColours(sc, "seurat_clusters")[1:length(l)]
     names(col) = l
     col = list(col)
     names(col) = new_name
     sc = ScAddColours(sc, colours=col)
+    
+    # Keep track of first clustering
+    if (is.null(first_clustering)) first_clustering = new_name
   }
 }
   
 # Set default clustering
-default_clustering = dimensionality_reduction_methods[1]
-if (use_sketching) default_clustering = paste0(default_clustering, ".sketch")
-default_clustering = paste0(assay, 
-                            "_", 
-                            default_clustering, 
-                            "_", "snn", 
-                            cluster_resolutions[1])
-sc$seurat_clusters = sc[[]][, default_clustering]
+default_name = first_clustering
+sc$seurat_clusters = sc[[]][, default_name]
 SeuratObject::Idents(sc) = "seurat_clusters"
 ```
 
 ```{r}
 #| label: clustering_umap
 
-# Calculate UMAP per dimensionality reduction: PCA, CCA integration, ...
-for (method in dimensionality_reduction_methods) {
-  reduct = method
+# Calculate UMAP per dimensionality reduction (e.g. rna_pca, rna_cca, ...)
+first_umap = NULL
+for (reduct in dimensionality_reductions) {
   assay = default_assay
   
-  # Was sketching used and the assay is a sketch
+  # If sketching is used, start with the sketched reduct
   if (use_sketching) {
-    reduct = paste0(reduct, ".sketch")
-    assay = paste0(assay, ".sketch")
+    assay = sketched_assay
+    reduct = DefaultReduct(sc, assay=sketched_assay)
   }
   
-  # UMAP name and key
+  # UMAP name and key (e.g. rna_pca_umap)
   umap_name = paste0(reduct, "_umap")
   umap_key = gsub("[\\._]+", " ", umap_name) %>%
     stringr::str_to_title() %>%
@@ -275,14 +292,13 @@ for (method in dimensionality_reduction_methods) {
                        reduction.name=umap_name,
                        reduction.key=umap_key,
                        return.model=use_sketching)
+  
+  # Keep track of first UMAP
+  if (is.null(first_umap)) first_umap = umap_name
 }
 
-# Set default UMAP
-default_umap = paste0(dimensionality_reduction_methods[1], "_umap")
-um = sc[[default_umap]]
-SeuratObject::Key(um) = "Umap_"
-sc[["umap"]] = um
-DefaultVisualization(sc) = "umap"
+# Set default visualization
+DefaultVisualization(sc, assay=assay) = first_umap
 ```
 
 ```{r}
@@ -292,14 +308,23 @@ DefaultVisualization(sc) = "umap"
 
 # Project to full dataset if sketching was used
 if (use_sketching) {
-  for (method in dimensionality_reduction_methods) {
-    # Sketch results
-    sketched_reduct = paste0(method, ".sketch")
-    sketched_clustering = paste0(sketched_assay, "_", sketched_reduct, "_", "snn", cluster_resolutions)
+  first_clustering = NULL
+  first_umap = NULL
+  for (reduct in dimensionality_reductions) {
+    # Name of sketched and full reduction (e.g. rnasketch_pca and rna_pca)
+    sketched_reduct = gsub("[^_]+_", "", reduct)
+    sketched_reduct = paste0(sketched_assay, "_", sketched_reduct) %>% tolower()
+    full_reduct = reduct
     
-    # Full results
-    full_reduct = gsub("\\.sketch$", "", sketched_reduct)
-    full_clustering = paste0(default_assay, "_", full_reduct, "_", "snn", cluster_resolutions)
+    # Names of the sketched and full clusterings (e.g. RNAsketch_pca_snn0.5 and RNA_pca_snn0.5)
+    sketched_clustering = gsub("[^_]+_", "", reduct)
+    sketched_clustering = paste0(sketched_assay, "_", sketched_clustering, "_snn", cluster_resolutions)
+    full_clustering = gsub("[^_]+_", "", reduct)
+    full_clustering = paste0(default_assay, "_", full_clustering, "_snn", cluster_resolutions)
+    
+    # Cell metadata columns to project from sketched to full assay
+    sketched_cols = sketched_clustering[order(cluster_resolutions)]
+    full_cols = full_clustering[order(cluster_resolutions)]
 
     # Project labels and embeddings
     sc = Seurat::ProjectData(sc, 
@@ -307,15 +332,15 @@ if (use_sketching) {
                              sketched.assay=sketched_assay,
                              sketched.reduction=sketched_reduct,
                              full.reduction=full_reduct,
-                             normalization.method	= ifelse(grepl(pattern="SCT", x=Seurat::DefaultAssay(sc)), "SCT", "LogNormalize"),
+                             normalization.method=ifelse(grepl(pattern="sct", x=default_assay), "SCT", "LogNormalize"),
                              dims=1:dim_n,
                              recompute.neighbors=TRUE,
                              recompute.weights=TRUE,
                              verbose=verbose,
                              umap.model=paste0(sketched_reduct, "_umap"),
-                             refdata=as.list(setNames(sketched_clustering, full_clustering)))
+                             refdata=as.list(setNames(sketched_cols, full_cols)))
     
-    # Rename and fix keys for full UMAP
+    # Rename and fix keys for full UMAP (e.g. to rna_pca_umap)
     old_name = paste0("full.", sketched_reduct, "_umap")
     new_name = paste0(full_reduct, "_umap")
     new_key = gsub("[\\._]+", " ", new_name) %>%
@@ -329,33 +354,34 @@ if (use_sketching) {
     
     # Fix levels of full clustering and add colours
     for(i in seq_along(sketched_clustering)) {
+      # Fix levels
       sketched_name = sketched_clustering[i]
       full_name = full_clustering[i]
+      bcs = SeuratObject::Cells(sc[[sketched_assay]])
+      barcode_metadata = sc[[]][bcs, ]
       lvls = levels(sc[[]][, sketched_name])
       sc[[]][, full_name] = factor(sc[[]][, full_name], levels=lvls)
       
+      # Fix colours
       col = ScColours(sc, sketched_name)
       col = list(col)
       names(col) = full_name
       sc = ScAddColours(sc, colours=col)
+      
+      # Keep track of first clustering and UMAP
+      if (is.null(first_clustering)) first_clustering = full_name
+      if (is.null(first_umap)) first_umap = new_name
     }
   }
   
   # Set default clustering
-  default_clustering = paste0(default_assay, 
-                        "_", 
-                        dimensionality_reduction_methods[1], 
-                        "_", "snn", 
-                        cluster_resolutions[1])
-  sc$seurat_clusters = sc[[]][, default_clustering]
+  default_name = first_clustering
+  sc$seurat_clusters = sc[[]][, default_name]
   SeuratObject::Idents(sc) = "seurat_clusters"
   
-  # Set default UMAP
-  default_umap = paste0(dimensionality_reduction_methods[1], "_umap")
-  um = sc[[default_umap]]
-  SeuratObject::Key(um) = "Umap_"
-  sc[["umap"]] = um
-  DefaultVisualization(sc, assay=default_assay) = "umap"
+  # Set default UMAP (e.g. 'umap')
+  default_umap = first_umap
+  DefaultVisualization(sc, assay=default_assay) = default_umap
   
   # Set default assay
   SeuratObject::DefaultAssay(sc) = default_assay
@@ -370,25 +396,23 @@ if (use_sketching) {
 
 # Test different dimensionality reduction methods and clustering resolution parameters
 plist = list()
-for (method in dimensionality_reduction_methods) {
-  for (res in cluster_resolutions) {
-    res = as.character(res)
-    reduct = method
+captions = c()
+for (reduct in dimensionality_reductions) {
+  for (res in sort(cluster_resolutions)) {
     assay = default_assay
-  
-    # Was sketching used and the assay is a sketch
-    if (use_sketching) {
-      reduct = paste0(reduct, ".sketch")
-      assay = paste0(assay, ".sketch")
-    }
+    reduct_short = gsub("[^_]+_", "", reduct)
     
-    clustering_name = paste0(assay, "_", reduct, "_", "snn", res)
-    umap_name = paste0(reduct, "_umap")
+    # Clustering and UMAP name (always full dataset)
+    clustering_name = paste0(assay, "_", reduct_short, "_", "snn", res)
+    umap_name = paste0(tolower(assay), "_", reduct_short, "_umap")
     
     # Add plot to list
     plist[[clustering_name]] = Seurat::DimPlot(sc, reduction=umap_name, group.by=clustering_name, label=TRUE) + 
       scale_color_manual(values=ScColours(sc, clustering_name)) +
       AddPlotStyle(legend_position="none", title="")
+    
+    # Add caption
+    captions = c(captions, FormatString("UMAP for dimensionality reduction {reduct}, clustering resolution {res}"))
   }
 }
 
@@ -407,23 +431,13 @@ plist[['{{name}}']]
 
 cat("::: {layout-ncol=3}\n", sep="")
 
-for (method in dimensionality_reduction_methods) {
-  for (res in sort(unlist(cluster_resolutions))) {
-    reduct = method
-    assay = default_assay
-    if (use_sketching) {
-      reduct = paste0(reduct, ".sketch")
-      assay = paste0(assay, ".sketch")
-    }
-    clustering_name = paste0(assay, "_", reduct, "_", "snn", res)
-    
-    chunk_filled =  knitr::knit_expand(text=chunk_template, name=clustering_name, caption=FormatString("UMAP coloured by clustering with resolution {res} based on reduction {method}"))
-    if (interactive()) {
-      print(EvalKnitrChunk(chunk_filled))
-    } else {
-      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
-      cat(chunk_filled, sep='\n')
-    }
+for (i in seq_along(plist)) {
+  chunk_filled =  knitr::knit_expand(text=chunk_template, name=names(plist)[i], caption=captions[i])
+  if (interactive()) {
+    print(EvalKnitrChunk(chunk_filled))
+  } else {
+    chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+    cat(chunk_filled, sep='\n')
   }
 }
 
@@ -432,21 +446,20 @@ cat(":::\n")
 
 ```{r}
 #| label: clustering_umap_tests_spatial
-#| eval: !expr length(Seurat::Images(sc)) > 0
-#| include: !expr length(Seurat::Images(sc)) > 0
+#| eval: !expr length(image_names) > 0
+#| include: !expr length(image_names) > 0
 #| results: asis
 
 if (length(Seurat::Images(sc)) > 0) {
 
-  # Only plot full reductions not sketched (since it just produces holes in the image)
-  
   # Test different dimensionality reduction methods and clustering resolution parameters
-  clusterings_to_plot = purrr::map(dimensionality_reduction_methods, function(method) {
-      return(paste0(default_assay, "_", method, "_", "snn", cluster_resolutions))
+  clusterings_to_plot = purrr::map(dimensionality_reductions, function(reduct) {
+    reduct_short = gsub("[^_]+_", "", reduct)
+    return(paste0(default_assay, "_", reduct_short, "_", "snn", sort(cluster_resolutions)))
   }) %>% purrr::flatten_chr()
   
-  # Generate plots and captions
-  plist = purrr::map(SeuratObject::Images(sc), function(i) {
+  # Generate plots
+  plist = purrr::map(image_names, function(i) {
       pl = DimPlotSpatial(sc, images=i, group.by=clusterings_to_plot, combine=FALSE) %>% purrr::flatten()
       pl = purrr::map(seq(pl), function(i) {
           p = pl[[i]] + theme(legend.title=element_blank()) + ggtitle(clusterings_to_plot[i]) + scale_fill_manual(values=ScColours(sc, clusterings_to_plot[i]))
@@ -455,7 +468,7 @@ if (length(Seurat::Images(sc)) > 0) {
       names(pl) = clusterings_to_plot
       return(pl)
   })
-  names(plist) = gsub(pattern="^(fov|image)\\.", replacement="", x=SeuratObject::Images(sc))
+  names(plist) = gsub(pattern="^image\\.", replacement="", x=image_names)
   
   # Set up layout and automatically generate chunks
   chunk_template = "
@@ -475,7 +488,10 @@ plist[['{{ident}}']][['{{clstr}}']]
       cat("#####", ident, "\n")
           
       # Generate captions
-      captions = purrr::map(dimensionality_reduction_methods, function(method) return(FormatString("Spatial plot for dataset {ident} coloured by clustering with resolution {cluster_resolutions} based on reduction {method}"))) %>% purrr::flatten_chr()
+      captions = purrr::map(dimensionality_reductions, function(reduct) {
+        cap = FormatString("Spatial plot for dataset {ident}, dimensionality reduction {reduct}, clustering resolution {cluster_resolutions}")
+        return(cap)
+      }) %>% purrr::flatten_chr()
   
       for(i in seq(plist[[ident]])) {
           clstr = names(plist[[ident]])[i]
@@ -510,8 +526,23 @@ When selecting the optimal resolution for your experiment, it's crucial to ident
 #| fig-cap: "Clustering tree based on clusters derived from various resolutions"
 
 # Make plots per dimensionality reduction showing the different clustering resolutions
-plist = purrr::map(dimensionality_reduction_methods, function(method) {
-  clust_tree_plot = clustree(sc, prefix = paste0(default_assay, "_", method, "_", "snn")) +
+plist = purrr::map(dimensionality_reductions, function(reduct) {
+  # Get assay and clustering columns
+  assay = default_assay
+  reduct_short = gsub("[^_]+_", "", reduct)
+  clustering_prefix = paste0(assay, "_", reduct_short, "_", "snn")
+  clustering_names = paste0(clustering_prefix, sort(cluster_resolutions))
+  
+  # Now extract a table with clusterings for the barcodes of the current assay
+  bcs = SeuratObject::Cells(sc[[assay]])
+  clusterings = sc[[]][bcs, clustering_names]
+  
+  # Remove rows with missing values
+  keep = which(rowSums(is.na(clusterings)) == 0)
+  clusterings = clusterings[keep,]
+
+  # Create clustering tree
+  clust_tree_plot = clustree(clusterings, prefix = clustering_prefix) +
     theme(legend.box = "vertical") +
     guides(color = guide_legend(title = "Resolution", position = "bottom"),
            edge_alpha = guide_legend(title = "Proportion of\nincoming cells", 
@@ -526,21 +557,21 @@ plist = purrr::map(dimensionality_reduction_methods, function(method) {
   
   return(clust_tree_plot)
 })
-names(plist) = dimensionality_reduction_methods
+names(plist) = dimensionality_reductions
 
 # Set up layout and automatically generate chunks
 chunk_template = "
 \`\`\`{r}
-#| label: fig-clustering_umap_clustree_{{method}}
+#| label: fig-clustering_umap_clustree_{{reduct}}
 #| fig-cap: {{caption}}
 #| echo: false
 
-plist[['{{method}}']]
+plist[['{{reduct}}']]
 \`\`\`
 "
 
-for (method in names(plist)) {
-  chunk_filled =  knitr::knit_expand(text=chunk_template, method=method, caption=FormatString("Clustering tree based on clusters derived from various resolutions for reduction method {method}."))
+for (reduct in names(plist)) {
+  chunk_filled =  knitr::knit_expand(text=chunk_template, reduct=reduct, caption=FormatString("Clustering tree for assay {default_assay} based on clusters derived from various resolutions for dimensionality reduction {reduct}."))
   if (interactive()) {
     print(EvalKnitrChunk(chunk_filled))
   } else {
@@ -555,7 +586,22 @@ for (method in names(plist)) {
 #| label: fig-clustering_umap_final_clustering
 #| results: asis
 
-CalloutBox("Default clustering for assay {default_assay} is set to the dimensionality reduction {dimensionality_reduction_methods[1]} with the resolution parameter {cluster_resolutions[1]}.", type="note")
+reduct = gsub("[^_]+_", "", dimensionality_reductions[1])
+res = cluster_resolutions[1]
+default_clustering = paste0(default_assay, "_", reduct, "_snn", res)
+
+# Write message about default clustering
+CalloutBox("Default clustering for assay {default_assay} is set to the dimensionality reduction {reduct} with resolution {res}.", type="note")
+
+# Create a copy named "umap" for the default (full) umap. This allows to run FeaturePlot without specifying the UMAP (makes it easier). 
+default_umap = DefaultVisualization(sc, assay=default_assay)
+um = sc[[default_umap]]
+SeuratObject::Key(um) = "Umap_"
+sc[["umap"]] = NULL
+sc[["umap"]] = um
+
+# Also set default assay
+SeuratObject::DefaultAssay(sc) = default_assay
 ```
 
 
@@ -579,23 +625,43 @@ For a nice read to intuitively understand UMAP, see [here](https://pair-code.git
 # Generate UMAPS that are colored by cluster and by sample
 
 # Labels for the UMAP
-cluster_cells = table(sc$seurat_clusters)
-cluster_labels = paste0(levels(sc$seurat_clusters)," (", cluster_cells[levels(sc$seurat_clusters)],")")
-sample_cells = table(sc$orig.ident)
-sample_labels = paste0(levels(sc$orig.ident)," (", sample_cells[levels(sc$orig.ident)],")")
+bcs = SeuratObject::Cells(sc[[default_assay]])
+barcode_metadata = sc[[]][bcs, ]
+
+idents = SeuratObject::Idents(sc)[bcs]
+cluster_cells = table(idents)
+cluster_labels = paste0(levels(idents)," (", cluster_cells[levels(idents)],")")
+
+orig_idents = barcode_metadata[bcs, "orig.ident"]
+sample_cells = table(orig_idents)
+sample_labels = paste0(levels(orig_idents)," (", sample_cells[levels(orig_idents)],")")
 
 # Initialize Plots 
 plist=list()
 plist[["by_cluster"]] = list()
-plist[["by_cluster"]][["all_samples"]] = Seurat::DimPlot(sc, group.by="seurat_clusters")
+plist[["by_cluster"]][["all_samples"]] = Seurat::DimPlot(sc, 
+                                                         group.by="seurat_clusters")
 plist[["by_sample"]] = list()
-plist[["by_sample"]][["all_samples"]] = Seurat::DimPlot(sc, group.by="orig.ident")
+plist[["by_sample"]][["all_samples"]] = Seurat::DimPlot(sc, 
+                                                        group.by="orig.ident")
 
-if (length(levels(sc[["orig.ident"]])) <= 4 ) {
-  plist[["by_cluster"]][["per_sample"]] = Seurat::DimPlot(sc, group.by="seurat_clusters", 
-                                                          split.by="orig.ident", ncol=2)
-  plist[["by_sample"]][["per_sample"]] = Seurat::DimPlot(sc, group.by="orig.ident", 
-                                                         split.by="orig.ident", ncol=2)
+if (length(levels(orig_idents)) <= 4 ) {
+  # DimPlot has a bug when using split.by, this is a hack to fix this
+  orig_ident_bckp = sc$orig.ident
+  discard = !rownames(sc[[]]) %in% SeuratObject::Cells(sc[[default_assay]])
+  sc$orig.ident[discard] = NA
+  
+  plist[["by_cluster"]][["per_sample"]] = Seurat::DimPlot(sc, 
+                                                          reduction=DefaultVisualization(sc),
+                                                          group.by="seurat_clusters", 
+                                                          split.by="orig.ident", 
+                                                          ncol=2)
+  plist[["by_sample"]][["per_sample"]] = Seurat::DimPlot(sc, 
+                                                         reduction=DefaultVisualization(sc), 
+                                                         group.by="orig.ident", 
+                                                         split.by="orig.ident", 
+                                                         ncol=2)
+  sc$orig.ident = orig_ident_bckp
 }
 
 # Add additional plot features
@@ -608,11 +674,11 @@ for (i in names(plist)) {
     # Add cluster labels
     # Add cluster information to the plot if necessary
     if (! ("seurat_clusters" %in% names(plist[[i]][[j]]))) {
-      plist[[i]][[j]]$data$seurat_clusters = sc[["seurat_clusters"]][rownames(plist[[i]][[j]]$data), ]
+      plist[[i]][[j]]$data$seurat_clusters = barcode_metadata[rownames(plist[[i]][[j]]$data), "seurat_clusters"]
     }
     
     # Repel? 
-    repel = ifelse((j == "per_sample") & length(unique(sc$orig.ident)) > 5, FALSE, TRUE)
+    repel = ifelse((j == "per_sample") & length(unique(barcode_metadata$orig.ident)) > 5, FALSE, TRUE)
     plist[[i]][[j]] = LabelClusters(plist[[i]][[j]], 
                                     id="seurat_clusters", box=TRUE, fill="white", repel=repel, label.padding=unit(0.05, "lines"))
     
@@ -662,35 +728,91 @@ cat(":::\n")
 
 ## Output
 
-### Dimensionality reduction
+### UMAP visualization
+
+This module produces one or more UMAP visualizations for the default assay that are stored in the Seurat object and can be used 
+for downstream analyses. Each visualization is based on a different dimensionality reduction. If sketching is used, the Seurat object also includes the UMAP visualizations for the sketched assay.
 
 ```{r}
 #| label: clustering_save_visualization
 #| results: asis
 
-default_vis = DefaultVisualization(sc)
+default_vis = DefaultVisualization(sc, assay=default_assay)
 vis = sc[[default_vis]]@cell.embeddings %>% as.data.frame()
 
 # Write default visualization for default assay
-outfile = paste0("visualization_", default_assay, "_", default_vis , ".xlsx")
+outfile = FormatString("visualization_assay_{default_assay}_umap.xlsx", quote=FALSE)
 openxlsx::write.xlsx(x=vis, file=file.path(module_dir, "results", outfile), rowNames=TRUE)
 
+# Full UMAP visualizations
+full_visualizations = purrr::keep(SeuratObject::Reductions(sc), function(r) {
+  return(SeuratObject::DefaultAssay(sc[[r]]) == default_assay & grepl("_umap", r))
+})
+
+# Sketched UMAP visualizations
+if (use_sketching) {
+  sketched_visualizations = purrr::keep(SeuratObject::Reductions(sc), function(r) {
+    return(SeuratObject::DefaultAssay(sc[[r]]) == sketched_assay & grepl("_umap", r))
+  })
+} else {
+  sketched_visualizations = ""
+}
+
 # Note
-CalloutBox("The default visualization {default_vis} for the default assay {default_assay} is written to {outfile}.", type="note")
+msg = "
+The following UMAP visualizations for assay {default_assay} are available in the Seurat object:
+
+- full assay: {full_visualizations*} 
+- sketched assay (if sketching was used): {sketched_visualizations*}
+- 'umap': alternative name for the default UMAP visualization {default_vis}
+
+The default UMAP visualization for assay {default_assay} is 'umap' and will be used in downstream analysis. It is written to {outfile}.
+"
+
+CalloutBox(msg, type="note")  
 ```
 
 ### Clustering
+
+This module produces one or more clusterings for the default assay that are stored in the Seurat object and can be used 
+for downstream analyses. Each clustering is based on a specific dimensionality reduction and clustering resolution. If sketching is used, the Seurat object also includes the clusterings for the sketched assay.
 
 ```{r}
 #| label: clustering_save_clustering
 #| results: asis
 
-# Write default clustering
+# Write default clustering for default assay (default_clustering)
 outfile = "seurat_clusters.xlsx"
 openxlsx::write.xlsx(x=sc[["seurat_clusters"]], file=file.path(module_dir, "results", outfile), rowNames=TRUE)
 
+# Clusterings for full assay
+full_clusterings = purrr::map(dimensionality_reductions, function(reduct) {
+    reduct_short = gsub("[^_]+_", "", reduct)
+    return(paste0(default_assay, "_", reduct_short, "_", "snn", sort(cluster_resolutions)))
+}) %>% purrr::flatten_chr()
+
+# Clusterings for sketched assay
+if (use_sketching) {
+  sketched_clusterings = purrr::map(dimensionality_reductions, function(reduct) {
+      reduct_short = gsub("[^_]+_", "", reduct)
+      return(paste0(sketched_assay, "_", reduct_short, "_", "snn", sort(cluster_resolutions)))
+  }) %>% purrr::flatten_chr()
+} else {
+  sketched_clusterings = ""
+}
+
 # Note
-CalloutBox("The default clustering is written to {outfile}.", type="note")
+msg = "
+The following clusterings for assay {default_assay} are available in the Seurat object:
+
+- full assay: {full_clusterings*} 
+- sketched assay (if sketching was used): {sketched_clusterings*}
+- 'seurat_clusters': alternative name for the default clustering {default_clustering}
+
+The default clustering for assay {default_assay} stored in the column 'seurat_clusters' and will be used in downstream analysis. It is written to {outfile}.
+"
+
+CalloutBox(msg, type="note")  
 ```
 
 ## Software
@@ -705,7 +827,7 @@ gt(sessioninfo)
 ## Parameter
 
 ```{r}
-#| label: read_data_save_parameter  
+#| label: clustering_save_parameter  
 
 paraminfo = ScrnaseqParamsInfo(param()) %>% as.data.frame()
 gt(paraminfo)

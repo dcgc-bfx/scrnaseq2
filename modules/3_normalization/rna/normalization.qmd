@@ -180,6 +180,12 @@ if (cellcycle_remove) {
     vars_to_regress = c(vars_to_regress, "CC.Difference") %>% unique()
   }
 }
+
+# Get image names
+# At the moment an image is associated with only one assay.
+# For other assays, we plot all images.
+image_names = SeuratObject::Images(sc, assay=default_assay)
+if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
 In this section, we subsequently run a series of Seurat functions for each provided sample:
@@ -228,7 +234,7 @@ While raw data is typically used for statistical tests such as finding marker fe
 
 normalization_method = param("normalization_method")
 num_variable_features = param("num_variable_features")
-layer_counts = SeuratObject::Layers(sc, search="^counts")
+layer_counts = SeuratObject::Layers(sc, assay=default_assay, search="^counts\\.")
 layer_data = gsub(pattern="^counts", replacement="data", x=layer_counts)
 
 # Do normalization
@@ -255,7 +261,7 @@ if (normalization_method == "lognorm") {
   
 } else if(normalization_method == "SCT") {
   # Run SCTransform normalization
-  sct_assay_name = paste(default_assay, "SCT", sep="_")
+  sct_assay_name = paste0(default_assay, "sct")
   sc = SCTransform(sc,
                    assay=Seurat::DefaultAssay(sc),
                    new.assay.name=sct_assay_name,
@@ -265,7 +271,7 @@ if (normalization_method == "lognorm") {
                    return.only.var.genes=TRUE,
                    verbose=verbose,
                    seed.use=getOption("random_seed"),
-                   conserve.memory=length(Cells(sc)) >= 100000)
+                   conserve.memory=length(Cells(sc[[default_assay]])) >= 100000)
   Seurat::DefaultAssay(sc) = sct_assay_name
 
   CalloutBox("SCTransform normalization was applied.", type="note")
@@ -294,19 +300,19 @@ if (on_disk_counts) {
   if (normalization_method != "SCT") {
     # For methods lognorm, scran, log and identity we need to write all 'data' layers to disk
   
-    layers = SeuratObject::Layers(sc, search="^counts") %>% 
+    layers = SeuratObject::Layers(sc, assay=default_assay, search="^counts\\.") %>% 
       gsub(pattern="counts", replacement="data", x=.)
     for(i in seq_along(layers)) {
       # Get IterableMatrix object
-      mat = SeuratObject::LayerData(sc, layer=layers[i])
+      mat = SeuratObject::LayerData(sc, assay=default_assay, layer=layers[i])
       
       # Write data to disk
       matrix_dir = WriteCounts_MatrixDir(counts=mat,
-                                         path=file.path(on_disk_path, paste(Seurat::DefaultAssay(sc), layers[i], sep=".")),
+                                         path=file.path(on_disk_path, paste(default_assay, layers[i], sep=".")),
                                          overwrite=TRUE)
       
       # Load into Seurat object
-      SeuratObject::LayerData(sc, layer=layers[i]) = matrix_dir
+      SeuratObject::LayerData(sc, assay=default_assay, layer=layers[i]) = matrix_dir
     }
     
   } else {
@@ -395,7 +401,7 @@ CalloutBox("The {feature_selection_method} method was used to select {num_variab
 if (feature_selection_method == "SCT") {
   plist = PlotVariableFeatures(sc, 
                      method="sct",
-                     assay=paste(default_assay, "SCT", sep="_"),
+                     assay=paste0(default_assay, "sct"),
                      top=10)
 } else {
   plist = PlotVariableFeatures(sc, 
@@ -451,18 +457,18 @@ After normalization, gene expression data can be compared between cells. However
 #| label: normalization_rna_scale_data
 #| results: asis
 
-  # Scale data for variable features
-
+# Scale data for variable features
 use_sketching = param("use_sketching")
 normalization_method = param("normalization_method")
-barcode_metadata = sc[[]]
+bcs = SeuratObject::Cells(sc[[default_assay]])
+barcode_metadata = sc[[]][bcs, ]
 
 # Not needed if:
 # a) SCTransform since it already scaled data
 # b) when applying sketching since we only scale the data of the sketch
 if(normalization_method != "SCT" & !use_sketching) {
   
-  # Unfortunately ScaleData has limited support for on-disk counts: regress out does not work. 
+  # Unfortunately ScaleData has limited support for on-disk counts
   # Therefore we load the normalized data into memory, run ScaleData and 
   # then extract the scale.data layer.
   if (on_disk_counts) {
@@ -488,19 +494,22 @@ if(normalization_method != "SCT" & !use_sketching) {
     }
     
     # Run ScaleData
-    normalized_data = Seurat::ScaleData(normalized_data, verbose=verbose, vars.to.regress=vars_to_regress, latent.data=latent_data)
+    normalized_data = Seurat::ScaleData(normalized_data, vars.to.regress=vars_to_regress, latent.data=latent_data, verbose=verbose)
     
     # Add scale.data layer to Seurat object
     SeuratObject::LayerData(sc, assay=default_assay, layer="scale.data") = SeuratObject::LayerData(normalized_data, layer="scale.data")
     rm(normalized_data)
+    invisible(gc())
   } else {
     # Run ScaleData
     sc = Seurat::ScaleData(sc, verbose=verbose, vars.to.regress=vars_to_regress)
   }
 }
 
-# Print a message
-CalloutBox("The following variables were regressed out during scaling of the data: {vars_to_regress*}.", type="note")
+if (length(vars_to_regress) > 0) {
+  # Print a message
+  CalloutBox("The following variables were regressed out during scaling of the data: {vars_to_regress*}.", type="note")
+}
 ```
 
 ## Sketching
@@ -527,7 +536,7 @@ if (use_sketching) {
   
   # Create a sketch of the data
   # Method can be: LeverageScore or Uniform. LeverageScore is better but slower.
-  sketched_assay_name = paste(default_assay, "sketch", sep=".")
+  sketched_assay_name = paste0(default_assay, "sketch")
   sc = Seurat::SketchData(sc,
                           assay=default_assay,
                           ncells=num_barcodes_for_sketching,
@@ -538,18 +547,20 @@ if (use_sketching) {
                           over.write=TRUE)
   
   # Set search key for features of the sketch assay
-  SeuratObject::Key(sc[[sketched_assay_name]]) = paste0(default_assay, "sketch", "_") %>% 
+  sketched_assay_key = sketched_assay_name %>% 
     gsub(pattern="\\.", replacement="", x=.) %>%
     tolower()
+  sketched_assay_key = paste0(sketched_assay_key, "_")
+  SeuratObject::Key(sc[[sketched_assay_name]]) = sketched_assay_key
   
   # Set sketch assay as default assay
   SeuratObject::DefaultAssay(sc) = sketched_assay_name
   
   # SCTransform normalization needs to be repeated for the sketch
   if(normalization_method == "SCT") {
-    sketched_sct_assay_name = paste(default_assay, "SCT", sep="_") %>% paste("sketch", sep=".")
+    sketched_sct_assay_name = paste0(default_assay, "sctsketch")
     sc = SCTransform(sc,
-                     assay=Seurat::DefaultAssay(sc),
+                     assay=sketched_assay_name,
                      new.assay.name=sketched_sct_assay_name,
                      vst.flavor="v2",
                      variable.features.n=num_variable_features,
@@ -559,9 +570,11 @@ if (use_sketching) {
                      seed.use=getOption("random_seed"))
     
     # Set search key for features of the SCT-normalized sketch assay
-    SeuratObject::Key(sc[[sketched_sct_assay_name]]) = paste0(default_assay, "sketch", "SCT", "_") %>% 
+    sketched_sct_assay_key = sketched_sct_assay_name %>% 
       gsub(pattern="\\.", replacement="", x=.) %>%
       tolower()
+    sketched_sct_assay_key = paste0(sketched_sct_assay_key, "_")
+    SeuratObject::Key(sc[[sketched_sct_assay_name]]) = sketched_sct_assay_key
     
     # Set sketched and SCT normalized assay as default assay
     Seurat::DefaultAssay(sc) = sketched_sct_assay_name
@@ -582,11 +595,11 @@ if (use_sketching) {
 
   # Print sketched assay
   CalloutBox(paste("Sketching was applied using a subset of", num_barcodes_for_sketching, "barcodes."), type="note")
-  print(sc)
+  knitr::knit_print(sc)
 
   # Finally reset default assay to non-sketched assay
   SeuratObject::DefaultAssay(sc) = ifelse(normalization_method=="SCT", 
-                                          paste(default_assay, "SCT", sep="_"), 
+                                          paste0(default_assay, "sct"), 
                                           default_assay)
 } else {
   CalloutBox("Sketching was not applied.", type="note")
