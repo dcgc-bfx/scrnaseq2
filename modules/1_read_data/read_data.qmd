@@ -865,6 +865,9 @@ invisible(gc())
 
 # Add datasets to Seurat object
 sc@misc$datasets = datasets
+
+# Note: Previously we also removed cells with zero counts since they caused an error in downstream analysis.
+# This is now fixed and filtering of these cells will be done in the qc modules.
 ```
 
 This is a summary representation of the object:

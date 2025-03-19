@@ -161,7 +161,7 @@ CalculateColumnPerc = function(mat) {
 #' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
 #' @param margin Margin for which to calculate median. Can be: 1 - rows, 2 - columns. Default is 1.
 #' @param chunk_size Iterable matrices will be converted into sparse matrics. To avoid storing the entire matrix in memory, only process this number of rows/columns at once. Default is no chunks.
-#' @param fun Function to apply to the matrix (chunk) before calcuating the median. Can be NULL.
+#' @param fun Function to apply to the matrix (chunk) before calculating the median. The function's only argument is the matrix itself. Can be NULL.
 #' @return A named vector with medians.
 CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
   # Checks
@@ -962,13 +962,16 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   return(sc)
 }
 
-
-# This is a copy of the Seurat::scVIIntegration with the following bugs fixed
+# This function is a copy of the scVIIntegration (from the SeuratWrappers) with some bugs fixed.
+# We keep the original code (e.g. <- instead of =) and only fix the bugs.
 scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers = "counts", 
                                   conda_env = NULL, new.reduction = "integrated.dr", ndims = 30, 
                                   nlayers = 2, gene_likelihood = "nb", max_epochs = NULL, ...) 
 {
+  # BUG/FIX - AP: Only use conda environment if specified
   if (!is.null(conda_env)) reticulate::use_condaenv(conda_env, required = TRUE)
+  #
+  
   sc <- reticulate::import("scanpy", convert = FALSE)
   scvi <- reticulate::import("scvi", convert = FALSE)
   anndata <- reticulate::import("anndata", convert = FALSE)
@@ -982,9 +985,10 @@ scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers
   batches <- SeuratWrappers:::.FindBatches(object, layers=layers)
   object <- JoinLayers(object = object, layers="counts")
   
-  # BUG/FIX: If on-disk matrices are used (with BPCells), convert to dgCMatrix first
+  # BUG/FIX - AP: If on-disk matrices are used (with BPCells), convert to dgCMatrix first
   counts_matrix <- as(t(SeuratObject::LayerData(object, layer="counts")[features, ]), "dgCMatrix")
   adata <- sc$AnnData(X = scipy$sparse$csr_matrix(counts_matrix), obs = batches, var = object[[]][features,])
+  #
   
   # Set number of workers and batch size
   num_workers <- future::nbrOfWorkers()
