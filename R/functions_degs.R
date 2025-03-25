@@ -93,7 +93,7 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
                 trimws() %>%
                 unique()
             
-            # If negate, get complement of condition1
+            # If negate (!), get complement of condition1
             if (negate) {
                 condition1 = setdiff(levels(barcode_metadata[, condition_column]), condition1)
             }
@@ -177,7 +177,7 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
                 trimws() %>%
                 unique()
             
-            # If negate, get complement of condition2
+            # If negate (!), get complement of condition2
             if (negate) {
                 condition2 = setdiff(levels(barcode_metadata[, condition_column]), condition2)
             }
@@ -336,6 +336,24 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
             }
         }
         
+        # compositional_column: Column that contains the cell compositional information. By default: seurat_clusters.
+        # (not relevant for deg analyses)
+        if (type == "compositional") {
+          if (!"compositional_column" %in% names(contrast)) contrast[["compositional_column"]] = "seurat_clusters"
+          contrast[["compositional_column"]] = compositional_column = unlist(contrast[["compositional_column"]])
+          assertthat::assert_that(compositional_column %in% colnames(barcode_metadata),
+                                  msg=FormatString("The compositional column {compositional_column} was not found in the barcode metadata (for comparison {i}/{name})."))
+        }
+        
+        # samples_column: Column that contains the samples (or datasets) information. By default: sample.
+        # (not relevant for deg analyses)
+        if (type == "compositional") {
+          if (!"samples_column" %in% names(contrast)) contrast[["samples_column"]] = "sample"
+          contrast[["samples_column"]] = samples_column = unlist(contrast[["samples_column"]])
+          assertthat::assert_that(samples_column %in% colnames(barcode_metadata),
+                                  msg=FormatString("The samples column {samples_column} was not found in the barcode metadata (for comparison {i}/{name})."))
+        }
+        
         # bulk_by: bulk data by a barcode metadata column
         # (ignored for compositional contrasts)
         if ("bulk_by" %in% names(contrast) & type != "compositional") {
@@ -358,8 +376,7 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
         }
         
         # pseudobulk_samples: create pseudo-bulk samples
-        # (ignored for compositional contrasts)
-        if ("pseudobulk_samples" %in% names(contrast) & type != "compositional") {
+        if ("pseudobulk_samples" %in% names(contrast)) {
             contrast[["pseudobulk_samples"]] = unlist(contrast[["pseudobulk_samples"]])
             contrast[["pseudobulk_samples"]] = as.integer(contrast[["pseudobulk_samples"]])
             assertthat::assert_that(contrast[["pseudobulk_samples"]] > 1,
@@ -373,7 +390,7 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
           if (!"test" %in% names(contrast)) contrast[["test"]] = "wilcox"
         } else if (type == "compositional") {
           # valid compositional tests
-          valid_tests = c("fisher", "sccoda")
+          valid_tests = c("none", "fisher", "sccoda")
           if (!"test" %in% names(contrast)) contrast[["test"]] = "fisher"
         }
         contrast[["test"]] = unlist(contrast[["test"]])
@@ -389,12 +406,14 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
         contrast[["padj"]] = unlist(contrast[["padj"]])
         contrast[["padj"]] = as.numeric(contrast[["padj"]])
         
-        # log2FC (not relevant for compositional contrasts)
+        # log2FC 
+        # (not relevant for compositional contrasts)
         if (!"log2FC" %in% names(contrast)) contrast[["log2FC"]] = 0
         contrast[["log2FC"]] = unlist(contrast[["log2FC"]])
         contrast[["log2FC"]] = as.numeric(contrast[["log2FC"]])
         
-        # min_pct (not relevant for compositional contrasts)
+        # min_pct 
+        # (not relevant for compositional contrasts)
         if (!"min_pct" %in% names(contrast)) contrast[["min_pct"]] = 0.01
         contrast[["min_pct"]] = unlist(contrast[["min_pct"]])
         contrast[["min_pct"]] = as.numeric(contrast[["min_pct"]])
@@ -408,7 +427,8 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
                 TRUE ~ "average")
         }
             
-        # layer (not relevant for compositional contrasts)
+        # layer 
+        # (not relevant for compositional contrasts)
         if (!"layer" %in% names(contrast)) {
             if (contrast[["data_type"]] == "feature_data") {
                 if (contrast[["test"]] %in% c("negbinom", "poisson", "DESeq2")) {
@@ -498,13 +518,13 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
         }
         
         # DESeq2 additional arguments to results function
-        if ("deseq2_args" %in% names(contrast)) {
-          deseq2_args = purrr::map(contrast[["deseq2_args"]], function(p) {
+        if ("deseq2_results_args" %in% names(contrast) & type != "compositional") {
+          deseq2_args = purrr::map(contrast[["deseq2_results_args"]], function(p) {
             p = as.character(p)
             return(eval(parse(text=p)))
           })
           
-          contrast[["deseq2_args"]] = deseq2_args
+          contrast[["deseq2_results_args"]] = deseq2_args
         }
 
         # Add contrast row number
@@ -550,21 +570,21 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
     return(contrasts_list)
 }
 
-#' Given a contrast configuration, prepares a Seurat object. The function extracts all 
-#' relevant data and if requested bulk-aggregates and downsamples barcodes. Note that if
-#' a contrast has multiple comparisons (for each subset), this function needs to be run on each of them separately.
+#' Given a contrast configuration, prepares a Seurat object for DEG analysis. The function extracts all relevant 
+#' data and if requested bulk-aggregates and downsamples barcodes. Note that if a contrast has multiple comparisons (for each subset), this function needs to be run on each of them separately.
 #' 
 #' @param sc A Seurat single cell object.
 #' @param contrast A contrast configuration. Must have been set up with NewContrastsList.
 #' @return A contrast configuration with an 'object' entry for the Seurat object.
-PrepareContrast = function(sc, contrast) {
+PrepareDegContrast = function(sc, contrast) {
     barcode_metadata = sc[[]]
     name = contrast[["name"]]
         
     # If condition1_idx or condition2_idx is empty, return
     if (length(contrast[["condition1_idx"]]) == 0 | length(contrast[["condition2_idx"]]) == 0) return(contrast)
         
-    # Get barcodes indices and names
+    # Get barcodes indices and names for conditions
+    # Note: If the comparison is for a subset, the barcodes are already filtered for this subset. Only this data will be extracted.
     condition1_idx = contrast[["condition1_idx"]]
     condition1_barcodes = SeuratObject::Cells(sc)[condition1_idx]
     condition2_idx = contrast[["condition2_idx"]]
@@ -587,11 +607,15 @@ PrepareContrast = function(sc, contrast) {
     # Extract relevant data and save it as Seurat object
     if (data_type == "feature_data") {
         assay = contrast[["assay"]]
+        
+        # Get relevant barcodes
+        barcodes = SeuratObject::Cells(sc)
         barcodes_idx = unique(c(condition1_idx, condition2_idx))
+        barcodes = barcodes[barcodes_idx]
         
         # Create new assay object (cannot have Seurat without one)
         assay_obj = suppressWarnings({subset(sc[[assay]],
-                           cells=barcodes_idx)})
+                           cells=barcodes)})
         
         # Update feature metadata to include only feature_id, feature_name, feature_type
         feature_metadata = assay_obj[[]]
@@ -609,14 +633,19 @@ PrepareContrast = function(sc, contrast) {
         
         # Update barcode metadata
         sc_subset = SeuratObject::AddMetaData(sc_subset,
-                                              barcode_metadata[barcodes_idx, barcode_metadata_columns, drop=FALSE])
+                                              barcode_metadata[barcodes, barcode_metadata_columns, drop=FALSE])
     } else if (data_type == "reduction") {
         reduction_name = contrast[["assay"]]
         assay = "reduction"
+        
+        # Get relevant barcodes
+        barcodes = SeuratObject::Cells(sc)
+        barcodes_idx = unique(c(condition1_idx, condition2_idx))
+        barcodes = barcodes[barcodes_idx]
 
         # Get reduction and subset
         reduction = sc[[reduction_name]]
-        reduction = subset(reduction, cells=unique(c(condition1_idx, condition2_idx)))
+        reduction = subset(reduction, cells=barcodes)
 
         # Create new assay object with reduction data
         assay_obj = SeuratObject::CreateAssay5Object(counts=SeuratObject::Embeddings(reduction) %>% 
@@ -631,12 +660,17 @@ PrepareContrast = function(sc, contrast) {
         assay_obj = SeuratObject::AddMetaData(assay_obj, feature_metadata)
 
         # Set up Seurat object for this analysis
-        sc_subset = SeuratObject::CreateSeuratObject(assay_obj, assay=assay, meta.data=barcode_metadata[unique(c(condition1_idx, condition2_idx)), barcode_metadata_columns, drop=FALSE])
+        sc_subset = SeuratObject::CreateSeuratObject(assay_obj, assay=assay, meta.data=barcode_metadata[barcodes, barcode_metadata_columns, drop=FALSE])
     } else if (data_type == "barcode_metadata") {
+        # Get relevant barcodes
+        barcodes = SeuratObject::Cells(sc)
+        barcodes_idx = unique(c(condition1_idx, condition2_idx))
+        barcodes = barcodes[barcodes_idx]
+      
         # Get barcode metadata columns to test
         metadata_cols = contrast[["assay"]]
         assay = "barcode_metadata"
-        metadata = sc[[metadata_cols]][unique(c(condition1_idx, condition2_idx)), , drop=FALSE] %>%
+        metadata = sc[[metadata_cols]][barcodes, , drop=FALSE] %>%
             as.matrix() %>%
             Matrix::t()
         
@@ -657,18 +691,18 @@ PrepareContrast = function(sc, contrast) {
         assay_obj = SeuratObject::AddMetaData(assay_obj, feature_metadata)
 
         # Set up Seurat object for this analysis
-        sc_subset = SeuratObject::CreateSeuratObject(assay_obj, assay=assay, meta.data=barcode_metadata[unique(c(condition1_idx, condition2_idx)), barcode_metadata_columns, drop=FALSE])
+        sc_subset = SeuratObject::CreateSeuratObject(assay_obj, assay=assay, meta.data=barcode_metadata[barcodes, barcode_metadata_columns, drop=FALSE])
     }
     
     # Add the condition_groups column with levels
+    assertthat::assert_that(!"condition_groups" %in% colnames(sc_subset[[]]),
+                            msg=FormatString("The column 'condition_groups' is reserved, please use another column name (for comparison {i}/{name})."))
     conditions = dplyr::case_when(
         SeuratObject::Cells(sc_subset) %in% condition1_barcodes ~ "condition1",
         SeuratObject::Cells(sc_subset) %in% condition2_barcodes ~ "condition2",
         TRUE ~ NA
     )
     conditions = factor(conditions, levels=c("condition1", "condition2"))
-    assertthat::assert_that(!"condition_groups" %in% colnames(sc_subset[[]]),
-                            msg=FormatString("The column 'condition_groups' is reserved, please use another column name (for comparison {i}/{name})."))
     sc_subset[["condition_groups"]] = conditions
     
     # Update idents
@@ -814,6 +848,135 @@ PrepareContrast = function(sc, contrast) {
     return(contrast)
 }
 
+#' Given a contrast configuration, prepares a Seurat object for compositional analysis.
+#' 
+#' @param sc A Seurat single cell object.
+#' @param contrast A contrast configuration. Must have been set up with NewContrastsList.
+#' @return A contrast configuration with an 'object' entry for the Seurat object.
+PrepareCompositionalContrast = function(sc, contrast) {
+  barcode_metadata = sc[[]]
+  name = contrast[["name"]]
+  
+  # If condition1_idx or condition2_idx is empty, return
+  if (length(contrast[["condition1_idx"]]) == 0 | length(contrast[["condition2_idx"]]) == 0) return(contrast)
+  
+  # Get barcodes indices and names
+  # If the comparison is for a subset, the barcodes are already filtered for this subset.
+  condition1_idx = contrast[["condition1_idx"]]
+  condition1_barcodes = SeuratObject::Cells(sc)[condition1_idx]
+  condition2_idx = contrast[["condition2_idx"]]
+  condition2_barcodes = SeuratObject::Cells(sc)[condition2_idx]
+  
+  # When creating a new Seurat, do not calculate nCounts and nFeatures (not needed); restore default on exit
+  op = options(Seurat.object.assay.calcn = FALSE)
+  on.exit(expr = options(op), add = TRUE)
+  
+  # Get barcode metadata columns
+  barcode_metadata_columns = c(contrast[["condition_column"]], 
+                               contrast[["subset_column"]], 
+                               contrast[["compositional_column"]], 
+                               contrast[["covariate"]])
+  barcode_metadata_columns = barcode_metadata_columns[barcode_metadata_columns %in% colnames(barcode_metadata)]
+  
+  # Extract the data and create a Seurat object. This depends on the test:
+  # - none, fisher, sccoda: create minimal Seurat object to store the barcode metadata
+  # - miloR: Seurat object with counts data, barcode metadata, dimensionality reduction and graph
+  # - if the test is done on a subset, restrict to barcodes of this subset
+  # - note: changes of abundance in one condition vs the other also depend on changes of abundances in all other conditions
+  #   therefore include other conditions that are not part of the data as condition3
+  
+  # Get relevant barcodes
+  barcodes = SeuratObject::Cells(sc)
+  if ("subset_group_idx" %in% names(contrast)) {
+    barcodes = barcodes[contrast[["subset_group_idx"]]]
+  }
+  
+  # Create new assay object (cannot have Seurat without one)
+  assay = contrast[["assay"]]
+  
+  if (contrast[["test"]] %in% c("none", "fisher", "sccoda")) {
+    # Create minimal counts table without data
+    counts = Matrix::Matrix(0, nrow=2, ncol=length(barcodes), sparse=TRUE, 
+                            dimnames=list(c("-dummy1-", "-dummy2-"), barcodes)) %>% 
+      as("dgCMatrix")
+    assay_obj = SeuratObject::CreateAssay5Object(counts)
+  } else if (contrast[["test"]] %in% c("miloR")) {
+    # Get counts from assay
+    assay_obj = suppressWarnings({subset(sc[[assay]],
+                                         cells=barcodes)})
+    
+    # Update feature metadata to include only feature_id, feature_name, feature_type
+    feature_metadata = assay_obj[[]]
+    feature_metadata = feature_metadata[, c("feature_id", "feature_name", "feature_type")]
+    assay_obj@meta.data = data.frame()
+    assay_obj = SeuratObject::AddMetaData(assay_obj, feature_metadata)
+    
+    # Remove scale.data layer (never needed and saves a lot of memory)
+    SeuratObject::DefaultLayer(assay_obj) = contrast[["layer"]]
+    SeuratObject::LayerData(assay_obj, layer="scale.data") = NULL
+  }
+
+  # Store Seurat object in sc_subset
+  sc_subset = SeuratObject::CreateSeuratObject(assay_obj, 
+                                               assay=assay)
+  # Update barcode metadata
+  sc_subset = SeuratObject::AddMetaData(sc_subset,
+                                        barcode_metadata[barcodes, barcode_metadata_columns, drop=FALSE])
+  
+  # For miloR test: add dimensionality reduction and graph TODODODO
+  
+  # Add the condition_groups column with levels
+  # Note: condition3 is used for all barcodes not included in the analysis
+  assertthat::assert_that(!"condition_groups" %in% colnames(sc_subset[[]]),
+                          msg=FormatString("The column 'condition_groups' is reserved, please use another column name (for comparison {i}/{name})."))
+  conditions = dplyr::case_when(
+    SeuratObject::Cells(sc_subset) %in% condition1_barcodes ~ "condition1",
+    SeuratObject::Cells(sc_subset) %in% condition2_barcodes ~ "condition2",
+    .default = "condition3"
+  )
+  conditions = factor(conditions, levels=c("condition1", "condition2", "condition3"))
+  sc_subset$condition_groups = conditions
+  
+  # Update idents
+  SeuratObject::Idents(sc_subset) = "condition_groups"
+
+  barcode_metadata = sc_subset[[]]
+  
+  # Group cells into pseudo-bulk samples if requested
+  if ("pseudobulk_samples" %in% names(contrast)) {
+    # By default at least group by conditions
+    bulk_by = "condition_groups"
+    
+    # Get lists of categorial and numeric covariates
+    # Also aggregate by categorial covariates
+    categorial_covariates = contrast[["covariate"]] %>% 
+      purrr::keep(function(c) is.factor(barcode_metadata[, c, drop=TRUE]))
+    numeric_covariates = contrast[["covariate"]] %>% 
+      purrr::keep(function(c) is.numeric(barcode_metadata[, c, drop=TRUE]))
+    if (length(categorial_covariates) > 0) bulk_by = unique(c(bulk_by, categorial_covariates))
+    
+    # Generate x pseudo-bulk samples per bulk_by combination (to group)
+    num_pseudobulk_samples = contrast[["pseudobulk_samples"]]
+      
+    # Divide each group into pseudobulk_samples subgroups
+    # Done with modulo (%%): ((row_index - 1) %% num_pseudobulk_samples) + 1
+    pseudobulk_sample = barcode_metadata %>%
+      dplyr::group_by(dplyr::across(dplyr::all_of(bulk_by))) %>% 
+      dplyr::mutate(pseudobulk_sample=0:(dplyr::n() - 1)) %>%
+      dplyr::mutate(pseudobulk_sample=(pseudobulk_sample %% num_pseudobulk_samples) + 1) %>%
+      dplyr::mutate(pseudobulk_sample=paste(!!!syms(bulk_by), paste0("s", pseudobulk_sample), sep="-")) %>%
+      dplyr::pull(pseudobulk_sample)
+      
+    # Add pseudobulk_sample column to seurat object
+    barcode_metadata$pseudobulk_sample = pseudobulk_sample
+    sc_subset = SeuratObject::AddMetaData(sc_subset, metadata=barcode_metadata[,"pseudobulk_sample", drop=FALSE])
+    barcode_metadata = sc_subset[[]]
+  }
+  contrast[["sc_subset"]] = sc_subset
+  
+  return(contrast)
+}
+
 #' Given a contrast configuration, runs a DEG test.
 #' Note that if a contrast has multiple comparisons (for each subset), this function needs to be run on each of them separately.
 #' 
@@ -848,11 +1011,11 @@ DegsRunTest = function(contrast) {
         if (contrast[["test"]] %in% c("DESeq2", "DESeq2LRT")) {
             # design and reduced argument
             design = reduced = NULL
-            if ("deseq2_design" %in% names(contrast)) {
-                design = contrast[["deseq2_design"]][1] %>% as.character()
+            if ("design" %in% names(contrast)) {
+                design = contrast[["design"]][1] %>% as.character()
               
-              if (contrast[["test"]] == "DESeq2LRT" & length(contrast[["deseq2_design"]]) == 2) {
-                reduced = contrast[["deseq2_design"]][2] %>% as.character()
+              if (contrast[["test"]] == "DESeq2LRT" & length(contrast[["design"]]) == 2) {
+                reduced = contrast[["design"]][2] %>% as.character()
               }
             }        
   
@@ -867,7 +1030,7 @@ DegsRunTest = function(contrast) {
                                         design=design, 
                                         reduced=reduced,
                                         random_seed=getOption("random_seed"),
-                                        results_args=contrast[["deseq2_args"]])
+                                        results_args=contrast[["deseq2_results_args"]])
         } else {
             # How should FindMarkers calculate the means:
             # - for feature/counts data (gene expression) use default (difference in the log of the average exponentiated data, with pseudocount)
@@ -1087,6 +1250,11 @@ DegsGetGenesets = function(msigdb_species, is_msigdb_species_name=FALSE, geneset
     }
     # Download MSigDB
     term2gene_db = msigdbr::msigdbr(species=msigdb_species)
+    
+    # In recent msigdbr package versions gs_cat is now gs_collection, gs_subcat gs_subcollection and gene_id gene_symbol - add columns
+    term2gene_db$gs_cat = term2gene_db$gs_collection
+    term2gene_db$gs_subcat = term2gene_db$gs_subcollection
+    term2gene_db$gene_id = term2gene_db$gene_symbol
   } else {
     # User input
     term2gene_db = purrr::map_dfr(geneset_files, function(geneset_file) {
