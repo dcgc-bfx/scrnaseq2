@@ -326,11 +326,11 @@ if (is.character(param("contrasts")) && file.exists(param("contrasts"))) {
 
 # For each contrast, collect the necessary information (which groups to compare, the assay to use, etc).
 # Note: Each contrast entry is a list either of length 1 (if there is only one comparison) or of length >1 (if the comparison is done for multiple subsets). The names of the list elements are the names of the contrasts.
-contrasts_list = NewContrastsList(sc, contrasts_list)
+contrasts_list = NewContrastsList(sc, contrasts_list, type="deg")
 
 # For each contrast, prepare an individual Seurat object for the comparison. If multiple subsets are analysed, prepare multiple objects. Bulk-aggregate if requested. Downsample if requested.
 # Note: This is a list of contrasts with of lists of comparisons, so we use map_depth need to specify the depth of the list.
-contrasts_list = purrr::map_depth(contrasts_list, .depth=2, function(contrast) return(PrepareContrast(sc, contrast)))
+contrasts_list = purrr::map_depth(contrasts_list, .depth=2, function(contrast) return(PrepareDegContrast(sc, contrast)))
 
 # Which contrasts should be DEG tested?
 run_deg = param("run_deg")
