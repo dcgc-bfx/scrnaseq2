@@ -73,10 +73,10 @@ params:
   # covariate: One or more columns to include as covariates (batches) for testing (default: null).
   #            The following tests can use covariates: 'LR', 'poisson', 'negbinom', 'MAST', 'DESeq2', 'DESeq2LRT'.
   #
-  # deseq2_design: For DESeq2 tests, specify a design formula for testing. (default: null). 
+  # design: For DESeq2 tests, specify a design formula for testing. (default: null). 
   #                Replaces the 'covariate' setting. Include the term 'condition_groups' for the condition.
   #                For 'DESeq2LRT', specify a design formula for the full model and the reduced model.
-  # deseq2_args: For DESeq2 tests, additional arguments (format key: value) passed to the DESeq2 results function (default: null)
+  # deseq2_results_args: For DESeq2 tests, additional arguments (format key: value) passed to the DESeq2 results function (default: null)
   # 
   # padj: Maximum adjusted p-value (default: 0.05)
   # log2FC: Minimum absolute log2 fold change (default: 0)
@@ -107,7 +107,7 @@ params:
                 condition2: "pbmc_5k"
                 bulk_by: "seurat_clusters"
                 test: "DESeq2"
-                deseq2_design: "~ condition_groups + seurat_clusters"
+                design: "~ condition_groups + seurat_clusters"
           # Compare pbmc_1k vs pbmc_5k. Generate 5 pseudo-bulk replicates per cluster and condition. 
           # Use DESeq2 with a LRT test that compares two different models across seurat_clusters.
           - Comparison4:
@@ -117,7 +117,7 @@ params:
                 bulk_by: "seurat_clusters"
                 pseudobulk_samples: 5
                 test: "DESeq2LRT"
-                deseq2_design: 
+                design: 
                 - "~ condition_groups + seurat_clusters"
                 - "~ seurat_clusters"
           # Compare pbmc_1k vs pbmc_5k. Test for differences in nFeature_RNA and nCount_RNA.
