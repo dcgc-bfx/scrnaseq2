@@ -230,7 +230,7 @@ ReadDatasetsTable = function(file) {
 #' @param csv_file Path to a character-separated counts file. First column contains the feature id (barcode id if transpose is set), all other columns contain the barcode (feature) counts.
 #' @param transpose If TRUE then rows are barcodes and columns are features (default: FALSE)
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL) 
-#' @return Sparse counts matrix (dgCMatrix format).
+#' @return Sparse counts matrix (dgCMatrix format). The dataset path is attached as attribute.
 ReadCounts_csv = function(csv_file, transpose=FALSE, strip_suffix=NULL) {
   library(magrittr)
   
@@ -274,6 +274,10 @@ ReadCounts_csv = function(csv_file, transpose=FALSE, strip_suffix=NULL) {
                                  sparse=TRUE,
                                  dimnames = list(row_ids, col_ids))
   }
+  
+  # Attach path
+  attr(counts_data, "path") = csv_file
+  
   return(list(All=counts_data))
 }
   
@@ -289,7 +293,7 @@ ReadCounts_csv = function(csv_file, transpose=FALSE, strip_suffix=NULL) {
 #' @param feature_type_column If there is data for multiple feature types, which column (number) in the features file is used to identify the type. If there is no column, set to NULL and type will be "Gene Expression" (default: NULL)
 #' @param delim Delimiter used in barcodes and feature files (default: \t)
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL) 
-#' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes and features is attached as attributes barcode_metadata and feature_metadata.
+#' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes, features and path is attached as attributes.
 ReadCounts_mtx = function(mtx_directory, mtx_file_name="matrix.mtx.gz", transpose=FALSE, barcodes_file_name="barcodes.tsv.gz", barcodes_column_names=FALSE, features_file_name="features.tsv.gz", features_column_names=FALSE, feature_type_column=NULL, delim="\t", strip_suffix=NULL) {
   # Checks
   for(f in file.path(mtx_directory, c(mtx_file_name, barcodes_file_name, features_file_name))) assertthat::is.readable(f)
@@ -360,6 +364,9 @@ ReadCounts_mtx = function(mtx_directory, mtx_file_name="matrix.mtx.gz", transpos
     })
     attr(cts, "feature_metadata") = fc_meta[, keep, drop=FALSE]
     
+    # Attach path
+    attr(cts, "path") = mtx_directory
+    
     return(cts)
   })
   names(counts_lst) = names(counts_lst)
@@ -376,7 +383,7 @@ ReadCounts_mtx = function(mtx_directory, mtx_file_name="matrix.mtx.gz", transpos
 #' 
 #' @param h5ad_file Path to an anndata object in hdf5 format.
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL) 
-#' @return Sparse counts matrix (IterableMatrix format). Additional information on barcodes and features is attached as attributes barcode_metadata and feature_metadata.
+#' @return Sparse counts matrix (IterableMatrix format). Additional information on barcodes, features and path is attached as attributes.
 ReadCounts_h5ad = function(h5ad_file, strip_suffix=NULL) {
   library(magrittr)
   
@@ -410,6 +417,9 @@ ReadCounts_h5ad = function(h5ad_file, strip_suffix=NULL) {
   attr(counts_data, "barcode_metadata") = barcodes_data
   attr(counts_data, "feature_metadata") = features_data
   
+  # Attach path
+  attr(counts_data, "path") = h5ad_file
+  
   return(list(All=counts_data))
 }
 
@@ -420,7 +430,7 @@ ReadCounts_h5ad = function(h5ad_file, strip_suffix=NULL) {
 #' @param assays This simply sets the assay. Smartseq technologies currently do not support multi-assay datasets.
 #' @param version Set to '2' for Smartseq2 or '3' for Smartseq3.
 #' @param transpose  If TRUE then rows are cells and columns are genes (default: FALSE)
-#' @return A sparse counts matrix (dgCMatrix format)
+#' @return A sparse counts matrix (dgCMatrix format). Additional information on barcodes, features, assay technology and path is attached as attributes.
 ReadCounts_SmartSeq = function(path, assays, version, transpose=FALSE) {
   # Checks
   assertthat::is.readable(path)
@@ -472,7 +482,7 @@ ReadCounts_SmartSeq = function(path, assays, version, transpose=FALSE) {
 #' 
 #' @param mtx_directory Path to 10x counts directory in market exchange format.
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
-#' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes and features is attached as attributes barcode_metadata and feature_metadata.
+#' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes, features and path is attached as attributes.
 ReadCounts_10x_mtx = function(mtx_directory, strip_suffix=NULL) {
   # Determine the name of the matrix file
   mtx_file_name = dplyr::case_when(file.exists(file.path(mtx_directory, "matrix.mtx.gz")) ~ "matrix.mtx.gz",
@@ -540,7 +550,7 @@ ReadCounts_10x_mtx = function(mtx_directory, strip_suffix=NULL) {
 #' 
 #' @param h5_file Path to a 10x h5 counts file.
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
-#' @return One sparse counts matrix per feature type (IterableMatrix format). Additional information on barcodes and features is attached as attributes. barcode_metadata and feature_metadata.
+#' @return One sparse counts matrix per feature type (IterableMatrix format). Additional information on barcodes, features and path is attached as attributes.
 ReadCounts_10x_h5 = function(h5_file, strip_suffix=NULL) {
   # Checks
   assertthat::is.readable(h5_file)
@@ -651,6 +661,9 @@ ReadCounts_10x_h5 = function(h5_file, strip_suffix=NULL) {
     })
     attr(cts, "feature_metadata") = fc_meta[, keep, drop=FALSE]
     
+    # Attach path
+    attr(cts, "path") = h5_file
+    
     return(cts)
   })
   names(counts_lst) = feature_types
@@ -663,7 +676,7 @@ ReadCounts_10x_h5 = function(h5_file, strip_suffix=NULL) {
 #' @param path Path to 10x counts data. Can be a 10x hdf5 file (recommended for big datasets) or a 10x matrix exchange format directory.
 #' @param assays Which assays to read. Default NULL is to read all assays.
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
-#' @return One sparse counts matrix per assay. Format is either IterableMatrix (when reading a h5 file) or dgCMatrix (when reading from a matrix exchange format directory). Additional information on barcodes and features is attached as attributes.
+#' @return One sparse counts matrix per assay. Format is either IterableMatrix (when reading a h5 file) or dgCMatrix (when reading from a matrix exchange format directory). Additional information on barcodes, features, assay, technology and path is attached as attributes.
 ReadCounts_10x = function(path, assays=NULL, strip_suffix=NULL) {
   # Checks
   assertthat::is.readable(path)
@@ -723,12 +736,12 @@ ReadCounts_10x = function(path, assays=NULL, strip_suffix=NULL) {
   return(counts_lst)
 }
 
-#' Reads counts data produced by 10x Visium.
+#' Reads counts data produced by the 10x Visium platform.
 #' 
 #' @param path Path to 10x counts data for 10x Visium. Can be a 10x hdf5 file (recommended for big datasets) or a 10x matrix exchange format directory.
 #' @param assays Which assays to read. If NULL, read all assays.
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
-#' @return One sparse counts matrix per assay. Format is either IterableMatrix (when reading a h5 file) or dgCMatrix (when reading from a matrix exchange format directory). Additional information on barcodes and features is attached as attributes. Path to a directory with image information is attached as attribute.
+#' @return List with a counts matrix per assay. Format is either IterableMatrix (when reading hdf5) or dgCMatrix (when reading matrix exchange format directory). Additional information on barcodes, features, assay and technology and path is attached as attributes.
 ReadCounts_10xVisium = function(path, assays=NULL, strip_suffix=NULL) {
   # Checks
   assertthat::is.readable(path)
@@ -744,12 +757,61 @@ ReadCounts_10xVisium = function(path, assays=NULL, strip_suffix=NULL) {
   return(counts_lst)
 }
 
+#' Reads counts data produced by the 10x VisiumHD platform.
+#' 
+#' @param path Path to the 'binned_outputs' directory. Bin sizes specified by the bin_sizes parameter are read (hdf5 files only).
+#' @param assays Which assays to read. If NULL, read all assays.
+#' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
+#' @param bin_sizes Bin sizes to read (default: c(8, 16)). If set to NULL, read all bin sizes.
+#' @return List with a counts matrix per assay and bin size. Format is either IterableMatrix (when reading hdf5) or dgCMatrix (when reading matrix exchange format directory). Additional information on barcodes, features, assay and technology and path is attached as attributes.
+ReadCounts_10xVisiumHD = function(path, assays=NULL, strip_suffix=NULL, bin_sizes=c(8, 16)) {
+  # Checks
+  assertthat::is.readable(path)
+  
+  # If set to NULL, collect all available bin sizes
+  if (is.null(bin_sizes)) {
+    subdirs = list.dirs(path, full.names=FALSE, recursive=FALSE)
+    subdirs = subdirs[grepl("square_\\d+um", subdirs)]
+    bin_sizes = gsub("square_(\\d+)um", "\\1", subdirs) %>% as.integer()
+  }
+  
+  # Expand paths for bin sizes and check whether they exist
+  bin_sizes = sprintf("%03d", bin_sizes)
+  paths = file.path(path, paste0("square_", bin_sizes, "um"), "filtered_feature_bc_matrix.h5")
+  for(p in paths) {
+    assertthat::is.readable(p)
+  }
+
+  # Read counts for all bin sizes; the result is a list of bin sizes where each entry is a list of assays read for each bin size
+  counts_lst = purrr::map(paths, ReadCounts_10x, assays=assays, strip_suffix=strip_suffix)
+  
+  # For multiple bin sizes, rename the assays accordingly
+  if (length(bin_sizes) > 1) {
+    for (i in seq_along(counts_lst)) {
+      names(counts_lst[[i]]) = paste0(names(counts_lst[[i]]), bin_sizes[i])
+      for (j in seq_along(counts_lst[[i]])) {
+        attr(counts_lst[[i]][[j]], "assay") = paste0(attr(counts_lst[[i]][[j]], "assay"), bin_sizes[i])
+      }
+    }
+  }
+  
+  # Flatten the counts list
+  counts_lst = purrr::flatten(counts_lst)
+  
+  # Update technology
+  for (i in seq_along(counts_lst)) {
+    attr(counts_lst[[i]], "technology") = "10x_visiumhd"
+  }
+  
+  return(counts_lst)
+}
+
 #' Reads counts data produced by 10x Xenium.
 #' 
 #' @param path Path to 10x counts data for 10x Xenium. Can be a 10x hdf5 file (recommended for big datasets) or a 10x matrix exchange format directory.
 #' @param assays Which assays to read. If NULL, read all assays.
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
-#' @return One sparse counts matrix per assay. Format is either IterableMatrix (when reading a h5 file) or dgCMatrix (when reading from a matrix exchange format directory). Additional information on barcodes and features is attached as attributes.
+#' @return One sparse counts matrix per assay. Format is either IterableMatrix (when reading a h5 file) or dgCMatrix (when reading from a matrix exchange format directory). Additional information on barcodes, features, assay and technology and path is attached as attributes.
 ReadCounts_10xXenium = function(path, assays=NULL, strip_suffix=NULL) {
   # Checks
   assertthat::is.readable(path)
@@ -769,7 +831,7 @@ ReadCounts_10xXenium = function(path, assays=NULL, strip_suffix=NULL) {
 #' 
 #' @param mtx_directory Path to Parse Biosciences counts directory in market exchange format. Typically contains the files count_matrix.mtx, cell_metadata.csv and all_genes.csv.
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
-#' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes and features is attached as attributes barcode_metadata and feature_metadata.
+#' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes and features is attached as attributes barcode_metadata and feature_metadata. Additional information on barcodes, features and path is attached as attributes.
 ReadCounts_ParseBio_mtx = function(mtx_directory, strip_suffix=NULL) {
   # Determine the name of the matrix file
   mtx_file_name = "count_matrix.mtx"
@@ -806,7 +868,7 @@ ReadCounts_ParseBio_mtx = function(mtx_directory, strip_suffix=NULL) {
 #' 
 #' @param h5ad_file Path to an anndata object in hdf5 format.
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
-#' @return Sparse counts matrix (IterableMatrix format). Additional information on barcodes and features is attached as attributes barcode_metadata and feature_metadata.
+#' @return Sparse counts matrix (IterableMatrix format). Additional information on barcodes, features and path is attached as attributes.
 ReadCounts_ParseBio_h5ad = function(h5ad_file, strip_suffix=NULL) {
   return(ReadCounts_h5ad(h5ad_file, strip_suffix=strip_suffix))
 }
@@ -816,7 +878,7 @@ ReadCounts_ParseBio_h5ad = function(h5ad_file, strip_suffix=NULL) {
 #' @param path Path to Parse Biosciences counts data. Can be a Parse Biosciences anndata.h5ad file (recommended for big datasets) or a Parse Biosciences matrix exchange format directory.
 #' @param assays This simply sets the assay. Parse Bioscience currently does not support multi-assay datasets.
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
-#' @return One sparse counts matrix. Format is either IterableMatrix (when reading an anndata.h5ad file) or dgCMatrix (when reading from a matrix exchange format directory). Additional information on barcodes, features, technology and assays is attached as attributes.
+#' @return One sparse counts matrix. Format is either IterableMatrix (when reading an anndata.h5ad file) or dgCMatrix (when reading from a matrix exchange format directory). Additional information on barcodes, features, assay and technology and path is attached as attributes.
 ReadCounts_ParseBio = function(path, assays, strip_suffix=NULL) {
   # Checks
   assertthat::is.readable(path)
@@ -869,7 +931,7 @@ ReadCounts_ParseBio = function(path, assays, strip_suffix=NULL) {
 #' 
 #' @param mtx_directory Path to Scale Bio counts directory in market exchange format. Typically contains the files matrix.mtx.gz, barcodes.tsv.gz and features.tsv.gz.
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
-#' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes and features is attached as attributes.
+#' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes, features and path is attached as attributes.
 ReadCounts_ScaleBio_mtx = function(mtx_directory, strip_suffix=NULL) {
   # Determine the name of the matrix file
   mtx_file_name = "matrix.mtx"
@@ -902,7 +964,7 @@ ReadCounts_ScaleBio_mtx = function(mtx_directory, strip_suffix=NULL) {
 #' @param path Path to Scale Bio counts data. Must be a Scale Bio matrix exchange format directory.
 #' @param assays Which assays to read. If NULL, read all assays.
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
-#' @return  One sparse counts matrix per assay (dgCMatrix format). Additional information on barcodes, features, technology and assay is attached as attributes.
+#' @return  One sparse counts matrix per assay (dgCMatrix format). Additional information on barcodes, features, assay and technology and path is attached as attributes.
 ReadCounts_ScaleBio = function(path, assays, strip_suffix=NULL) {
   # Checks
   assertthat::is.readable(path)
@@ -946,31 +1008,21 @@ ReadCounts_ScaleBio = function(path, assays, strip_suffix=NULL) {
   return(counts_lst)
 }
 
-#' Reads counts data produced by Smartseq, 10x, 10x Visium, 10x Xenium, Parse Biosciences, Scale Bio.
+#' Reads counts data produced by Smartseq, 10x, 10x Visium, 10x VisiumHD, 10x Xenium, Parse Biosciences, Scale Bio.
 #' 
-#' @param path Path to counts data. Can be: character-separated file (Smartseq), matrix exchange format directory (SmartSeq, 10x, Parse Biosciences, ScaleBio), hdf5 file (10x), h5ad file (Parse Biosciences).
-#' @param technology Technology. Can be: 'smartseq2', 'smartseq3', '10x', '10x_visium', '10x_xenium', 'parse' or 'scale'.
+#' @param path Path to counts data. Can be: character-separated file (Smartseq), matrix exchange format directory (SmartSeq, 10x, Parse Biosciences, ScaleBio), hdf5 file (10x), h5ad file (Parse Biosciences). For 10x VisiumHD, this can be either the 'binned_outputs' directory in which case all bin sizes specified by the visiumhd_bin_sizes parameter are read (hdf5 files only) or a path to the counts data of a specific bin size as matrix exchange format directory or hdf5 file.
+#' @param technology Technology. Can be: 'smartseq2', 'smartseq3', '10x', '10x_visium', '10x_visiumhd', '10x_xenium', 'parse' or 'scale'.
 #' @param assays If there are multiple assays in the dataset, which assay to read. Multiple assays can be specified. If there is only one assay, this simply sets the assay type.
 #' @param barcode_metadata Table with additional barcode metadata. Can also be a list specifying metadata for each assay. First column must contain the barcode. Missing barcodes will be filled with NA.
 #' @param feature_metadata Table with additional feature metadata. Can also be a list specifying metadata for each assay. First column must contain the feature id. Missing features will be filled with NA.
 #' @param barcode_suffix Suffix to add to the barcodes (default: NULL).
-#' @return  One sparse counts matrix per assay. Format can be dgCMatrix (general) or IterableMatrix (when reading an anndata.h5ad or h5 file). Additional information on barcodes and features is attached as attributes.
-ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_metadata=NULL, barcode_suffix=NULL) {
+#' @param visiumhd_bin_sizes For 10x VisiumHD, which bin sizes to read. Default is c(8, 16).
+#' @return  One sparse counts matrix per assay. Format can be dgCMatrix (general) or IterableMatrix (when reading an anndata.h5ad or h5 file). Additional information on barcodes, features, assay and technology and path is attached as attributes. For 10x VisiumHD data, the different bin sizes are returned as individual assays. 
+ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_metadata=NULL, barcode_suffix=NULL, visiumhd_bin_sizes=c(8, 16)) {
   library(magrittr)
-  
-  #path = "datasets/10x_pbmc_5k_protein/filtered_feature_bc_matrix/"
-  #technology = "10x"
-  #assays=c("RNA", "ADT")
-  #rename_features_metadata=c(2,2)
-  #rename_features = NULL
-  #on_disk_path="modules/read_data/10x_pbmc_5k_protein"
-  #barcode_metadata_file=NULL
-  #feature_metadata_file=NULL
-  #barcode_suffix=NULL
-  #on_disk_overwrite=TRUE
-  
+
   # Checks
-  valid_technologies = c("smartseq2", "smartseq3", "10x", "10x_visium", "10x_xenium", "parse", "scale")
+  valid_technologies = c("smartseq2", "smartseq3", "10x", "10x_visium", "10x_visiumhd", "10x_xenium", "parse", "scale")
   assertthat::assert_that(technology %in% valid_technologies,
                           msg=FormatString("Technology is {technology} but must be one of: {valid_technologies*}."))
   
@@ -986,6 +1038,9 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
   } else if(technology == "10x_visium") {
     if(!is.null(barcode_suffix)) strip_suffix = "-1"
     counts_lst = ReadCounts_10xVisium(path=path, assays=assays, strip_suffix=strip_suffix)
+  } else if(technology == "10x_visiumhd") {
+    if(!is.null(barcode_suffix)) strip_suffix = "-1"
+    counts_lst = ReadCounts_10xVisiumHD(path=path, assays=assays, strip_suffix=strip_suffix, bin_sizes=visiumhd_bin_sizes)
   } else if(technology == "10x_xenium") {
     if(!is.null(barcode_suffix)) strip_suffix = "-1"
     counts_lst = ReadCounts_10xXenium(path=path, assays=assays, strip_suffix=strip_suffix)
@@ -1002,28 +1057,37 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
   
   # Add barcode metadata to counts objects
   if (!is.null(barcode_metadata)) {
-    assertthat::assert_that(!is(barcode_metadata, "list") | length(barcode_metadata) == length(counts_lst),
-                            msg=FormatString("Barcode metadata must either be one table or a list of tables for each assay (dataset {path})."))
+    # Merge list of barcode metadata files
+    if (inherits(barcode_metadata, "list")) {
+      # Collect all barcodes: Get first column of each table
+      barcodes = purrr::map(barcode_metadata, 1) %>% unlist() %>% unique()
+      # Now merge all tables
+      merged_barcode_metadata = data.frame(orig_barcode=barcodes)
+      for(i in seq_along(barcode_metadata)) {
+        x_id = colnames(merged_barcode_metadata)[1]
+        y_id = colnames(barcode_metadata[[i]])[1]
+        merged_barcode_metadata = dplyr::left_join(x=merged_barcode_metadata,
+                                                   y=barcode_metadata[[i]],
+                                                   by=setNames(y_id, x_id),
+                                                   suffix=paste0(".", c(i-1, i)))
+      }
+      barcode_metadata = merged_barcode_metadata
+    }
     
     for(i in seq_along(counts_lst)) {
       # Do we have already other barcode metadata
       if ("barcode_metadata" %in% names(attributes(counts_lst[[i]]))) {
         metadata = attr(counts_lst[[i]], "barcode_metadata")
       } else {
-        metadata = data.frame(id=colnames(counts_lst[[i]]))
-      }
-      
-      if (is(barcode_metadata, "list")) {
-        barcode_metadata_assay = barcode_metadata[[i]]
-      } else {
-        barcode_metadata_assay = barcode_metadata
+        metadata = data.frame(orig_barcode=colnames(counts_lst[[i]]))
+        rownames(metadata) = metadata$orig_barcode
       }
       
       x_id = colnames(metadata)[1]
       x_rownames = rownames(metadata)
-      y_id = colnames(barcode_metadata_assay)[1]
+      y_id = colnames(barcode_metadata)[1]
       metadata = dplyr::left_join(x=metadata,
-                                   y=barcode_metadata_assay,
+                                   y=barcode_metadata,
                                    by=setNames(y_id, x_id))
       rownames(metadata) = x_rownames
       attr(counts_lst[[i]], "barcode_metadata") = metadata
@@ -1032,28 +1096,37 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
 
   # Add feature metadata to counts objects
   if (!is.null(feature_metadata)) {
-    assertthat::assert_that(!is(feature_metadata, "list") | length(feature_metadata) == length(counts_lst),
-                            msg=FormatString("Feature metadata must either be one table or a list of tables for each assay (dataset {path})."))
+    # Merge list of feature metadata files
+    if (inherits(feature_metadata, "list")) {
+      # Collect all barcodes: Get first column of each table
+      features = purrr::map(feature_metadata, 1) %>% unlist() %>% unique()
+      # Now merge all tables
+      merged_feature_metadata = data.frame(feature_id=features)
+      for(i in seq_along(feature_metadata)) {
+        x_id = colnames(merged_feature_metadata)[1]
+        y_id = colnames(feature_metadata[[i]])[1]
+        merged_barcode_metadata = dplyr::left_join(x=merged_feature_metadata,
+                                                   y=feature_metadata[[i]],
+                                                   by=setNames(y_id, x_id),
+                                                   suffix=paste0(".", c(i-1, i)))
+      }
+      feature_metadata = merged_feature_metadata
+    }
     
     for(i in seq_along(counts_lst)) {
       # Do we have already other feature metadata
       if ("feature_metadata" %in% names(attributes(counts_lst[[i]]))) {
         metadata = attr(counts_lst[[i]], "feature_metadata")
       } else {
-        metadata = data.frame(id=rownames(counts_lst[[i]]))
-      }
-      
-      if (is(feature_metadata, "list")) {
-        feature_metadata_assay = feature_metadata[[i]]
-      } else {
-        feature_metadata_assay = feature_metadata
+        metadata = data.frame(feature_id=rownames(counts_lst[[i]]))
+        rownames(metadata) = metadata$feature_id
       }
       
       x_id = colnames(metadata)[1]
       x_rownames = rownames(metadata)
-      y_id = colnames(feature_metadata_assay)[1]
+      y_id = colnames(feature_metadata)[1]
       metadata = dplyr::left_join(x=metadata,
-                                  y=feature_metadata_assay,
+                                  y=feature_metadata,
                                   by=setNames(y_id, x_id))
       rownames(metadata) = x_rownames
       attr(counts_lst[[i]], "feature_metadata") = metadata
@@ -1194,11 +1267,12 @@ WriteCounts_MatrixMarket = function(counts, path, overwrite=FALSE, metadata=FALS
   }
 }
 
-#' Reads image data produced by 10x Visium.
+#' Reads image data produced by 10x Visium or 10x VisiumHD.
 #' 
-#' @param path Path to the 'spatial' directory produced by 10x Visium.
-#' @return A Seurat VisiumV1 object.
-ReadImage_10xVisium = function(image_dir) {
+#' @param path Path to the 'spatial' directory produced by 10x Visium or 10x VisiumHD.
+#' @param barcodes If not NULL, named vector with barcodes to keep, order and rename. Names are original barcodes and values are barcodes after renaming. Barcodes will be re-ordered.
+#' @return A Seurat VisiumV1/V2 object.
+ReadImage_10xVisium = function(image_dir, barcodes=NULL) {
   # Checks
   assertthat::is.readable(image_dir)
   for (f in c("tissue_lowres_image.png", "scalefactors_json.json")) {
@@ -1207,7 +1281,26 @@ ReadImage_10xVisium = function(image_dir) {
   }
   
   # Read image
-  image = Seurat::Read10X_Image(image_dir, filter.matrix=FALSE)
+  image = Seurat::Read10X_Image(image_dir, filter.matrix=TRUE)
+  
+  if (!is.null(barcodes)) {
+    image_bcs = SeuratObject::Cells(image)
+    
+    # Keep only barcodes that are requested
+    i = which(image_bcs %in% names(barcodes))
+    image_bcs = image_bcs[i]
+    
+    # Re-order and subset
+    i = match(names(barcodes), image_bcs)
+    i = i[!is.na(i)]
+    image_bcs = image_bcs[i]
+    image = image[image_bcs]
+    
+    # Re-name
+    image_bcs = SeuratObject::Cells(image)
+    new_image_bcs = unname(barcodes[SeuratObject::Cells(image)])
+    image = SeuratObject::RenameCells(image, new.names=new_image_bcs)
+  }
   
   return(image)
 }
@@ -1249,8 +1342,8 @@ CreateSegmentationImproved = function(coords) {
 #' 
 #' Note that this is not an actual image but rather a set of pixel coordinates (field of vision = FOV)
 #' 
-#' @param path Path to the 10x Xenium data directory.
-#' @param barcodes If not NULL, character vector of barcodes to subset.
+#' @param path Path to a 10x Xenium data directory.
+#' @param barcodes If not NULL, named vector with barcodes to keep, order and rename. Names are original barcodes and values are barcodes after renaming. Barcodes will be re-ordered.
 #' @param coordinate_type Load cell "centroids", cell "segmentations" or both (default).
 #' @return A Seurat FOV object.
 ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("centroids", "segmentation")) {
@@ -1359,10 +1452,10 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
   return(image)
 }
 
-#' Reads image data produced by 10x Visium and 10x Xenium.
+#' Reads image data produced by 10x Visium, 10x VisiumHD or 10x Xenium.
 #' 
-#' @param image_dir Path to the 'spatial' directory produced by 10x Visium.
-#' @param technology Technology. Can be: 10x_visium', '10x_xenium'.
+#' @param image_dir Path to a spatial directory.
+#' @param technology Technology. Can be: '10x_visium', '10x_visiumhd', '10x_xenium'.
 #' @param assay Default assay for this image.
 #' @param barcodes Named vector with barcodes to keep, order and rename. Names are original barcodes and values are barcodes after renaming. Barcodes will be re-ordered.
 #' @param coordinate_type For 10x Xenium only: Load cell "centroids", cell "segmentations" or both (default).
@@ -1371,26 +1464,14 @@ ReadImage = function(image_dir, technology, assay, barcodes, coordinate_type=c("
   library(magrittr)
   
   # Checks
-  valid_technologies = c("10x_visium", "10x_xenium")
+  valid_technologies = c("10x_visium", "10x_visiumhd", "10x_xenium")
   assertthat::assert_that(technology %in% valid_technologies,
                           msg=FormatString("Technology is {technology} but must be one of: {valid_technologies*}."))
   
   # Read image
-  if(technology == "10x_visium") {
+  if(technology %in% c("10x_visium", "10x_visiumhd")) {
     # Visium
-    image = ReadImage_10xVisium(image_dir=image_dir)
-    
-    # Keep only spots that are also present in the assay data (under tissue)
-    spots_to_keep = image@coordinates %>% dplyr::filter(tissue==1) %>% row.names()
-    image = image[spots_to_keep]
-    
-    # Subset and re-order
-    image = image[names(barcodes) %>% as.character()]
-    
-    # Rename
-    new_barcode_names = barcodes[Seurat::Cells(image) %>% as.character()]
-    image = Seurat::RenameCells(image, new.names=new_barcode_names %>% as.character())
-
+    image = ReadImage_10xVisium(image_dir=image_dir, barcodes=barcodes)
   } else if(technology == "10x_xenium") {
     # Xenium
     image = ReadImage_10xXenium(image_dir=image_dir, barcodes=barcodes, coordinate_type=coordinate_type)
@@ -1855,18 +1936,25 @@ UpdateMatrixDirs = function (sc, dir, assays=NULL, layer=NULL, update_tool_saves
 #' @param assay Assay to include in the Loupe file. If NULL, the default assay is included.
 #' @param categories Cell metadata columns to include in the Loupe file. If NULL, all non-numeric are included. Numeric columns are always discarded.
 #' @param embeddings Embeddings to include in the Loupe file. If NULL, all embeddings are included.
+#' @param barcodes Barcodes to include in the Loupe file. If NULL, all barcodes of the selected assay are included.
 #' @param output_dir Directory where the Loupe file will be saved.
 #' @param output_name Name of the Loupe file (cloupe.cloupe).
-ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, output_dir=".", output_name="cloupe.cloupe") {
-  # Setup eula and download executable for loupeR.
+ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, barcodes=NULL, output_dir=".", output_name="cloupe.cloupe") {
+  # Download executable for loupeR
   loupeR::setup()
   
-  # It it does not work automatically, it must be done manually
+  # It it does not work, it has to be done manually
   louper_status = loupeR:::needs_setup()
   if (!louper_status$success) stop(louper_status$msg)
   
-  # Barcode metadata
-  barcode_metadata = sc[[]]
+  # Check requested assays
+  if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
+  assertthat::assert_that(all(assay %in% SeuratObject::Assays(sc)),
+                          msg=FormatString("Requested assay {assay} part of the Seurat object."))
+  
+  # Barcoded and barcode metadata
+  if (is.null(barcodes)) barcodes = SeuratObject::Cells(sc[[assay]])
+  barcode_metadata = sc[[]][barcodes, ]
   
   # Check and discard numeric columns (Loupe cannot handle them)
   if (is.null(categories)) categories = colnames(barcode_metadata)
@@ -1874,15 +1962,9 @@ ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, output_
                           msg="Not all requested categories are part of the cell metadata.")
   categories = purrr::discard(categories, function(i) return(is.numeric(barcode_metadata[, i])))
   
-  # Check requested assays
-  if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
-  assertthat::assert_that(all(assay %in% SeuratObject::Assays(sc)),
-                          msg=FormatString("Requested assay {assay} part of the Seurat object."))
-  
-  
   # Get counts of assay and convert to numeric matrix
   counts = SeuratObject::LayerData(sc, assay=assay, layer="counts")
-  counts = as(counts, "dgCMatrix")
+  counts = as(counts[, barcodes], "dgCMatrix")
   
   # Replace NA with "NA" in barcode metadata
   # Convert character columns to factors
@@ -1895,7 +1977,7 @@ ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, output_
     return(v)
   })
   names(categorial_data) = categories
-  categorial_data[["active_cluster"]] = Seurat::Idents(sc)
+  categorial_data[["active_cluster"]] = categorial_data[["seurat_clusters"]]
   
   # Get embeddings data
   if (is.null(embeddings)) embeddings = SeuratObject::Reductions(sc)
@@ -1925,28 +2007,38 @@ ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, output_
 #' cannot be saved. Therefore, we save the complete cell categorial metadata in the native Xenium Explorer format for analysis results.
 #' 
 #' @param sc A Seurat object.
+#' @param assay Assay to include in the Loupe file. If NULL, the default assay is included.
 #' @param categories Cell metadata columns to include in the Xenium Explorer file. If NULL, all non-numeric are included. Numeric columns are always discarded.
+#' @param barcodes Barcodes to include in the Loupe file. If NULL, all barcodes of the selected assay are included.
 #' @param output_dir Directory where the Xenium Explorer file will be saved.
 #' @param output_name Name of the Xenium Explorer file (analysis.zarr.zip).
-ExportXeniumExplorer = function(sc, categories=NULL, output_dir=".", output_name="analysis.zar.zip") {
+ExportXeniumExplorer = function(sc, assay=NULL, categories=NULL, barcodes=NULL, output_dir=".", output_name="analysis.zar.zip") {
   # For this function, we need a datasets table in the misc slot (to get all barcodes present in the dataset)
   assertthat::assert_that("datasets" %in% names(sc@misc),
                           msg="This function requires the Seurat object to have a 'datasets' table in the misc slot with columns 'experiment' for orig.ident and 'path' for the path to the dataset.")
   datasets = sc@misc$datasets
   
+  # Check requested assays
+  if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
+  assertthat::assert_that(all(assay %in% SeuratObject::Assays(sc)),
+                          msg=FormatString("Requested assay {assay} part of the Seurat object."))
+  
+  # Barcoded and barcode metadata
+  if (is.null(barcodes)) barcodes = SeuratObject::Cells(sc[[assay]])
+  barcode_metadata = sc[[]][barcodes, ]
+  
   # Moreover, there needs to be a column 'orig_barcode' in the cell metadata
-  assertthat::assert_that("orig_barcode" %in% colnames(sc[[]]),
+  assertthat::assert_that("orig_barcode" %in% colnames(barcode_metadata),
                           msg="This function requires the Seurat object to have a column 'orig_barcode' in the cell metadata.")
   
   # Check and discard numeric columns (Xenium Explorer cannot handle them)
-  barcode_metadata = sc[[]]
   if (is.null(categories)) categories = colnames(barcode_metadata)
   assertthat::assert_that(all(categories %in% colnames(barcode_metadata)),
                           msg="Not all requested categories are part of the cell metadata.")
   categories = purrr::discard(categories, function(i) return(is.numeric(barcode_metadata[, i])))
   
   # Per dataset
-  for(smp in levels(sc$orig.ident)) {
+  for(smp in levels(barcode_metadata$orig.ident)) {
     dir.create(file.path(output_dir, smp), showWarnings=FALSE, recursive=TRUE)
     
     # Get path to dataset and get a list of all barcodes present in the dataset
@@ -1972,26 +2064,26 @@ ExportXeniumExplorer = function(sc, categories=NULL, output_dir=".", output_name
     }
     
     # Get dataset barcodes and metadata
-    barcodes = sc[[]] %>% 
+    bcs = barcode_metadata %>% 
       dplyr::filter(orig.ident == smp) %>% 
       rownames()
     categories = categories[categories != "orig_barcode"]
-    barcode_metadata = barcode_metadata[, c("orig_barcode", categories)]
-    rownames(barcode_metadata) = NULL
+    categorial_data = barcode_metadata[bcs, c("orig_barcode", categories)]
+    rownames(categorial_data) = NULL
     
     # Add filtered (removed) barcodes to metadata table
     if (length(unfiltered_barcodes) > length(barcodes)) {
-      barcode_metadata = barcode_metadata %>% 
+      categorial_data = categorial_data %>% 
         dplyr::bind_rows(
           data.frame(orig_barcode=setdiff(unfiltered_barcodes, barcodes))
         )
     }
-    i = match(unfiltered_barcodes, barcode_metadata$orig_barcode)
-    barcode_metadata = barcode_metadata[i, ]
+    i = match(unfiltered_barcodes, categorial_data$orig_barcode)
+    categorial_data = categorial_data[i, ]
     
     # Convert character columns to factors
     categorial_data = purrr::map(categories, function(x) {
-      v = barcode_metadata[, x]
+      v = categorial_data[, x]
       if (!is.factor(v)) {
         v = factor(as.character(v))
       }

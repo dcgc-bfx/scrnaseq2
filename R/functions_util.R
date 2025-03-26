@@ -45,15 +45,16 @@ FormatString = function(x, quote=TRUE, sep=", ") {
 #' @param x Character string that will be formatted by the FormatString function
 #' @param type Type of callout box. Can be: 'note', 'tip', 'important', 'caution' and 'warning'.
 #' @param print Whether to print (if TRUE) or to return (FALSE) the message box
+#' @param quote Whether to quote expanded variables in the message box
 #' @return Character string to generate a message box
-CalloutBox = function(x, type, print=TRUE) {
+CalloutBox = function(x, type, print=TRUE, quote=TRUE) {
   valid_types = c("note", "tip", "important", "caution", "warning")
   assertthat::assert_that(type %in% valid_types,
                           msg=FormatString("Callout box typ {type} but must be one of: {valid_types*}."))
   
   
   
-  x = paste0("\n\n::: callout-", type, "\n", FormatString(x), "\n:::\n\n")
+  x = paste0("\n\n::: callout-", type, "\n", FormatString(x, quote=quote), "\n:::\n\n")
   if (print) {
     cat(x)
   } else {
@@ -374,8 +375,9 @@ EvalKnitrChunk = function(x) {
 #' 
 #' @param filter Filter from yaml configuration
 #' @param orig_idents The samples in the analysis
+#' @param metadata The barcode metadata table
 #' @return A filter with entries for each sample
-PrepareBarcodeFilter = function(filter, orig_idents) {
+PrepareBarcodeFilter = function(filter, orig_idents, metadata) {
   if (is.null(filter) | length(filter) == 0) {
     return(NULL)
   }
@@ -400,6 +402,13 @@ PrepareBarcodeFilter = function(filter, orig_idents) {
     }
     return(f)
   })
+  
+  # Make sure filter columns exist in metadata
+  filter_cols = purrr::map(filter, names) %>% 
+    unlist() %>% 
+    unique()
+  assertthat::assert_that(all(filter_cols %in% colnames(metadata)),
+                          msg=FormatString("Filter columns {filter_cols*} not found in barcode metadata."))
   
   return(filter)
 }
