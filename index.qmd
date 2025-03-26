@@ -18,7 +18,7 @@ execute:
 
 ```{r}
 #| label: setup
-
+reticulate::use_python("/opt/conda/bin/python3")
 # If running code interactively in rstudio, set profile here
 # When rendering with quarto, profile is already set and should not be overwritten
 if (nchar(Sys.getenv("QUARTO_PROFILE")) == 0) {Sys.setenv("QUARTO_PROFILE" = "scrnaseq")}

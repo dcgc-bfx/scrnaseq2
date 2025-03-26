@@ -897,13 +897,21 @@ sc
 
 # Add colours
 set.seed(1)
+#sc = ScAddColours(sc, colours=list(
+#  orig.ident=setNames(zeileis_28 %>% sample(size=length(levels(sc$orig.ident))), levels(sc$orig.ident)),
+#  sample=setNames(zeileis_28 %>% sample(size=length(levels(sc$sample))), levels(sc$sample)),
+#  technology=setNames(zeileis_28 %>% sample(size=length(levels(sc$technology))), levels(sc$technology)),
+#  seurat_clusters=setNames(godsnot_102 %>% sample(size=length(godsnot_102)), 1:length(godsnot_102)),
+#  Phase=c(G1="#FDD086", S="#9FD7E1", G2M="#FF8DA1")
+#))
 sc = ScAddColours(sc, colours=list(
-  orig.ident=setNames(zeileis_28 %>% sample(size=length(levels(sc$orig.ident))), levels(sc$orig.ident)),
-  sample=setNames(zeileis_28 %>% sample(size=length(levels(sc$sample))), levels(sc$sample)),
-  technology=setNames(zeileis_28 %>% sample(size=length(levels(sc$technology))), levels(sc$technology)),
-  seurat_clusters=setNames(godsnot_102 %>% sample(size=length(godsnot_102)), 1:length(godsnot_102)),
+  orig.ident=setNames(sample(zeileis_28, size=length(levels(sc$orig.ident)), replace=TRUE), levels(sc$orig.ident)),
+  sample=setNames(sample(zeileis_28, size=length(levels(sc$sample)), replace=TRUE), levels(sc$sample)),
+  technology=setNames(sample(zeileis_28, size=length(levels(sc$technology)), replace=TRUE), levels(sc$technology)),
+  seurat_clusters=setNames(sample(godsnot_102, size=length(godsnot_102)), 1:length(godsnot_102)),
   Phase=c(G1="#FDD086", S="#9FD7E1", G2M="#FF8DA1")
 ))
+
 ```
 
 For spatial datasets, we read the image information and add it to the Seurat object.

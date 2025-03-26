@@ -28,7 +28,7 @@ if (!is.null(conda_env)) {
     Sys.setenv(RETICULATE_PYTHON=python_path)
 } else {
     python_path = Sys.getenv("RETICULATE_PYTHON")
-    if (is.null(python_path)) python_path = unname(Sys.which("python"))
+    if (is.null(python_path) || python_path == "" ) python_path = unname(Sys.which("python"))
     Sys.setenv(RETICULATE_PYTHON=python_path)
 }
 

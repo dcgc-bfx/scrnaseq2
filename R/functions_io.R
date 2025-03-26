@@ -1881,7 +1881,7 @@ ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, output_
   
   
   # Get counts of assay and convert to numeric matrix
-  counts = SeuratObject::GetAssayData(sc, assay=assay, layer="counts")
+  counts = SeuratObject::LayerData(sc, assay=assay, layer="counts")
   counts = as(counts, "dgCMatrix")
   
   # Replace NA with "NA" in barcode metadata

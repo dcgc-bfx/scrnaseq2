@@ -31,7 +31,7 @@ params:
   cellcycle_remove_all: true
    
   # Whether or not to re-score cell cycle effects after data
-  #   from different samples have been merged/integrated
+  # from different samples have been merged/integrated
   # cc_rescore_after_merge: !r TRUE
   # NOT POSSIBLE ANYMORE HOWEVER SCALING WILL ALWAYS BE DONE ON THE SEPARATE DATASETS
   # BUT IT MAY BE POSSIBLE WHEN DOING PCA INTEGRATION

@@ -114,7 +114,7 @@ PreviousModuleDir = function(current_module_dir) {
 #' @param p Parameter to access. If NULL, returns all parameters.
 #' @return One or more parameters as list
 param = function(p=NULL) {
-
+  
   # Read module parameter (document params yaml) and get module name
   assertthat::assert_that("module" %in% names(params),
                           msg="Module does not contain the document yaml parameter 'module' with the module name.")
@@ -128,7 +128,7 @@ param = function(p=NULL) {
     
     # Get general parameter if available
     if ("general" %in% names(profile_params)) {
-      param_set = purrr::list_modify(param_set, !!!profile_params[["general"]])
+      param_set = purrr::list_assign(param_set, !!!profile_params[["general"]])
     }
     
     # Get module-specific parameter if available
@@ -136,7 +136,7 @@ param = function(p=NULL) {
       profile_module_params = profile_params[["modules"]]
       
       if (module_name %in% names(profile_module_params)) {
-        param_set = purrr::list_modify(param_set, !!!profile_module_params[[module_name]])
+        param_set = purrr::list_assign(param_set, !!!profile_module_params[[module_name]])
       }
     }
   }

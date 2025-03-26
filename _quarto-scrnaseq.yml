@@ -10,13 +10,16 @@ book:
   title: |
     | scrnaseq2
     | Single-cell analysis results
-  subtitle: "bfx1234"
+  subtitle: "bfx2696"
   chapters:
   - "index.qmd"
   - "modules/1_read_data/read_data.qmd"
   - "modules/2_qc_filtering/rna/qc_filtering.qmd"
+  - "modules/2_qc_filtering/adt/qc_filtering.qmd"
   - "modules/3_normalization/rna/normalization.qmd"
+  - "modules/3_normalization/adt/normalization.qmd"
   - "modules/4_dimensionality_reduction/rna/dimensionality_reduction.qmd"
+  - "modules/4_dimensionality_reduction/adt/dimensionality_reduction.qmd"
   - "modules/5_clustering_umap/clustering_umap.qmd"
   - "modules/6_clusterqc/clusterqc.qmd"
   - "modules/7_cluster_annotation/cluster_annotation.qmd"
@@ -43,7 +46,7 @@ params:
 
     # General
     project_id: "project"
-    species: "homo_sapiens"
+    species: "mus_musculus"
     ensembl: 104
 
     # Technical
@@ -69,7 +72,7 @@ params:
   
     read_data:
       default_assay: "RNA"
-      datasets_file: "datasets/10x_pbmc_datasets.xlsx"
+      datasets_file: "datasets/bfx2696.xlsx"
       downsample_barcodes_n: null
       downsample_barcodes_equally: false
       downsample_features_n: null
@@ -81,6 +84,7 @@ params:
         - "segmentations"
 
     qc_filtering_rna:
+      default_assay: "RNA"
       barcode_qc_cor:
       - "nFeature_RNA nCount_RNA"
       - "nFeature_RNA pMito_RNA"
@@ -92,9 +96,35 @@ params:
         min_cells = 3)
       samples_to_drop: null
       samples_min_cells: 10
+      
+    qc_filtering_adt:
+      default_assay: "ADT"
+      barcode_qc_cor:
+      - "nFeature_ADT nCount_ADT"
+      barcode_filter: !expr list(
+          nFeature_ADT=c(5, NA))
+      feature_filter: !expr list(
+        min_counts = 1,
+        min_cells = 3)
+      samples_to_drop: null
+      samples_min_cells: 10
+      barcode_qc:
+      - "nCount_ADT"
+      - "nFeature_ADT"
 
     normalization_rna:
+      default_assay: "RNA"
       normalization_method: "lognorm"
+      cellcycle_remove: false
+      cellcycle_remove_all: false
+      vars_to_regress: null
+      feature_selection_method: "vst"
+      num_variable_features: 3000
+      num_barcodes_for_sketching: 50000
+    
+    normalization_adt:
+      default_assay: "ADT"
+      normalization_method: "CLR"
       cellcycle_remove: false
       cellcycle_remove_all: false
       vars_to_regress: null
@@ -103,6 +133,19 @@ params:
       num_barcodes_for_sketching: 50000
 
     dimensionality_reduction_rna:
+      default_assay: "RNA"
+      dimensionality_reduction_method: "pca"
+      dim_n_compute: 50
+      dim_n: 20
+      integration_methods: null
+      CCAIntegration: null
+      RPCAIntegration: null
+      HarmonyIntegration: null
+      FastMNNIntegration: null
+      scVIIntegration: null
+
+    dimensionality_reduction_adt:
+      default_assay: "ADT"
       dimensionality_reduction_method: "pca"
       dim_n_compute: 50
       dim_n: 20
