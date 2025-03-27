@@ -74,7 +74,7 @@ params:
   #            The following tests can use covariates: 'LR', 'poisson', 'negbinom', 'MAST', 'DESeq2', 'DESeq2LRT'.
   #
   # design: For DESeq2 tests, specify a design formula for testing. (default: null). 
-  #                Replaces the 'covariate' setting. Include the term 'condition_groups' for the condition.
+  #                Overwrites the 'covariate' entry. Include the term 'condition_groups' for specifying the condition in the design formula.
   #                For 'DESeq2LRT', specify a design formula for the full model and the reduced model.
   # deseq2_results_args: For DESeq2 tests, additional arguments (format key: value) passed to the DESeq2 results function (default: null)
   # 
