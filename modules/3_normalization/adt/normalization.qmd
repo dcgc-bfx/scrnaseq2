@@ -2,16 +2,16 @@
 # Module-specific parameters (that are not already in the profile yaml)
 params:
   # Name of the module used in configurations
-  module: "normalization_rna"
+  module: "normalization_adt"
     
   # Relative path to the module directory (which contains the qmd file)
-  module_dir: "modules/3_normalization/rna"
+  module_dir: "modules/3_normalization/adt"
 
   # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
   prev_module_dir: null
   
-  # Default assay. If null, will be set to the default assay of the input Seurat object.
-  default_assay: null
+  # Default assay". If null, will be set to the default assay of the input Seurat object.
+  default_assay: "ADT"
   
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. Computations will access only the relevant parts of the data. Once done, matrix directories will be saved together with the Seurat object in the module directory.
   on_disk_counts: true
@@ -20,8 +20,8 @@ params:
   on_disk_use_tmp: true
   
   # Which normalization should be used for analysis?
-  # lognorm (Seurat), scran, SCT, log (just log-transformation), identity (use raw counts)
-  normalization_method: "lognorm"
+  # CLR (Seurat), log (just log-transformation), identity (use raw counts)
+  normalization_method: "CLR"
   
    # Whether or not to remove cell cycle effects
   cellcycle_remove: false
@@ -31,7 +31,7 @@ params:
   cellcycle_remove_all: true
    
   # Whether or not to re-score cell cycle effects after data
-  # from different samples have been merged/integrated
+  #   from different samples have been merged/integrated
   # cc_rescore_after_merge: !r TRUE
   # NOT POSSIBLE ANYMORE HOWEVER SCALING WILL ALWAYS BE DONE ON THE SEPARATE DATASETS
   # BUT IT MAY BE POSSIBLE WHEN DOING PCA INTEGRATION
@@ -48,7 +48,7 @@ params:
   num_variable_features: 3000
   
   # Use sketch-based methods for further analyses
-  use_sketching: false
+  # use_sketching: false
   
   # Number of barcodes in sketch
   num_barcodes_for_sketching: 50000
@@ -65,7 +65,7 @@ execute:
   freeze: auto
 ---
 
-# Normalization RNA
+# Normalization ADT
 
 ```{r}
 #| label: setup
@@ -87,7 +87,7 @@ module_dir = params$module_dir
 ```
 
 ```{r}
-#| label: normalization_rna_preparation
+#| label: normalization_adt_preparation
 
 # CODE
 # Source general configurations (always)
@@ -180,37 +180,22 @@ if (cellcycle_remove) {
     vars_to_regress = c(vars_to_regress, "CC.Difference") %>% unique()
   }
 }
-
-# Get image names
-# At the moment an image is associated with only one assay.
-# For other assays, we plot all images.
-image_names = SeuratObject::Images(sc, assay=default_assay)
-if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
-In this section, we subsequently run a series of Seurat functions for each provided sample:
+In this section, we subsequently run a series of Seurat or other functions for each provided sample:
 
 1. We start by running a **standard log normalization**, where counts for each barcode are divided by the total counts for that barcode and multiplied by 10,000. This is then natural-log transformed.
 
 ::: {.callout-tip title="What do we need normalization for?" collapse="true"}
 
-The number of raw sequencing reads per barcode is influenced by technical differences in the capture, reverse transcription and sequencing of RNA molecules, particularly due to the difficulty of achieving consistent library preparation with minimal starting material. Thus, comparing expression between barcodes may reveal differences that are solely due to sampling effects. After low-quality barcodes were removed in the previous step, the primary goal of normalization is to remove technical sampling effects while preserving the true biological signal.
+The number of raw ADT (antibody-derived tag) counts per barcode is likewise influenced by technical differences in the capture, tagging and sequencing of surface protein–derived oligonucleotides, especially given the low input and variable antibody binding efficiencies. Thus, comparing raw ADT counts between barcodes may reflect sampling and background‐noise effects rather than true differences in protein abundance. After removing low‐quality barcodes, the primary goal of ADT normalization is to correct for these technical sampling and ambient-antibody effects while preserving genuine cell-to-cell variation in surface marker levels.
 
-Count depth scaling is the simplest and most commonly used normalization strategy. The underlying idea is that each cell initially contained an equal number of mRNA molecules, and differences arise due to sampling effects. For each barcode, the number of reads per feature is divided by a barcode-specific “size factor”, which is proportional to the total count depth of the barcode. The resulting normalized data add up to 1 per barcode, and is then typically multiplied by a factor of 10 (10,000 in this workflow).
+Count‐depth scaling remains the simplest and most commonly used strategy for ADTs. Here, for each barcode the count for each antibody is divided by a barcode‐specific “size factor” proportional to the total ADT UMI count in that cell. This yields normalized counts whose sums are equal across all barcodes (often scaled to a constant, e.g. 1,000), putting every cell on the same total‐count baseline and attenuating differences that arise merely from sequencing depth or capture efficiency.
 
-Finally, normalized data are log-transformed for three important reasons. First, distances between log-transformed expression data represent log fold changes. Log-transformation emphasizes contributions from features with strong relative differences, for example a gene that is expressed at an average count of 50 in cell type A and 10 in cell type B rather than a gene that is expressed at an average count of 1100 in A and 1000 in B. Second, log-transformation mitigates the relation between mean and variance in the data. Lastly, log-transformation reduces that skewness of the data as many downstream analyses require the data to be normally distributed.
-
+Finally, ADT normalization workflows typically log- or CLR-transform the scaled counts for three key reasons. First, log (or centered log-ratio) distances directly correspond to log fold‐changes in protein abundance, highlighting markers with strong relative differences (e.g. an antibody where cell type A has 200 normalized counts vs. cell type B’s 40, rather than a marker with 2,200 vs. 2,000 counts). Second, log/CLR transformation dampens the mean–variance dependence so that highly abundant antibodies don’t dominate downstream statistics. Lastly, it reduces right‐skewness of the count distribution, helping to satisfy the approximate normality assumptions of many dimensionality-reduction and clustering algorithms.
 :::
 
-2. We assign **cell cycle scores** to each barcode based on its normalized expression of G2/M and S phase markers. These scores are visualised in a separate section further below. If specified in the above parameter section, cell cycle effects are removed during scaling (step 3). 
-
-::: {.callout-tip title="How does removal of cell cycle effects affect the data?" collapse="true"}
-
-Note that removing all signal associated to cell cycle can negatively impact downstream analysis. For example, in differentiating processes, stem cells are quiescent and differentiated cells are proliferating (or vice versa), and removing all cell cycle effects can blur the distinction between these cells. An alternative approach is to remove the difference between G2M and S phase scores. This way, signals separating non-cycling and cycling cells will be maintained, while differences amongst proliferating cells will be removed. For a more detailed explanation, see the [cell cycle vignette for Seurat](https://satijalab.org/seurat/articles/cell_cycle_vignette).
-
-:::
-
-3. Dependent on the normalization of your choice, we either
+2. Dependent on the normalization of your choice, we either
 
 a. Run standard functions to select **variable features**, and **scale** normalized gene counts. For downstream analysis it is beneficial to focus on features that exhibit high cell-to-cell variation, that is they are highly expressed in some barcodes and lowly in others.
 
@@ -227,55 +212,18 @@ While raw data is typically used for statistical tests such as finding marker fe
 ## Run Normalization
 
 ```{r}
-#| label: normalization_rna_normalize
+#| label: normalization_adt_normalize
 #| results: asis
 
 # Run normalization
 
 normalization_method = param("normalization_method")
 num_variable_features = param("num_variable_features")
-layer_counts = SeuratObject::Layers(sc, assay=default_assay, search="^counts\\.")
+layer_counts = SeuratObject::Layers(sc, search="^counts")
 layer_data = gsub(pattern="^counts", replacement="data", x=layer_counts)
 
 # Do normalization
-if (normalization_method == "lognorm") {
-  # Run log normalization
-  sc = Seurat::NormalizeData(sc, 
-                             normalization.method="LogNormalize", 
-                             verbose=verbose,
-                             layer=layer_counts,
-                             save=layer_data)
-  
-  CalloutBox("Seurat log normalization was applied.", type="note")
-  
-} else if(normalization_method == "scran") {
-  # Run scran normalization
-  with_progress({
-    sc = NormalizeDataScran(sc, 
-                            layer=layer_counts, 
-                            save=layer_data,
-                            chunk_size=50000)
-  }, enable=verbose)
-  
-  CalloutBox("Scran normalization was applied.")
-  
-} else if(normalization_method == "SCT") {
-  # Run SCTransform normalization
-  sct_assay_name = paste0(default_assay, "sct")
-  sc = SCTransform(sc,
-                   assay=Seurat::DefaultAssay(sc),
-                   new.assay.name=sct_assay_name,
-                   vst.flavor="v2",
-                   variable.features.n=num_variable_features,
-                   vars.to.regress=vars_to_regress,
-                   return.only.var.genes=TRUE,
-                   verbose=verbose,
-                   seed.use=getOption("random_seed"),
-                   conserve.memory=length(Cells(sc[[default_assay]])) >= 100000)
-  Seurat::DefaultAssay(sc) = sct_assay_name
-
-  CalloutBox("SCTransform normalization was applied.", type="note")
-} else if (normalization_method == "log") {
+if (normalization_method == "log") {
   # Run log transformation (just log, no size factors)
   sc = TransformData(sc, 
                      log=TRUE, 
@@ -283,8 +231,24 @@ if (normalization_method == "lognorm") {
                      save=layer_data)
   
   CalloutBox("Log transformation was applied.", type="note")
+} else if (normalization_method == "CLR") {
+  # Run identity transformation (keep raw counts)
+  sc = NormalizeData(sc, 
+                     normalization.method = "CLR", 
+                     layer=layer_counts,
+                     save=layer_data)
+
+  CalloutBox(" CLR transformation was applied.", type="note")
 } else if (normalization_method == "identity") {
   # Run identity transformation (keep raw counts)
+  sc = TransformData(sc,
+                     log=FALSE,
+                     layer=layer_counts,
+                     save=layer_data)
+  
+  CalloutBox("No normalization/transformation was applied.", type="note")
+} else if (normalization_method == "dsb") {
+  # Run dsb normalization, better suited for ADT data
   sc = TransformData(sc,
                      log=FALSE,
                      layer=layer_counts,
@@ -300,19 +264,19 @@ if (on_disk_counts) {
   if (normalization_method != "SCT") {
     # For methods lognorm, scran, log and identity we need to write all 'data' layers to disk
   
-    layers = SeuratObject::Layers(sc, assay=default_assay, search="^counts\\.") %>% 
+    layers = SeuratObject::Layers(sc, search="^counts") %>% 
       gsub(pattern="counts", replacement="data", x=.)
     for(i in seq_along(layers)) {
       # Get IterableMatrix object
-      mat = SeuratObject::LayerData(sc, assay=default_assay, layer=layers[i])
+      mat = SeuratObject::LayerData(sc, layer=layers[i])
       
       # Write data to disk
       matrix_dir = WriteCounts_MatrixDir(counts=mat,
-                                         path=file.path(on_disk_path, paste(default_assay, layers[i], sep=".")),
+                                         path=file.path(on_disk_path, paste(Seurat::DefaultAssay(sc), layers[i], sep=".")),
                                          overwrite=TRUE)
       
       # Load into Seurat object
-      SeuratObject::LayerData(sc, assay=default_assay, layer=layers[i]) = matrix_dir
+      SeuratObject::LayerData(sc, layer=layers[i]) = matrix_dir
     }
     
   } else {
@@ -331,7 +295,7 @@ For each feature, we calculate its median expression across all barcodes, and th
 ##### Raw counts
 
 ```{r}
-#| label: fig-normalization_rna_rle_plot_raw
+#| label: fig-normalization_adt_rle_plot_raw
 #| fig-cap: "Relative log expression plot for raw counts"
 
 # Plot relative log expression
@@ -346,7 +310,7 @@ p
 ##### Normalized counts
 
 ```{r}
-#| label: fig-normalization_rna_rle_plot_normalized
+#| label: fig-normalization_adt_rle_plot_normalized
 #| fig-cap: "Relative log expression plot for normalized counts"
 
 # Plot relative log expression
@@ -371,7 +335,7 @@ To determine variable genes, we need to separate biological variability from tec
 :::
 
 ```{r}
-#| label: normalization_rna_variable_features
+#| label: normalization_adt_variable_features
 #| results: asis
 
 # Find variable features
@@ -393,7 +357,7 @@ CalloutBox("The {feature_selection_method} method was used to select {num_variab
 ```
 
 ```{r}
-#| label: normalization_rna_variable_features_plots
+#| label: normalization_adt_variable_features_plots
 #| results: asis
 
 # Plot variable features
@@ -419,7 +383,7 @@ chunk_template = "
 ##### {{name}}
 
 \`\`\`{r}
-#| label: fig-normalization_rna_variable_features_{{name}}
+#| label: fig-normalization_adt_variable_features_{{name}}
 #| fig-cap: {{caption}}
 #| echo: false
 #| warning: false
@@ -454,11 +418,11 @@ After normalization, gene expression data can be compared between cells. However
 :::
 
 ```{r}
-#| label: normalization_rna_scale_data
+#| label: normalization_adt_scale_data
 #| results: asis
 
 # Scale data for variable features
-use_sketching = param("use_sketching")
+#use_sketching = param("use_sketching")
 normalization_method = param("normalization_method")
 bcs = SeuratObject::Cells(sc[[default_assay]])
 barcode_metadata = sc[[]][bcs, ]
@@ -466,8 +430,8 @@ barcode_metadata = sc[[]][bcs, ]
 # Not needed if:
 # a) SCTransform since it already scaled data
 # b) when applying sketching since we only scale the data of the sketch
-if(normalization_method != "SCT" & !use_sketching) {
-  
+#if(normalization_method != "SCT" & !use_sketching) {
+if(normalization_method != "SCT") {  
   # Unfortunately ScaleData has limited support for on-disk counts
   # Therefore we load the normalized data into memory, run ScaleData and 
   # then extract the scale.data layer.
@@ -512,104 +476,10 @@ if (length(vars_to_regress) > 0) {
 }
 ```
 
-## Sketching
-
-Depending on the size of the data, it may not possible anymore to run the downstream analyses on the full dataset. In this case, we can now use sketching to reduce the dataset size. Sketching is a technique that allows to approximate the full dataset with a smaller subset of cells. This is done by randomly selecting a subset of cells and then running the downstream analyses on this subset. The results are then extrapolated to the full dataset. 
-
-```{r}
-#| label: normalization_rna_sketching
-#| results: asis
-
-# Prepare sketching
-
-normalization_method = param("normalization_method")
-feature_selection_method = param("feature_selection_method")
-num_variable_features = param("num_variable_features")
-num_barcodes = length(SeuratObject::Cells(sc[[default_assay]]))
-use_sketching = param("use_sketching")
-num_barcodes_for_sketching = param("num_barcodes_for_sketching")
-
-# Create a sketch assay (subset) of num_barcodes_for_sketching barcodes for sketch
-if (use_sketching) {
-  # Note that it does not work to sketch an SCT assay. Rather sketch based on the assay that 
-  # was used as input for SCT and then rerun SCTRansform on the sketch.
-  
-  # Create a sketch of the data
-  # Method can be: LeverageScore or Uniform. LeverageScore is better but slower.
-  sketched_assay_name = paste0(default_assay, "sketch")
-  sc = Seurat::SketchData(sc,
-                          assay=default_assay,
-                          ncells=num_barcodes_for_sketching,
-                          sketched.assay=sketched_assay_name,
-                          verbose=verbose,
-                          method="LeverageScore",
-                          seed=getOption("random_seed"),
-                          over.write=TRUE)
-  
-  # Set search key for features of the sketch assay
-  sketched_assay_key = sketched_assay_name %>% 
-    gsub(pattern="\\.", replacement="", x=.) %>%
-    tolower()
-  sketched_assay_key = paste0(sketched_assay_key, "_")
-  SeuratObject::Key(sc[[sketched_assay_name]]) = sketched_assay_key
-  
-  # Set sketch assay as default assay
-  SeuratObject::DefaultAssay(sc) = sketched_assay_name
-  
-  # SCTransform normalization needs to be repeated for the sketch
-  if(normalization_method == "SCT") {
-    sketched_sct_assay_name = paste0(default_assay, "sctsketch")
-    sc = SCTransform(sc,
-                     assay=sketched_assay_name,
-                     new.assay.name=sketched_sct_assay_name,
-                     vst.flavor="v2",
-                     variable.features.n=num_variable_features,
-                     vars.to.regress=vars_to_regress,
-                     return.only.var.genes=TRUE,
-                     verbose=verbose,
-                     seed.use=getOption("random_seed"))
-    
-    # Set search key for features of the SCT-normalized sketch assay
-    sketched_sct_assay_key = sketched_sct_assay_name %>% 
-      gsub(pattern="\\.", replacement="", x=.) %>%
-      tolower()
-    sketched_sct_assay_key = paste0(sketched_sct_assay_key, "_")
-    SeuratObject::Key(sc[[sketched_sct_assay_name]]) = sketched_sct_assay_key
-    
-    # Set sketched and SCT normalized assay as default assay
-    Seurat::DefaultAssay(sc) = sketched_sct_assay_name
-
-    # Drop original sketched assay
-    sc[[sketched_assay_name]] = NULL
-  }
-  
-  # Find variable features for sketch; this is already done when running SCTransform
-  # Also scale data
-  if(normalization_method != "SCT") {
-    sc = FindVariableFeaturesWrapper(sc,
-                                     feature_selection_method=feature_selection_method,
-                                     num_variable_features=num_variable_features,
-                                     verbose=verbose)
-    sc = Seurat::ScaleData(sc, verbose=verbose, vars.to.regress=vars_to_regress)
-  }
-
-  # Print sketched assay
-  CalloutBox(paste("Sketching was applied using a subset of", num_barcodes_for_sketching, "barcodes."), type="note")
-  knitr::knit_print(sc)
-
-  # Finally reset default assay to non-sketched assay
-  SeuratObject::DefaultAssay(sc) = ifelse(normalization_method=="SCT", 
-                                          paste0(default_assay, "sct"), 
-                                          default_assay)
-} else {
-  CalloutBox("Sketching was not applied.", type="note")
-}
-```
-
 ## Software
 
 ```{r}
-#| label: normalization_rna_save_software
+#| label: normalization_adt_save_software
 
 sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
 gt(sessioninfo)
@@ -625,7 +495,7 @@ gt(paraminfo)
 ```
 
 ```{r}
-#| label: normalization_rna_save_seurat
+#| label: normalization_adt_save_seurat
 
 # Save Seurat object and layer data
 # Note: counts and normalized data have been changed in this module, copying needed
@@ -641,7 +511,7 @@ with_progress({
 ```
 
 ```{r}
-#| label: normalization_rna_finish
+#| label: normalization_adt_finish
 
 # Stop multisession workers
 plan(sequential)

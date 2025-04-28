@@ -80,6 +80,7 @@ library(ggplot2)
 library(future)
 library(patchwork)
 library(clustree)
+library(dplyr)
 
 # Get module directory (needed to access files within the module directory)
 module_dir = params$module_dir
@@ -190,49 +191,50 @@ To get a first idea about how different cluster resolution values influence the 
 ```{r}
 #| label: clustering
 #| results: asis
-
-dimensionality_reductions = param("dimensionality_reductions")
-if (is.null(dimensionality_reductions)) dimensionality_reductions = DefaultReduct(sc, assay=default_assay)
-cluster_resolutions = param("cluster_resolution") %>% unlist() %>% as.numeric()
-dim_n = param("dim_n") %>% as.integer()
-
 # Calculate per dimensionality reduction (e.g. rna_pca, rna_cca, ...)
 first_clustering = NULL
-for (reduct in dimensionality_reductions) {
-  assay = default_assay
-  
-  # If sketching is used, start with the sketched reduct (e.g. rnasketch_pca)
-  if (use_sketching) {
-    assay = sketched_assay
-    reduct = DefaultReduct(sc, assay=sketched_assay)
-  }
-  
-  # Graph names (e.g. rna_pca_snn)
-  graph_name = gsub("[^_]+_", "", reduct)
-  graph_name = paste0(assay, "_", graph_name)
-  nn_graph_name = paste0(graph_name, "_nn") %>% tolower()
-  snn_graph_name = paste0(graph_name, "_snn") %>% tolower()
-  
-  # Cluster name prefix (e.g. RNA_pca)
-  cluster_prefix = gsub("[^_]+_", "", reduct)
-  cluster_prefix = paste0(assay, "_", cluster_prefix)
-  
-  # Find neighbors for clustering
-  sc = Seurat::FindNeighbors(sc, 
-                             reduction=reduct, 
-                             dims=1:dim_n, 
-                             verbose=verbose, 
-                             k.param=param("cluster_k"),
-                             graph.name=c(nn_graph_name, snn_graph_name))
 
-  # Find clusters based on the neighbors
-  sc = Seurat::FindClusters(sc, 
-                            graph.name=snn_graph_name,
-                            resolution=sort(cluster_resolutions),
-                            algorithm=4, 
-                            verbose=verbose, 
-                            method="igraph")
+for (assay in Assays(sc)) {
+
+  dimensionality_reductions = param("dimensionality_reductions")
+  if (is.null(dimensionality_reductions)) dimensionality_reductions = DefaultReduct(sc, assay=assay)
+  cluster_resolutions = param("cluster_resolution") %>% unlist() %>% as.numeric()
   
+  for (reduct in dimensionality_reductions) {
+    dim_n = min(param("dim_n"), ncol(sc@reductions[[reduct]]@cell.embeddings)) %>% as.integer()
+
+    # If sketching is used, start with the sketched reduct (e.g. rnasketch_pca)
+    if (use_sketching) {
+      assay = sketched_assay
+      reduct = DefaultReduct(sc, assay=sketched_assay)
+    }
+    
+    # Graph names (e.g. rna_pca_snn)
+    graph_name = gsub("[^_]+_", "", reduct)
+    graph_name = paste0(assay, "_", graph_name)
+    nn_graph_name = paste0(graph_name, "_nn") %>% tolower()
+    snn_graph_name = paste0(graph_name, "_snn") %>% tolower()
+    
+    # Cluster name prefix (e.g. RNA_pca)
+    cluster_prefix = gsub("[^_]+_", "", reduct)
+    cluster_prefix = paste0(assay, "_", cluster_prefix)
+    
+    # Find neighbors for clustering
+    sc = Seurat::FindNeighbors(sc, 
+                               reduction=reduct, 
+                               dims=1:dim_n, 
+                               verbose=verbose, 
+                               k.param=param("cluster_k"),
+                               graph.name=c(nn_graph_name, snn_graph_name))
+  
+    # Find clusters based on the neighbors
+    sc = Seurat::FindClusters(sc, 
+                              graph.name=snn_graph_name,
+                              resolution=sort(cluster_resolutions),
+                              algorithm=4, 
+                              verbose=verbose)
+  
+  }
   # Rename cluster names and add colours
   for (res in cluster_resolutions) {
     # Rename (e.g. to RNA_pca_snn0.5)
@@ -254,7 +256,6 @@ for (reduct in dimensionality_reductions) {
     if (is.null(first_clustering)) first_clustering = new_name
   }
 }
-  
 # Set default clustering
 default_name = first_clustering
 sc$seurat_clusters = sc[[]][, default_name]
@@ -265,9 +266,12 @@ SeuratObject::Idents(sc) = "seurat_clusters"
 #| label: clustering_umap
 
 # Calculate UMAP per dimensionality reduction (e.g. rna_pca, rna_cca, ...)
-first_umap = NULL
+for (assay in Assays(sc)) {
+  first_umap = NULL
+dimensionality_reductions = param("dimensionality_reductions")
+if (is.null(dimensionality_reductions)) dimensionality_reductions = DefaultReduct(sc, assay=assay)
 for (reduct in dimensionality_reductions) {
-  assay = default_assay
+  #assay = default_assay
   
   # If sketching is used, start with the sketched reduct
   if (use_sketching) {
@@ -296,9 +300,10 @@ for (reduct in dimensionality_reductions) {
   # Keep track of first UMAP
   if (is.null(first_umap)) first_umap = umap_name
 }
-
 # Set default visualization
 DefaultVisualization(sc, assay=assay) = first_umap
+}
+
 ```
 
 ```{r}
@@ -397,25 +402,29 @@ if (use_sketching) {
 # Test different dimensionality reduction methods and clustering resolution parameters
 plist = list()
 captions = c()
-for (reduct in dimensionality_reductions) {
-  for (res in sort(cluster_resolutions)) {
-    assay = default_assay
-    reduct_short = gsub("[^_]+_", "", reduct)
-    
-    # Clustering and UMAP name (always full dataset)
-    clustering_name = paste0(assay, "_", reduct_short, "_", "snn", res)
-    umap_name = paste0(tolower(assay), "_", reduct_short, "_umap")
-    
-    # Add plot to list
-    plist[[clustering_name]] = Seurat::DimPlot(sc, reduction=umap_name, group.by=clustering_name, label=TRUE) + 
-      scale_color_manual(values=ScColours(sc, clustering_name)) +
-      AddPlotStyle(legend_position="none", title="")
-    
-    # Add caption
-    captions = c(captions, FormatString("UMAP for dimensionality reduction {reduct}, clustering resolution {res}"))
+for (assay in Assays(sc)) {
+  first_umap = NULL
+  dimensionality_reductions = param("dimensionality_reductions")
+  if (is.null(dimensionality_reductions)) dimensionality_reductions = DefaultReduct(sc, assay=assay)
+  for (reduct in dimensionality_reductions) {
+    for (res in sort(cluster_resolutions)) {
+      #assay = default_assay
+      reduct_short = gsub("[^_]+_", "", reduct)
+      
+      # Clustering and UMAP name (always full dataset)
+      clustering_name = paste0(assay, "_", reduct_short, "_", "snn", res)
+      umap_name = paste0(tolower(assay), "_", reduct_short, "_umap")
+      
+      # Add plot to list
+      plist[[clustering_name]] = Seurat::DimPlot(sc, reduction=umap_name, group.by=clustering_name, label=TRUE) + 
+        scale_color_manual(values=ScColours(sc, clustering_name)) +
+        AddPlotStyle(legend_position="none", title="")
+      
+      # Add caption
+      captions = c(captions, FormatString("UMAP for dimensionality reduction {reduct}, clustering resolution {res}"))
+    }
   }
 }
-
 # Set up layout and automatically generate chunks
 chunk_template = "
 \`\`\`{r}
@@ -442,6 +451,129 @@ for (i in seq_along(plist)) {
 }
 
 cat(":::\n")
+```
+### Multi modalities clustering resolution
+
+When running the analysis for multi-modalities, it is important to check if all the cells present in all assays are same. This deviation can occure because of individual filtration steps performed previously.
+If the same cells are present after filtration, the data can be used as it is else a new dimensionality reduction is performed for all assays.
+
+```{r}
+#| label: clustering_umap_multimodal
+#| results: asis
+
+if(length(Assays(sc)) > 1) {
+  
+  assay_names <- Seurat::Assays(sc)
+  
+  redo_reduct = ifelse(nrow(Embeddings(sc[["rna_pca"]])) == 
+                         nrow(Embeddings(sc[["adt_pca"]])), 
+                       TRUE, FALSE)
+
+  # Find cells present in all assays
+  common_cells <- Reduce(
+    f = intersect,
+    x = lapply(assay_names, function(assay) colnames(sc[[assay]]))
+  )
+  
+  # Subset the Seurat object
+  sc <- subset(sc, cells = common_cells)
+
+  if(!redo_reduct) {
+    # to perform reduction again, to do later
+  }
+
+  # Graph names (e.g. rna_pca_snn)
+  graph_name = paste(Assays(sc), collapse=".")
+  graph_name = paste0(graph_name, "_", "pca")
+  wknn_graph_name = paste0(graph_name, "_wknn") %>% tolower()
+  wsnn_graph_name = paste0(graph_name, "_wsnn") %>% tolower()
+  umap_name = paste(paste(Assays(sc), collapse="."), "pca_umap", sep = "_") %>% 
+    tolower()
+  
+  rna_dims <- min(20, ncol(Embeddings(sc[["rna_pca"]])))
+  adt_dims <- min(15, ncol(Embeddings(sc[["adt_pca"]])))
+
+  sc = FindMultiModalNeighbors(sc, reduction.list = list("rna_pca", "adt_pca"), 
+                               dims.list = list(1:min(rna_dims, dim_n), 
+                                                1:min(adt_dims, dim_n)), 
+                               knn.graph.name = wknn_graph_name, 
+                               snn.graph.name = wsnn_graph_name)
+
+  sc = RunUMAP(sc, nn.name = "weighted.nn", reduction.name = umap_name, 
+               reduction.key = "wnnUMAP_")
+  
+  sc = FindClusters(sc, graph.name = wsnn_graph_name, algorithm = 4, 
+                    verbose = FALSE, resolution=sort(cluster_resolutions))
+  
+  # to make the names consistent with previous formatting
+  colnames(sc@meta.data) = gsub("_res.", "", colnames(sc@meta.data))
+  
+  for(res in cluster_resolutions) {
+    if(0 %in% as.character(sc[[paste0(wsnn_graph_name, res)]] %>%
+                           pull(paste0(wsnn_graph_name, res)))) {
+     sc[[paste0(wsnn_graph_name, res)]] <-
+       as.factor(as.numeric(as.character(sc[[paste0(wsnn_graph_name, res)]] %>%
+                                           pull(paste0(wsnn_graph_name, res)))) +
+                   1)
+    }
+  }
+}
+```
+
+```{r}
+#| label: clustering_plots_umap_multimodal
+#| results: asis
+
+if(length(Assays(sc)) > 1) {
+  plist_multi = list()
+  captions = c()
+  for (res in sort(cluster_resolutions)) {
+    clustering_name = paste0("rna.adt_pca_wsnn", res)
+    
+    # Colours
+    bcs = SeuratObject::Cells(sc[[default_assay]])
+    barcode_metadata = sc[[]][bcs, ]
+    l = levels(barcode_metadata[, clustering_name])
+    col = ScColours(sc, "seurat_clusters")[1:length(l)]
+    names(col) = l
+    col = list(col)
+    names(col) = clustering_name
+    sc = ScAddColours(sc, colours=col)
+      
+    plist_multi[[clustering_name]] = Seurat::DimPlot(sc, reduction="rna.adt_pca_umap", group.by=clustering_name, label=TRUE) +
+      scale_color_manual(values=col[[clustering_name]]) +
+      AddPlotStyle(legend_position="none", title=res)
+  }
+  
+# Set up layout and automatically generate chunks
+chunk_template = "
+\`\`\`{r}
+#| label: fig-clustering_{{name}}
+#| fig-cap: {{caption}}
+#| fig-width: 2.6
+#| fig-height: 3
+#| echo: false
+
+plist_multi[['{{name}}']]
+\`\`\`
+"
+
+cat("::: {layout-ncol=3}\n", sep="")
+  
+  for (i in seq_along(plist_multi)) {
+    chunk_filled =  knitr::knit_expand(text=chunk_template, name=names(plist_multi)[i], caption=captions[i])
+    if (interactive()) {
+      print(EvalKnitrChunk(chunk_filled))
+    } else {
+      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+      cat(chunk_filled, sep='\n')
+    }
+  }
+  
+cat(":::\n")
+
+}
+
 ```
 
 ```{r}
@@ -528,13 +660,13 @@ When selecting the optimal resolution for your experiment, it's crucial to ident
 # Make plots per dimensionality reduction showing the different clustering resolutions
 plist = purrr::map(dimensionality_reductions, function(reduct) {
   # Get assay and clustering columns
-  assay = default_assay
+  assay = ifelse(length(Assays(sc)) > 1, paste0(Assays(sc), collapse="."), default_assay) %>% tolower()
   reduct_short = gsub("[^_]+_", "", reduct)
-  clustering_prefix = paste0(assay, "_", reduct_short, "_", "snn")
+  clustering_prefix = paste0(assay, "_", reduct_short, "_", ifelse(length(Assays(sc)) > 1, "wsnn", "snn"))
   clustering_names = paste0(clustering_prefix, sort(cluster_resolutions))
   
   # Now extract a table with clusterings for the barcodes of the current assay
-  bcs = SeuratObject::Cells(sc[[assay]])
+  bcs = SeuratObject::Cells(sc[[default_assay]])
   clusterings = sc[[]][bcs, clustering_names]
   
   # Remove rows with missing values
@@ -586,16 +718,38 @@ for (reduct in names(plist)) {
 #| label: fig-clustering_umap_final_clustering
 #| results: asis
 
-reduct = gsub("[^_]+_", "", dimensionality_reductions[1])
+# Get assay and clustering columns
+assay = ifelse(length(Assays(sc)) > 1, paste0(Assays(sc), collapse="."), default_assay) %>% tolower()
+reduct_short = gsub("[^_]+_", "", reduct)
+clustering_prefix = paste0(assay, "_", reduct_short, "_", ifelse(length(Assays(sc)) > 1, "wsnn", "snn"))
 res = cluster_resolutions[1]
-default_clustering = paste0(default_assay, "_", reduct, "_snn", res)
+default_clustering = paste0(clustering_prefix, res)
+
+# update the seurat clusters and get the colors
+sc$seurat_clusters = sc[[default_clustering]]
+
+l = levels(sc$seurat_clusters)
+col = ScColours(sc, "seurat_clusters")[1:length(l)]
+names(col) = l
+col = list(col)
+names(col) = default_clustering
+sc = ScAddColours(sc, colours=col)
+
+# update the Idents to seurat_clusters
+SeuratObject::Idents(sc) = "seurat_clusters"
 
 # Write message about default clustering
-CalloutBox("Default clustering for assay {default_assay} is set to the dimensionality reduction {reduct} with resolution {res}.", type="note")
+CalloutBox("Default clustering for assay {default_assay} is set to the dimensionality reduction {reduct_short} with resolution {res}.", type="note")
+CalloutBox("In case of multi modalities, requested combination of assays is used {assay} but default assay is set to {default_assay} with dimensionality reduction {reduct_short} with resolution {res}.", type="note")
 
 # Create a copy named "umap" for the default (full) umap. This allows to run FeaturePlot without specifying the UMAP (makes it easier). 
 default_umap = DefaultVisualization(sc, assay=default_assay)
-um = sc[[default_umap]]
+um = if (length(Assays(sc)) > 1) {
+  sc[["rna.adt_pca_umap"]]
+} else {
+  sc[[default_umap]]
+}
+
 SeuratObject::Key(um) = "Umap_"
 sc[["umap"]] = NULL
 sc[["umap"]] = um
@@ -639,10 +793,10 @@ sample_labels = paste0(levels(orig_idents)," (", sample_cells[levels(orig_idents
 # Initialize Plots 
 plist=list()
 plist[["by_cluster"]] = list()
-plist[["by_cluster"]][["all_samples"]] = Seurat::DimPlot(sc, 
+plist[["by_cluster"]][["all_samples"]] = Seurat::DimPlot(sc, reduction = "umap",
                                                          group.by="seurat_clusters")
 plist[["by_sample"]] = list()
-plist[["by_sample"]][["all_samples"]] = Seurat::DimPlot(sc, 
+plist[["by_sample"]][["all_samples"]] = Seurat::DimPlot(sc, reduction = "umap",
                                                         group.by="orig.ident")
 
 if (length(levels(orig_idents)) <= 4 ) {
@@ -652,12 +806,12 @@ if (length(levels(orig_idents)) <= 4 ) {
   sc$orig.ident[discard] = NA
   
   plist[["by_cluster"]][["per_sample"]] = Seurat::DimPlot(sc, 
-                                                          reduction=DefaultVisualization(sc),
+                                                          reduction="umap",
                                                           group.by="seurat_clusters", 
                                                           split.by="orig.ident", 
                                                           ncol=2)
   plist[["by_sample"]][["per_sample"]] = Seurat::DimPlot(sc, 
-                                                         reduction=DefaultVisualization(sc), 
+                                                         reduction="umap", 
                                                          group.by="orig.ident", 
                                                          split.by="orig.ident", 
                                                          ncol=2)

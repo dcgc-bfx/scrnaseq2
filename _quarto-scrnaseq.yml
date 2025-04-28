@@ -150,8 +150,8 @@ params:
     dimensionality_reduction_adt:
       default_assay: "ADT"
       dimensionality_reduction_method: "pca"
-      dim_n_compute: 50
-      dim_n: 20
+      dim_n_compute: 15
+      dim_n: 12
       integration_methods: null
       CCAIntegration: null
       RPCAIntegration: null
@@ -160,6 +160,7 @@ params:
       scVIIntegration: null
 
     clustering_umap:
+      default_assay: "RNA"
       dim_n: 20
       cluster_resolution:
       - 0.5
@@ -170,6 +171,7 @@ params:
       umap_k: 30
 
     cluster_annotation:
+      default_assay: "RNA"
       marker_pct: 0.25
       marker_log2FC: 0.25
       latent_vars: null

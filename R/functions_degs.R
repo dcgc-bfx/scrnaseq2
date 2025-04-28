@@ -85,8 +85,10 @@ DegsAvgDataPerIdentity = function(sc, genes, assay="RNA") {
   # The standard average log FC is derived from assay and layer="data"
   # Add average scaled data per cluster for default assay
   avg_set = list()
-  avg_set[[assay]] = "counts"
-  avg_set[[DefaultAssay(sc)]] = c(avg_set[[DefaultAssay(sc)]], "data")
+  #avg_set[[assay]] = "counts"
+  #avg_set[[DefaultAssay(sc)]] = c(avg_set[[DefaultAssay(sc)]], "data")
+  avg_set[[assay]] = c("counts", "data")
+  
   avg_data = matrix(NA+0, nrow=length(genes), ncol=0)
   genes_unique = unique(genes)
   identities = levels(Idents(sc))

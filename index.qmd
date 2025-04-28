@@ -38,17 +38,13 @@ module_dir = params$module_dir
 
 ## Scientific project
 
-For this tutorial, we analyzed two datasets of Peripheral Blood Mononuclear Cells (PBMC) freely available from 10X Genomics.
+The project focuses on comparison of Naive vs 10d Arthritis (4/group) mouse groups. The samples are named as 
+-   LSK
+-   LK
+-   BM monocytes
+-   Spleen monocytes
 
--   Two datasets, 1k and 5k cells
--   10x 3' assay
--   Blood cells
-
-Questions
-
--   How many clusters do we find?
--   What are the most abundant cell types?
--   How many T-cells do we find?
+Two assays are present: RNA and ADT; the steps filtering, normalization and dimensionality reduction are performed per assay. Then after the clustering and UMAP step, the data from both assays is combined to get a better picture.
 
 ## Analysis
 

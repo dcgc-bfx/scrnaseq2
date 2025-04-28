@@ -80,6 +80,7 @@ library(stringr)
 library(dplyr)
 library(scales)
 library(openxlsx)
+library(purrr)
 
 # Get module directory (needed to access files within the module directory)
 module_dir = params$module_dir
@@ -195,8 +196,10 @@ cluster_column = param("cluster_column")
 
 # Latest best-practice paper recommends to use a Wilcox test
 # RunPresto is a wrapper around "immunogenomics/presto", which is a fast implementation of a Wilcox test
-markers = SeuratWrappers::RunPrestoAll(object=sc,
-                                       assay=default_assay,
+
+markers_list = lapply(SeuratObject::Assays(sc), function(assay) {
+  markers_intermediate = SeuratWrappers::RunPrestoAll(object=sc,
+                                       assay=assay,
                                        group.by=cluster_column,
                                        test.use="wilcox",
                                        slot="data",
@@ -207,32 +210,54 @@ markers = SeuratWrappers::RunPrestoAll(object=sc,
                                        max.cells.per.ident=1000,
                                        verbose=FALSE)
 
-# If no markers were found, initialize the table so that further downstream chunks run
-if (ncol(markers)==0) markers = DegsEmptyMarkerResultsTable(levels(barcode_metadata[, cluster_column]))
-
-# Sort markers (function "DegsSort" in "R/functions_degs.R")
-markers = markers %>% DegsSort(group=c("cluster"))
+  # If no markers were found, initialize the table so that further downstream chunks run
+  if (ncol(markers_intermediate)==0) markers_intermediate = DegsEmptyMarkerResultsTable(levels(barcode_metadata[, cluster_column]))
   
-# Filter markers (function "DegsFilter" in "R/functions_degs.R")
-markers_filt = DegsFilter(markers, cut_log2FC=param("marker_log2FC"))
-markers_found = nrow(markers_filt$all) > 0
+  # Sort markers (function "DegsSort" in "R/functions_degs.R")
+  markers_intermediate = markers_intermediate %>% DegsSort(group=c("cluster"))
+    
+  # Filter markers (function "DegsFilter" in "R/functions_degs.R")
+  markers_filt_intermediate = DegsFilter(markers_intermediate, cut_log2FC=param("marker_log2FC"))
+  
+  # Add average data to table (function "DegsAvgDataPerIdentity" in "R/functions_degs.R")
+  markers_out_intermediate = cbind(markers_filt_intermediate$all, DegsAvgDataPerIdentity(sc, genes=markers_filt_intermediate$all$gene, assay=assay))
+  
+  # Add marker table to Seurat object
+  Seurat::Misc(sc, paste0("markers_", assay)) = list(condition_column=cluster_column, test="wilcox", 
+                                     log2FC=param("marker_log2FC"), 
+                                     min_pct=param("marker_pct"), 
+                                     assay=default_assay, 
+                                     layer="data",
+                                     latent_vars=param("latent_vars"),
+                                     results=markers_filt_intermediate$all)
 
-# Add average data to table (function "DegsAvgDataPerIdentity" in "R/functions_degs.R")
+  markers_filt_intermediate$all$gene = paste0(assay, "_", markers_filt_intermediate$all$gene)
+  markers_filt_intermediate$up$gene = paste0(assay, "_", markers_filt_intermediate$up$gene)
+  markers_filt_intermediate$down$gene = paste0(assay, "_", markers_filt_intermediate$down$gene)
+  
+  # return(markers_filt_intermediate)
+  return(list(
+    filtered = markers_filt_intermediate,
+    with_avg = markers_out_intermediate
+  ))
+})
+
 # Note that markers_out is written to file at the end of the module
-markers_out = cbind(markers_filt$all, DegsAvgDataPerIdentity(sc, genes=markers_filt$all$gene, assay=default_assay))
+markers_out = map(markers_list, "with_avg") %>% bind_rows()
 
-# Add marker table to Seurat object
-Seurat::Misc(sc, paste0("markers_", default_assay)) = list(condition_column=cluster_column, test="wilcox", 
-                                   log2FC=param("marker_log2FC"), 
-                                   min_pct=param("marker_pct"), 
-                                   assay=default_assay, 
-                                   layer="data",
-                                   latent_vars=param("latent_vars"),
-                                   results=markers_filt$all)
+markers_filt = list(
+  all  = map(markers_list, ~ .x$filtered$all)  %>% bind_rows(),
+  up   = map(markers_list, ~ .x$filtered$up)   %>% bind_rows(),
+  down = map(markers_list, ~ .x$filtered$down) %>% bind_rows()
+)
+
+markers_found = nrow(markers_filt$all) > 0
 
 if (markers_found) {
   # Plot number of markers
-  p = DegsPlotNumbers(markers_filt$all,
+  p = DegsPlotNumbers(markers_filt$all %>% 
+                        arrange(as.numeric(as.character(cluster))) %>%
+                        mutate(cluster = factor(cluster, levels = unique(cluster))),
                       group="cluster") 
   p
 } else {
@@ -250,8 +275,10 @@ We use the term "markers" to specifically describe features that are up-regulate
 #| tbl-cap: "Top markers per cluster"
 
 if (markers_found) {
-  markers_top = DegsUpDisplayTop(markers_filt$up, n=5)
-  
+  markers_top <- DegsUpDisplayTop(markers_filt$up, n = 5) %>% 
+    arrange(as.numeric(as.character(cluster))) %>%
+    mutate(cluster = factor(cluster, levels = unique(cluster)))
+
   # Highlight rows per cluster for better readability
   rows_cluster_nums = factor(markers_top$cluster, levels=unique(markers_top$cluster)) %>% as.integer()
   rows_to_highlight = which(rows_cluster_nums %% 2 == 0)
@@ -264,6 +291,7 @@ if (markers_found) {
         locations = cells_body(rows=rows_to_highlight)
       )  
 }
+CalloutBox("The prefix (RNA_, ADT_, or else) to the marker names signify what assay they come from.", type="note")
 ```
 
 ### Visualization of top marker genes
@@ -293,11 +321,14 @@ plist[['{{gene}}']]
     # Dotplots
     chunk_template2 = "
 \`\`\`{r}
-#| label: fig-cluster_annotation_markers_{{type}}
+#| label: fig-cluster_annotation_markers_{{type}}_rna
 #| fig-cap: {{caption}}
 
-p
+print(p_rna)
+print(p_adt)
+
 \`\`\`
+
 "
     
     # Create one tab per plot type
@@ -312,9 +343,33 @@ p
             plist = list()
             markers_top_cl = markers_top %>% dplyr::filter(cluster==cl)
             
+            valid_genes = gsub("RNA_", "", markers_top_cl$gene[gsub("RNA_", "", markers_top_cl$gene) %in% rownames(sc[["RNA"]])])
+            valid_proteins = gsub("ADT_", "", markers_top_cl$gene[gsub("ADT_", "", markers_top_cl$gene) %in% rownames(sc[["ADT"]])])
+
             # Produce plots
             if (type == "FeaturePlot") {
-                plist = Seurat::FeaturePlot(sc, features=markers_top_cl$gene, order=TRUE, combine=FALSE)
+              plist_rna = plist_adt = list()
+              if(length(valid_genes)>0) {
+                  DefaultAssay(sc) = "RNA"
+                  plist_rna = Seurat::FeaturePlot(sc, features=valid_genes, reduction="umap", order=TRUE, combine=FALSE)
+                  plist_rna = lapply(plist_rna, function(p) {
+                    p$labels$title = paste0(p$labels$title, "_RNA")
+                    return(p)
+                  })
+                }
+              
+                if(length(valid_proteins)>0){
+                  DefaultAssay(sc) = "ADT"
+                  plist_adt = Seurat::FeaturePlot(sc, features=valid_proteins, reduction="umap", order=TRUE, combine=FALSE)
+                  
+                  plist_adt = lapply(plist_adt, function(p) {
+                    p$labels$title = paste0(p$labels$title, "_ADT")
+                    return(p)
+                  })
+                }
+              
+                plist = c(plist_rna, plist_adt)
+              
                 plist = lapply(plist, function(p) {
                     p = p + viridis::scale_color_viridis() + 
                         AddPlotStyle(legend_position="right", xlab="", ylab="") +
@@ -324,7 +379,29 @@ p
                 })
                 
             } else if (type == "ViolinPlot") {
-                plist = Seurat::VlnPlot(sc, features=markers_top_cl$gene, assay=default_assay, pt.size=0, cols=ScColours(sc, "seurat_clusters"), flip=TRUE, combine=FALSE)
+                plist_rna = plist_adt = list()
+                
+                if(length(valid_genes)>0) {
+                  plist_rna = Seurat::VlnPlot(sc, features=valid_genes, assay="RNA", pt.size=0, cols=ScColours(sc, "seurat_clusters"), flip=TRUE, combine=FALSE)
+                  
+                  plist_rna = lapply(plist_rna, function(p) {
+                    p$labels$title = paste0(p$labels$title, "_RNA")
+                    return(p)
+                  })
+                }
+              
+                if(length(valid_proteins)>0){
+                  plist_adt = Seurat::VlnPlot(sc, features=valid_proteins, assay="ADT", pt.size=0, cols=ScColours(sc, "seurat_clusters"), flip=TRUE, combine=FALSE)
+                  
+                  plist_adt = lapply(plist_adt, function(p) {
+                    p$labels$title = paste0(p$labels$title, "_ADT")
+                    return(p)
+                  })
+                }
+                
+                plist = c(plist_rna, plist_adt)
+                
+                
                 plist = lapply(plist, function(p) {
                     p = p + AddPlotStyle(legend_position="none", xlab="Cluster", ylab="") +
                         theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1))
@@ -352,29 +429,46 @@ p
             cat(":::\n")
         }
     }
-    
+            
     # Dot plots (scaled and unscaled)
     for (type in c("DotPlotScaled", "DotPlotNonscaled")) {
         cat("\n#####", type, "\n")
         
+        valid_genes = gsub("RNA_", "", markers_top$gene[gsub("RNA_", "", markers_top$gene) %in% rownames(sc[["RNA"]])])
+        valid_proteins = gsub("ADT_", "", markers_top$gene[gsub("ADT_", "", markers_top$gene) %in% rownames(sc[["ADT"]])])
+        
         # Produce plots
-        if (type == "DotPlotScaled") {
-            p = Seurat::DotPlot(sc, features=markers_top$gene %>% unique()) + 
-                viridis::scale_color_viridis() + 
-                AddPlotStyle(ylab="Cluster", xlab="", legend_position="bottom") + 
-                theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.5)) + 
-                guides(size=guide_legend(order=1, title="Pct expressed"),
-                       color = guide_colorbar(title = "Scaled Expression"))
-            caption = "Top markers per cluster (expression scaled)"
-            
-        } else if (type == "DotPlotNonscaled") {
-            p = Seurat::DotPlot(sc, features=markers_top$gene %>% unique(), scale=FALSE) + 
-                viridis::scale_color_viridis() + 
-                AddPlotStyle(ylab="Cluster", xlab="", legend_position="bottom") + 
-                theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.5)) + 
-                guides(size=guide_legend(order=1, title="Pct expressed"),
-                       color = guide_colorbar(title = "Average Expression"))
-            caption = "Top markers per cluster (expression unscaled)"
+        if(length(valid_genes)>0){
+          p_rna = Seurat::DotPlot(sc, features=valid_genes %>% unique(), 
+                                  assay="RNA", 
+                                  scale = ifelse(type=="DotPlotScaled", TRUE, FALSE)) + 
+            viridis::scale_color_viridis() + 
+            AddPlotStyle(ylab="Cluster", xlab="", legend_position="bottom") + 
+            theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.5)) + 
+            guides(size=guide_legend(order=1, title="Pct expressed"),
+                   color = guide_colorbar(
+                     title =ifelse(type=="DotPlotScaled", "Scaled Expression", 
+                                                   "Average Expression")))
+          caption = paste0("Top RNA markers per cluster (expression", 
+                           ifelse(type=="DotPlotScaled", "scaled)", " unscaled)"))
+        } else {
+          p_rna_scaled = ggplot() + theme_void()
+          caption = paste0("Top RNA markers per cluster (expression", ifelse(type=="DotPlotScaled", "scaled)", " unscaled)"))
+        }
+        
+        if(length(valid_proteins)>0){
+          p_adt = Seurat::DotPlot(sc, features=valid_proteins %>% unique(), 
+                                  assay="ADT",
+                                  scale = ifelse(type=="DotPlotScaled", TRUE, FALSE)) + 
+            viridis::scale_color_viridis() + 
+            AddPlotStyle(ylab="Cluster", xlab="", legend_position="bottom") + 
+            theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.5)) + 
+            guides(size=guide_legend(order=1, title="Pct expressed"),
+                   color = guide_colorbar(title = "Scaled Expression"))
+          caption = paste0("Top ADT markers per cluster (expression ", ifelse(type=="DotPlotScaled", "scaled)", "unscaled)"))
+        } else {
+          p_adt = ggplot() + theme_void()
+          caption = paste0("Top ADT markers per cluster (expression ", ifelse(type=="DotPlotScaled", "scaled)", "unscaled)"))
         }
         
         # Print
@@ -422,8 +516,9 @@ if (any(species_tibble$species_name == species)) {
     as.data.frame()
 
   # Get marker genes per cluster
-  markers_up_per_cluster = split(markers_filt$up$gene, markers_filt$up$cluster)
-  markers_down_per_cluster = split(markers_filt$down$gene, 
+  markers_up_per_cluster = split(gsub("RNA_", "", markers_filt$up$gene), 
+                                 markers_filt$up$cluster)
+  markers_down_per_cluster = split(gsub("RNA_", "", markers_filt$down$gene), 
                                     markers_filt$down$cluster)
 
   # Perform ORA for each cluster
@@ -617,7 +712,7 @@ plist[['{{name}}']]
 
 ### Combined score feature plots
 
-An combined feature plot visualises the combined score of each gene list on a single-cell level. The combined score is calculated based on the Mann-Whitney U statistic using UCell. Scores can range between 0 and 1. The closer a score gets to 1, the more genes of a list are among the top expressed genes.
+A combined feature plot visualises the combined score of each gene list on a single-cell level. The combined score is calculated based on the Mann-Whitney U statistic using UCell. Scores can range between 0 and 1. The closer a score gets to 1, the more genes of a list are among the top expressed genes.
 
 ```{r}
 #| label: cluster_annotation_known_scoreplots

@@ -2,16 +2,16 @@
 # Module-specific parameters (that are not already in the profile yaml)
 params:
   # Name of the module used in configurations
-  module: "dimensionality_reduction_rna"
+  module: "dimensionality_reduction_adt"
     
   # Relative path to the module directory (which contains the qmd file)
-  module_dir: "modules/4_dimensionality_reduction/rna"
+  module_dir: "modules/4_dimensionality_reduction/adt"
 
   # Path to previous module. If null, will be read from the 'chapters' entry in the profile yaml
   prev_module_dir: null
   
   # Default assay. If null, will be set to the default assay of the input Seurat object.
-  default_assay: null
+  default_assay: ADT
   
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. Computations will access only the relevant parts of the data. Once done, matrix directories will be saved together with the Seurat object in the module directory.
   on_disk_counts: true
@@ -23,7 +23,7 @@ params:
   dimensionality_reduction_method: "PCA"
   
   # Number of dimensions (e.g. principal components) to compute
-  dim_n_compute: 50
+  dim_n_compute: 15
   
   # Number of dimensions (e.g. principal components) to use
   dim_n: 10
@@ -62,7 +62,7 @@ execute:
   freeze: "auto"
 ---
 
-# Dimensionality reduction RNA
+# Dimensionality reduction ADT
 
 ```{r}
 #| label: setup
@@ -86,7 +86,7 @@ module_dir = params$module_dir
 ```
 
 ```{r}
-#| label: dimensionality_reduction_rna_preparation
+#| label: dimensionality_reduction_adt_preparation
 
 # CODE
 # Source general configurations (always)
@@ -168,7 +168,7 @@ image_names = SeuratObject::Images(sc, assay=default_assay)
 if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
-A single-cell dataset of 20,000 genes and 5,000 cells has 20,000 dimensions. At this point of the analysis, we have already reduced the dimensionality of the dataset to 3,000 variable genes. The biological manifold however can be described by far fewer dimensions than the number of (variable) genes, since expression profiles of different genes are correlated if they are involved in the same biological process. Dimension reduction methods aim to find these dimensions. There are two general purposes for dimension reduction methods: to **summarize** a dataset, and to **visualize** a dataset.
+A single‐cell ADT dataset of 100 antibody‐derived tags (ADTs) and 5,000 cells has 100 dimensions. At this point in the analysis, we have already reduced the dimensionality of the dataset to the 50 most variable ADTs. The biological manifold, however, can be described by far fewer dimensions than the number of (variable) ADTs, since protein abundances measured by different antibodies are correlated when they reflect the same cellular process. Dimension‐reduction methods aim to uncover these latent dimensions. There are two general purposes for dimension reduction methods: to **summarize** a dataset, and to **visualize** a dataset.
 
 ## PCA
 
@@ -185,7 +185,7 @@ In a PCA, the first PC captures the greatest variance across the whole dataset. 
 To decide how many PCs to include in downstream analyses, we visualize the cells and genes that define the PCA.
 
 ```{r}
-#| label: dimensionality_reduction_rna_run
+#| label: dimensionality_reduction_adt_run
 
 # Method of dimensionality reduction and number of dimensions to compute
 dimensionality_reduction_method = param("dimensionality_reduction_method")
@@ -242,7 +242,7 @@ if (use_sketching) {
 ```
 
 ```{r}
-#| label: fig-dimensionality_reduction_rna_loadings
+#| label: fig-dimensionality_reduction_adt_loadings
 #| fig-cap: !expr paste0("Loadings of the dimensionality reduction", ifelse(use_sketching, " for the sketch dimensionality reduction", ""))
 #| fig-height: 4
 
@@ -262,7 +262,7 @@ plist[[1]] + plist[[2]]
 ```
 
 ```{r}
-#| label: fig-dimensionality_reduction_rna_dim_dimensions
+#| label: fig-dimensionality_reduction_adt_dim_dimensions
 #| fig-cap: !expr paste0("Barcodes arranged by the first two dimensions", ifelse(use_sketching, " for the sketch dimensionality reduction", ""))
 
 # Plot the first two dimensions of the computed dimensionality reduction
@@ -275,7 +275,7 @@ p
 ```
 
 ```{r}
-#| label: fig-dimensionality_reduction_rna_dim_dimensions_full
+#| label: fig-dimensionality_reduction_adt_dim_dimensions_full
 #| fig-cap: "Barcodes arranged by the first two dimensions projected for the full dimensionality reduction"
 #| eval: !expr use_sketching
 #| include: !expr use_sketching
@@ -291,7 +291,7 @@ if (use_sketching) {
 ```
 
 ```{r}
-#| label: fig-dimensionality_reduction_rna_loadings_heatmaps
+#| label: fig-dimensionality_reduction_adt_loadings_heatmaps
 #| fig-cap: !expr paste0("Top gene loadings of the first dimensions", ifelse(use_sketching, " for the sketch dimensionality reduction", ""))
 #| fig-subcap: ""
 #| echo: false
@@ -326,7 +326,7 @@ for (i in seq(plist)) {
 ```
 
 ```{r}
-#| label: dimensionality_reduction_rna_loadings_spatial
+#| label: dimensionality_reduction_adt_loadings_spatial
 #| eval: !expr length(image_names) > 0
 #| include: !expr length(image_names) > 0
 #| results: asis
@@ -392,7 +392,7 @@ The top PC captures the greatest variance across cells and each subsequent PC re
 :::
 
 ```{r}
-#| label: fig-dimensionality_reduction_rna_elbow_plot
+#| label: fig-dimensionality_reduction_adt_elbow_plot
 #| fig-cap: !expr paste0("Variance explained by computed dimensions", ifelse(use_sketching, " for the sketch dimensionality reduction", ""))
 #| fig-cap-location: "top"
 
@@ -427,7 +427,7 @@ Integration of multiple samples is an optional step in single-cell RNA-seq analy
 Methods might perform differently depending on the dataset and the biological question. We can use multiple methods and compare the results. For an overview of integration methods, please see [here](https://www.nature.com/articles/s41592-021-01336-8).
 
 ```{r}
-#| label: dimensionality_reduction_rna_run_integration
+#| label: dimensionality_reduction_adt_run_integration
 #| results: asis
 
 # Get integration methods and their parameters
@@ -583,7 +583,7 @@ if (grepl(pattern="sct", x=default_assay)) {
 ```
 
 ```{r}
-#| label: dimensionality_reduction_rna_integration_plots_sketched
+#| label: dimensionality_reduction_adt_integration_plots_sketched
 #| results: asis
 #| eval: !expr length(integration_methods) > 0 & num_datasets > 1 & use_sketching
 #| include: !expr length(integration_methods) > 0 & num_datasets > 1 & use_sketching
@@ -639,7 +639,7 @@ plist[[{{i}}]]
 ```
 
 ```{r}
-#| label: dimensionality_reduction_rna_integration_plots
+#| label: dimensionality_reduction_adt_integration_plots
 #| results: asis
 #| eval: !expr length(integration_methods) > 0 & num_datasets > 1
 #| include: !expr length(integration_methods) > 0 & num_datasets > 1
@@ -704,7 +704,7 @@ to deal with batch effects. If sketching is used, the Seurat also includes the d
 
 
 ```{r}
-#| label: dimensionality_reduction_rna_save_reduction
+#| label: dimensionality_reduction_adt_save_reduction
 #| results: asis
 
 # Default dimensionality reduction 
@@ -753,7 +753,7 @@ CalloutBox(msg, type="note")
 ## Software
 
 ```{r}
-#| label: dimensionality_reduction_rna_save_software
+#| label: dimensionality_reduction_adt_save_software
 
 sessioninfo = ScrnaseqSessionInfo(getwd()) %>% as.data.frame()
 gt(sessioninfo)
@@ -790,7 +790,7 @@ with_progress({
 ```
 
 ```{r}
-#| label: dimensionality_reduction_rna_finish
+#| label: dimensionality_reduction_adt_finish
 
 # Stop multisession workers
 plan(sequential)
