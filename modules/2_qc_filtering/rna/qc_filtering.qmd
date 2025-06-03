@@ -860,7 +860,7 @@ barcodes_other_assays = purrr::map(setdiff(SeuratObject::Assays(sc), default_ass
   purrr::flatten_chr()
 
 # Remove from assay barcodes that are still present in other assays
-barcodes_to_exclude_assay = intersect(barcodes_to_exclude, barcodes_other_assays)
+barcodes_to_exclude_assay = setdiff(barcodes_to_exclude, barcodes_other_assays)
 barcodes_to_keep = setdiff(SeuratObject::Cells(sc[[default_assay]]), barcodes_to_exclude_assay)
 sc[[default_assay]] = subset(sc[[default_assay]], cells=barcodes_to_keep)
 
