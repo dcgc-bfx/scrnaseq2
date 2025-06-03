@@ -460,7 +460,7 @@ if (length(integration_methods) > 0 & num_datasets > 1) {
 
   # Integrate
   first_method = NULL
-  assay = ifelse(use_sketching, sketched_reduct, full_reduct)
+  assay = ifelse(use_sketching, sketched_assay, default_assay)
   orig_reduct = DefaultReduct(sc, assay=assay)
   for(method in integration_methods) {
     # Set integrated reduction name (e.g. rna_cca)
@@ -741,7 +741,7 @@ The following dimensionality reductions for assay {default_assay} are available 
   - full assay: {nonintegrated_full_reduct}
   - sketched assay (if sketching was used): {nonintegrated_sketched_reduct}
 - with integration (when used):
-   - full assay: {integrated_sketched_reducts*})
+   - full assay: {integrated_full_reducts*})
    - sketched assay (if sketching was used): {integrated_sketched_reducts*}
 
 The default dimensionality reduction for assay {default_assay} is {default_reduct} and will be used in downstream analysis. It is written to {outfile}.
