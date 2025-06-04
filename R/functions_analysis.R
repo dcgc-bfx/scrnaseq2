@@ -383,7 +383,7 @@ CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
                                     storeRanks=FALSE,
                                     force.gc=FALSE,
                                     name = "")
-            ucell = as.data.frame(ucell[[1]][["cells_AUC"]])
+            ucell = as.data.frame(ucell[[1]])
             rownames(ucell) = colnames(counts)
             return(ucell)
         }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("features")))
