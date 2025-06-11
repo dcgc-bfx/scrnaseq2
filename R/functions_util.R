@@ -491,8 +491,8 @@ ScLists = function(sc, lists=NULL, lists_slot=NULL) {
   stored_lists = Seurat::Misc(sc, slot=lists_slot)
   assertthat::assert_that(!is.null(stored_lists), 
                           msg=FormatString("No lists found in misc slot of Seurat object (list slot: {lists_slot})."))
-  
   if (is.null(lists)) lists = names(stored_lists)
+      
   assertthat::assert_that(all(lists %in% names(stored_lists)), 
                           msg=FormatString("List(s) {lists} not found in misc slot of Seurat object (list slot: {lists_slot})."))
   
@@ -569,6 +569,130 @@ DefaultVisualization = function(sc, assay=NULL) {
   
   suppressWarnings({SeuratObject::Misc(sc[[assay]], slot="default.visualization") = value})
   return(sc)
+}
+
+FormatChunkOption = function(name, value) {
+    # Convert value to correct format
+    if (is.logical(value)) {
+        value = ifelse(value, "true", "false")
+    } else if (is.character(value)) {
+        value = paste0("'", value, "'")
+    } else if (is.null(value)) {
+        value = ifelse(is.null(value), "null", value)
+    }
+    
+    # Expand lists
+    if (length(value) > 1) {
+        value = paste0(c("", value), collapse = "\n#|\t- ")
+    }
+    
+    return(paste0("#| ", name, ": ", value))
+}
+
+GenerateChunks = function(olist, olist_name=NULL, indices=c(), chunk_label=NULL, chunk_caption=NULL, chunk_opts=NULL) {
+    # Note: This function will recurse through a nested list. All arguments except for 'indices' 
+    # only reflect the current recursion. The 'indices' argument is used to track the recursion process so
+    # that in the chunk code the correct entry of the nested list is used.
+    
+    # Use this to debug
+    # browser()
+    
+    # Check if input is a single object; not trivial since some objects are lists
+    class_lst = class(olist)
+    is_single_object = !(length(class_lst) == 1 && class_lst[1] == "list")
+    
+    # This is the name of the nested list that is provided as input
+    # Do not set it since it will be set automatically
+    if (is.null(olist_name)) {
+        olist_name = deparse(substitute(olist))
+    }
+    
+    if (is_single_object) {
+        # If input is not a list but a single object, end of recursion - generate chunk code
+        chunk = c("```{r}")
+        
+        # Decide if object is a table or a plot
+        type = ifelse(colnames(olist) %>% length() > 0, "table", "plot")
+        
+        # Add chunk label
+        if (!is.null(chunk_label)) {
+            if (type == "plot") {
+                chunk_label = paste0("fig-", chunk_label)
+            } else if (type == "table") {
+                chunk_label = paste0("tbl-", chunk_label)
+            }
+            chunk = c(chunk, GenerateChunkOption("label", chunk_label))
+        }
+        
+        # Add chunk caption
+        if (!is.null(chunk_caption)) {
+            if (type == "plot") {
+                chunk = c(chunk, GenerateChunkOption("fig-cap", chunk_caption))
+            } else if (type == "table") {
+                chunk = c(chunk, GenerateChunkOption("tbl-cap", chunk_caption))
+            }
+        }
+        
+        # Parse and add additional chunk options
+        chunk = c(chunk,
+                  purrr::map_chr(names(chunk_opts), function(n) {
+                      v = chunk_opts[[n]]
+                      return(GenerateChunkOption(n, v))
+                  })
+        )
+        
+        # Print plot or table
+        chunk = c(chunk, "")
+        chunk = c(chunk, paste0("print(", olist_name, "[[c(", paste(indices, collapse=", "), ")]])"))
+        
+        # Finish chunk and collapse
+        chunk = c(chunk, "```")
+        chunks = chunk
+    } else {
+        # If input is list, this means that there is still a list of chunks (or a list of lists of chunks) to process
+        # However, these chunks or list of chunks can have a header or belong to a panel tabset.
+        chunks = c()
+        
+        # Get attributes for this list
+        list_attributes = list()
+        if ("attributes" %in% names(olist)) {
+            list_attributes = olist[["attributes"]]
+            olist = olist[setdiff(names(olist), "attributes")]   
+        }
+        
+        # Get names for this list
+        list_names = names(olist)
+        
+        # Do the elements of this list are part of a panel tabset? (incompatible with headers)
+        panel_tabset = "panel-tabset" %in% names(list_attributes) && list_attributes[["panel-tabset"]]
+        if (panel_tabset) chunks = c(chunks, "::: panel-tabset")
+        
+        # Do the elements of this list have headers? (incompatible with panel tabset)
+        headers = "headers" %in% names(list_attributes) && list_attributes[["headers"]]
+        
+        # Now run next recursion - run GenerateChunks on each element
+        chunks = c(chunks, purrr::map(seq_along(olist), function(i) {
+            chunk = c()
+            
+            # If element of a panel tabset, add a panel tabset header
+            #if (panel_tabset) chunk = c(chunk, "######")
+            
+            # Keep track of indices
+            new_indices = c(indices, i)
+            
+            # Start another recursion
+            chunk = c(chunk, GenerateChunks(olist[[i]],
+                                            olist_name=olist_name,
+                                            indices=new_indices,
+                                            chunk_label=chunk_label[[new_indices]],
+                                            chunk_caption=chunk_label[[new_indices]],
+                                            chunk_opts=chunk_opts[[new_indices]]))
+            return(chunk)
+        }))
+        if (panel_tabset) chunks = c(chunks, ":::")
+    }
+    
+    return(chunks)
 }
 
 ######################

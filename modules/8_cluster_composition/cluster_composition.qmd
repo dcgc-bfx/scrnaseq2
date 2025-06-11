@@ -201,6 +201,71 @@ In case the dataset contains 2 or more samples, we also calculate whether or not
 gt(tbl, rownames_to_stub=TRUE)
 ```
 
+## Samples per cluster
+
+```{r}
+#| label: cluster_composition_condition_per_cluster
+
+bcs = SeuratObject::Cells(sc[[default_assay]])
+barcode_metadata = sc[[]][bcs, ]
+
+# Count cells per cluster and sample 
+cell_condition = barcode_metadata %>% dplyr::pull(condition) %>% levels()
+cell_clusters = barcode_metadata %>% dplyr::pull(seurat_clusters) %>% levels()
+
+tbl = dplyr::count(barcode_metadata, condition, seurat_clusters) %>% tidyr::pivot_wider(names_from="seurat_clusters", names_prefix="Cl_", values_from=n, values_fill=0) %>% as.data.frame()
+rownames(tbl) = paste0(tbl[,"condition"],"_n")
+tbl[,"condition"] = NULL
+
+# Add percentages
+tbl_perc = round(t(tbl) / colSums(tbl) * 100, 2) %>% t()
+rownames(tbl_perc) = gsub(rownames(tbl_perc), pattern="_n$", replacement="_perc", perl=TRUE)
+tbl = rbind(tbl, tbl_perc)
+
+# Add enrichment
+if (length(cell_condition) > 1 & length(cell_clusters) > 1) tbl = rbind(tbl, CellsFisher(sc))
+
+# Sort
+tbl = tbl[order(rownames(tbl)),, drop=FALSE]
+```
+
+```{r}
+#| label: fig-cluster_composition_condition_per_cluster
+#| fig-cap: "Percentage cells per condition and cluster"
+
+# Plot percentages
+tbl_bar = tbl[paste0(cell_condition, "_perc"), , drop=FALSE] %>% 
+  tibble::rownames_to_column(var="Condition") %>%
+  tidyr::pivot_longer(tidyr::starts_with("Cl"), names_to="Cluster", values_to="Percentage")
+tbl_bar$Cluster = tbl_bar$Cluster %>% gsub(pattern="^Cl_", replacement="", perl=TRUE) %>% factor(levels=barcode_metadata$seurat_clusters %>% levels())
+tbl_bar$Condition = tbl_bar$Condition %>% gsub(pattern="_perc$", replacement="", perl=TRUE) %>% as.factor()
+tbl_bar$Percentage = as.numeric(tbl_bar$Percentage)
+p = ggplot(tbl_bar, aes(x=Cluster, y=Percentage, fill=Condition)) + 
+  geom_bar(stat="identity" ) +
+  AddPlotStyle(fill=ScColours(sc, "condition"),
+               legend_title="Sample",
+               legend_position="bottom")
+p
+```
+
+The following table shows the number of cells per sample and cluster:   
+
+* n: Number of cells per condition and cluster   
+* perc: Percentage of cells per condition and cluster compared to all other cells of that cluster   
+
+In case the dataset contains 2 or more samples, we also calculate whether or not the number of cells of a sample in a cluster is significantly higher or lower than expected:      
+
+* oddsRatio: Odds ratio calculated for cluster c1 and sample s1 as (# cells s1 in c1 / # cells not s1 in c1) / (# cells s1 not in c1 / # cells not s1 not in c1)    
+* p: P-value calculated with a Fisher test to test whether "n" is higher or lower than expected  
+
+```{r}
+#| label: tbl-cluster_composition_condition_per_cluster
+#| tbl-cap: Number of cells per condition and cluster
+
+# Print table
+gt(tbl, rownames_to_stub=TRUE)
+```
+
 ## Software
 
 ```{r}

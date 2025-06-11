@@ -17,21 +17,9 @@ options(future.plan="multisession")
 # Use v5 assays in Seurat
 options(Seurat.object.assay.version="v5")
 
-# Conda environment or python path needed for clustering, umap, other python packages
-# Note: maybe we can move to this to a _environment.local file
-conda_env = NULL
-python_path = NULL
-
-if (!is.null(conda_env)) {
-    reticulate::use_condaenv(conda_env)
-} else if (!is.null(python_path)) {
-    Sys.setenv(RETICULATE_PYTHON=python_path)
-} else {
-    python_path = Sys.getenv("RETICULATE_PYTHON")
-    if (is.null(python_path) || python_path == "" ) python_path = unname(Sys.which("python"))
-    Sys.setenv(RETICULATE_PYTHON=python_path)
-}
-
+# Python3 path needed for clustering, umap, other python packages
+reticulate_python3_path = unname(Sys.which("python"))
+Sys.setenv(RETICULATE_PYTHON=reticulate_python3_path)
 assertthat::assert_that(reticulate::py_available(initialize = TRUE) && !is.null(reticulate::py_config()), msg="Python3 not available")
 python_modules = c("leidenalg", "anndata", "scipy")
 purrr::walk(python_modules, function(x) {

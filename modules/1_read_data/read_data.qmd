@@ -868,6 +868,10 @@ sc@misc$datasets = datasets
 
 # Note: Previously we also removed cells with zero counts since they caused an error in downstream analysis.
 # This is now fixed and filtering of these cells will be done in the qc modules.
+
+# add condition for the samples
+sc$condition = as.factor(gsub("[0-9]", "", sc$orig.ident))
+
 ```
 
 This is a summary representation of the object:
@@ -896,7 +900,8 @@ sc = ScAddColours(sc, colours=list(
   sample=setNames(sample(zeileis_28, size=length(levels(sc$sample)), replace=TRUE), levels(sc$sample)),
   technology=setNames(sample(zeileis_28, size=length(levels(sc$technology)), replace=TRUE), levels(sc$technology)),
   seurat_clusters=setNames(sample(godsnot_102, size=length(godsnot_102)), 1:length(godsnot_102)),
-  Phase=c(G1="#FDD086", S="#9FD7E1", G2M="#FF8DA1")
+  Phase=c(G1="#FDD086", S="#9FD7E1", G2M="#FF8DA1"),
+  condition=setNames(sample(zeileis_28, size=length(levels(sc$condition)), replace=TRUE), levels(sc$condition))
 ))
 
 ```
