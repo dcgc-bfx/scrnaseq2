@@ -705,22 +705,42 @@ if (have_deg_comparisons) {
     
     # Fill in the configuration chunk template and render/knit
     cat("This is the general configuration for the DEG analysis for this comparison:\n\n")
-    chunk_filled = knitr::knit_expand(text=chunk_template_configuration,
-                                      condition_column=deg_results[[1]]$condition_column,
-                                      condition1=deg_results[[1]]$condition1,
-                                      condition2=deg_results[[1]]$condition2,
-                                      subset_column=deg_results[[1]]$subset_column %||% "-",
-                                      subset_group=names(deg_results) %>% paste(collapse=", "),
-                                      bulk_by=deg_results[[1]]$bulk_by %||% "-",
-                                      pseudobulk_samples=deg_results[[1]]$pseudobulk_samples %||% "-",
-                                      assay=deg_results[[1]]$assay,
-                                      data=deg_results[[1]]$layer,
-                                      test=deg_results[[1]]$test,
-                                      padj=deg_results[[1]]$padj,
-                                      log2FC=deg_results[[1]]$log2FC,
-                                      min_pct=deg_results[[1]]$min_pct,
-                                      covariate=deg_results[[1]]$covariate %||% "-",
-                                      downsample_n=deg_results[[1]]$downsample_n %||% "-",
+    
+    
+* condition column: {{condition_column}}
+* condition group 1: {{condition1}}
+* condition group 2: {{condition2}}
+* subset column: {{subset_column}}
+* subset groups: {{subset_group}}
+* bulk by: {{bulk_by}}
+* pseudobulk samples: {{pseudobulk_samples}}
+* assay: {{assay}}
+* data: {{data}}
+* test: {{test}}
+* maximum adjusted p-value: {{padj}}
+* minimum absolute log2 foldchange: {{log2FC}}
+* minimum percentage of expressing cells: {{min_pct}}
+* covariate: {{covariate}}
+* downsample n: {{downsample_n}}
+* output file(s): 
+  * DEGs: degs_{{name}}.xlsx
+  * Overrepresentation analysis (if requested): degs_{{name}}_ora.xlsx
+  * Figures: 
+    * fig-deg_analysis_deg_plots_{{name}}_SUBSET-1.png/pdf
+    * fig-deg_analysis_deg_ora_{{name}}_SUBSET_ANALYSIS-1.png/pdf
+    
+    config_values = c(condition_column=deg_results[[1]]$condition_column, condition1=deg_results[[1]]$condition1, condition2=deg_results[[1]]$condition2,
+                 subset_column=deg_results[[1]]$subset_column %||% "-", subset_group=names(deg_results) %>% paste(collapse=", "),
+                 bulk_by=deg_results[[1]]$bulk_by %||% "-", pseudobulk_samples=deg_results[[1]]$pseudobulk_samples %||% "-",
+                 assay=deg_results[[1]]$assay, data=deg_results[[1]]$layer,
+                 test=deg_results[[1]]$test, padj=deg_results[[1]]$padj, log2FC=deg_results[[1]]$log2FC, min_pct=deg_results[[1]]$min_pct,
+                 covariate=deg_results[[1]]$covariate %||% "-", downsample_n=deg_results[[1]]$downsample_n %||% "-",
+                 deg_files=paste0("degs_", deg_results[[1]]$name, ".xlsx"),
+                 ora_files=paste0("degs_", deg_results[[1]]$name, "_ora.xlsx"))
+    config_names = c("condition column", "condition group 1", "condition group 2", "subset column", "subset groups",
+                     "bulk by", "pseudobulk samples", "assay", "data", "test", "maximum adjusted p-value",
+                     "minimum absolute log2 foldchange", "minimum percentage of expressing cells", "covariate", "downsample n",)
+            
                                       name=deg_results[[1]]$name)
     if(interactive()) {
       print(EvalKnitrChunk(chunk_filled))

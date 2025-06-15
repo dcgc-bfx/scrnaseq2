@@ -166,6 +166,10 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
             contrast[["condition1"]] = paste0(basename(contrast[["condition1"]]), ", sheet ", sheet)
         }
         
+        # Make sure condition1_idx is not empty
+        assertthat::assert_that(length(contrast[["condition1_idx"]]) > 0,
+                                msg=FormatString("The condition group 1 does not contain any barcodes (for comparison {i}/{name})."))
+        
         if (!file.exists(contrast[["condition2"]])) {
             condition2 = contrast[["condition2"]]
             
@@ -250,6 +254,10 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
             contrast[["condition1"]] = paste0(basename(contrast[["condition1"]]), ", sheet ", sheet)
         }
         
+        # Make sure condition2_idx is not empty
+        assertthat::assert_that(length(contrast[["condition2_idx"]]) > 0,
+                                msg=FormatString("The condition group 2 does not contain any barcodes (for comparison {i}/{name})."))
+        
         # subset_column and subset_group: subset_column is a barcode metadata column that contains the subset information, subset_group is a string that contains the subset group(s)
         if ("subset_column" %in% names(contrast)) {
             assertthat::assert_that("subset_group" %in% names(contrast),
@@ -259,7 +267,18 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
             
             if (!file.exists(subset_group)) {
                 # Parse subset_group string
-                subset_group = subset_group %>% strsplit(split=",") %>% unlist() %>% trimws() %>% unique()
+                subset_group = subset_group %>% 
+                    strsplit(split=",") %>% 
+                    unlist() %>% 
+                    trimws() %>% 
+                    unique()
+                
+                # Allow wilcard
+                if (subset_group[1] == "*") {
+                    subset_group = levels(barcode_metadata[, subset_column])
+                }
+                
+                # Make sure all subset groups are valid
                 subset_group = purrr::map(subset_group, function(s) {
                     s = s %>%
                         strsplit(split="\\+") %>%
@@ -334,6 +353,10 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
                 # Add base file name:sheet number or sheet name as 'condition1'
                 contrast[["subset_group"]] = paste0(basename(contrast[["subset_group"]]), ", sheet ", sheet)
             }
+            
+            # Make sure subset_group_idx is not empty
+            assertthat::assert_that(length(contrast[["subset_group_idx"]]) > 0,
+                                    msg=FormatString("The subset group does not contain any barcodes (for comparison {i}/{name})."))
         }
         
         # compositional_column: Column that contains the cell compositional information. By default: seurat_clusters.
@@ -533,7 +556,6 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
         return(contrast)
     })
     
-    
     # Expand subsets list so that there is now one entry per subset
     # Also get barcode indices per subset
     contrasts_list = purrr::map(contrasts_list, function(contrast) {
@@ -555,6 +577,11 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
               return(con)
           })
           names(contrasts_expanded) = purrr::map(contrast[["subset_group"]], paste, collapse="+") %>% unlist()
+          
+          # Drop subset contrasts where condition1_idx or condition2_idx is empty
+          contrasts_expanded = purrr::keep(contrasts_expanded, function(c) {
+              return(length(c[["condition1_idx"]]) > 0 & length(c[["condition2_idx"]]) > 0)
+          })
       } else {
           contrasts_expanded = list(contrast)
       }
@@ -579,9 +606,6 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
 PrepareDegContrast = function(sc, contrast) {
     barcode_metadata = sc[[]]
     name = contrast[["name"]]
-        
-    # If condition1_idx or condition2_idx is empty, return
-    if (length(contrast[["condition1_idx"]]) == 0 | length(contrast[["condition2_idx"]]) == 0) return(contrast)
         
     # Get barcodes indices and names for conditions
     # Note: If the comparison is for a subset, the barcodes are already filtered for this subset. Only this data will be extracted.
@@ -706,7 +730,7 @@ PrepareDegContrast = function(sc, contrast) {
     sc_subset[["condition_groups"]] = conditions
     
     # Update idents
-    Seurat::Idents(sc_subset) = "condition_groups"
+    sc_subset@active.ident = sc_subset$condition_groups
     barcode_metadata = sc_subset[[]]
     
     # Aggregate cells into bulk/pseudo-bulk samples if requested
@@ -807,7 +831,7 @@ PrepareDegContrast = function(sc, contrast) {
         }
         
         # Update idents to conditions
-        Seurat::Idents(sc_subset_agg) = "condition_groups"
+        sc_subset_agg@active.ident = sc_subset_agg$condition_groups
         
         # Numeric covariates need to be aggregated for each group by averaging
         barcode_metadata = sc_subset[[]]
@@ -1152,9 +1176,6 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
       dplyr::pull(gene) %>%
       unique()
     
-    # If there are no DEGs or universe, return NULL
-    if (length(degs) == 0 | length(universe) == 0) return(NULL)
-    
     # Search the genesets specified by the genesets argument
     search_vector = paste(term2gene_db$gs_cat, term2gene_db$gs_subcat, term2gene_db$gs_name, sep=":")
     term2gene = purrr::map(genesets, function(term) {
@@ -1168,9 +1189,36 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
     ora_result = purrr::map(term2gene, function(t2g) {
       # Set random seed so that results stay reproducible
       set.seed(getOption("random_seed"))
+        
+      # Define an empty ORA result to return in case we cannot do the ORA analysis
+      empty_ora = new("enrichResult",
+                    result = data.frame(ID=as.character(NULL), Description=as.character(NULL), 
+                                        GeneRatio=as.character(NULL), BgRatio=as.character(NULL), 
+                                        RichFactor=as.numeric(NULL), FoldEnrichment=as.numeric(NULL), zScore=as.numeric(NULL), 
+                                        pvalue=as.numeric(NULL), p.adjust=as.numeric(NULL), qvalue=as.numeric(NULL), 
+                                        geneID=as.character(NULL), Count=as.numeric(NULL)),
+                    readable = FALSE, pvalueCutoff = 0.05, pAdjustMethod = "BH",
+                    qvalueCutoff = 0.2, organism = "UNKNOWN", ontology = "UNKNOWN",
+                    gene = degs, keytype = "UNKNOWN", universe = universe,
+                    gene2Symbol = as.character(NULL), geneSets = split(t2g$gene_symbol, t2g$gs_name))
+        
+      # If there are no DEGs or universe, return NULL
+      if (length(degs) == 0 | length(universe) == 0) return(empty_ora)
       
       # Run ORA
       ora = clusterProfiler::enricher(gene=degs, universe=universe, TERM2GENE=t2g, minGSSize=10, maxGSSize=500)
+      if (is.null(ora)) return(empty_ora)
+      
+      # Older clusterProfiler versions do not have RichFactor, FoldEnrichment and zScore. Set it to NA.
+      if (!"RichFactor" %in% colnames(ora@result)) {
+        ora@result$RichFactor = as.numeric(NA)
+      }
+      if (!"FoldEnrichment" %in% colnames(ora@result)) {
+        ora@result$FoldEnrichment = as.numeric(NA)
+      }
+      if (!"zScore" %in% colnames(ora@result)) {
+        ora@result$zScore = as.numeric(NA)
+      }
       
       # Sort by descreasing FoldEnrichment
       ora@result = ora@result[order(ora@result$FoldEnrichment, decreasing=TRUE),]
@@ -1178,6 +1226,10 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
       # Fix factor levels accordingly for plots
       ora@result$ID = factor(ora@result$ID, levels=unique(ora@result$ID))
       ora@result$Description = factor(ora@result$Description, levels=unique(ora@result$Description))
+      
+      # Order columns
+      ora@result = ora@result %>%
+        dplyr::relocate(ID, Description, GeneRatio, BgRatio, RichFactor, FoldEnrichment, zScore, pvalue, p.adjust, qvalue, geneID, Count)
       
       return(ora)
     })
@@ -1271,7 +1323,7 @@ DegsGetGenesets = function(msigdb_species, is_msigdb_species_name=FALSE, geneset
         readr::read_delim(geneset_file, col_names=TRUE, comment="#", progress=FALSE, show_col_types=FALSE, col_types=readr::cols())
       }
       
-      # Check that the table contains the required
+      # Check that the table contains the required columns
       required_columns = c("gs_cat", "gs_subcat", "gs_name", "gene_id", "gene_symbol")
       assertthat::assert_that(all(required_columns %in% colnames(term2gene)),
                               msg=FormatString("Geneset file {file} is missing at least one of these columns: 'gs_cat', 'gs_subcat', 'gs_name', 'gene_id', 'gene_symbol'."))
