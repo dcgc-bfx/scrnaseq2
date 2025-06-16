@@ -306,7 +306,7 @@ ncells = length(SeuratObject::Cells(sc[[default_assay]]))
 assay = ifelse(use_sketching, sketched_assay, default_assay)
 plist = Seurat::DimHeatmap(sc, 
                            reduction=DefaultReduct(sc, assay=assay),
-                           dims=1:min(min(20, dim_n_compute), ncells), 
+                           dims=1:min(min(5, dim_n_compute), ncells), 
                            cells=min(500, ncells),
                            balanced=TRUE, 
                            fast=FALSE, 

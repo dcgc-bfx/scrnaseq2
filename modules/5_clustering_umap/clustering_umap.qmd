@@ -787,8 +787,11 @@ cluster_cells = table(idents)
 cluster_labels = paste0(levels(idents)," (", cluster_cells[levels(idents)],")")
 
 orig_idents = barcode_metadata[bcs, "orig.ident"]
+condition = barcode_metadata[bcs, "condition"]
+
 sample_cells = table(orig_idents)
 sample_labels = paste0(levels(orig_idents)," (", sample_cells[levels(orig_idents)],")")
+condition_labels = paste0(levels(condition)," (", sample_cells[levels(condition)],")")
 
 # Initialize Plots 
 plist=list()
@@ -798,6 +801,10 @@ plist[["by_cluster"]][["all_samples"]] = Seurat::DimPlot(sc, reduction = "umap",
 plist[["by_sample"]] = list()
 plist[["by_sample"]][["all_samples"]] = Seurat::DimPlot(sc, reduction = "umap",
                                                         group.by="orig.ident")
+
+plist[["by_condition"]] = list()
+plist[["by_condition"]][["all_samples"]] = Seurat::DimPlot(sc, reduction = "umap",
+                                                        group.by="condition")
 
 if (length(levels(orig_idents)) <= 4 ) {
   # DimPlot has a bug when using split.by, this is a hack to fix this
@@ -844,6 +851,10 @@ for (i in names(plist)) {
     } 
     if (i == "by_sample") { 
       plist[[i]][[j]] = plist[[i]][[j]] + scale_color_manual(values=ScColours(sc, "orig.ident"), labels=sample_labels) +
+          guides(col=guide_legend(ncol=7, override.aes=list(size=3)))
+    }
+    if (i == "by_condition") { 
+      plist[[i]][[j]] = plist[[i]][[j]] + scale_color_manual(values=ScColours(sc, "condition"), labels=sample_labels) +
           guides(col=guide_legend(ncol=7, override.aes=list(size=3)))
     }
   }
@@ -994,6 +1005,8 @@ gt(paraminfo)
 if (use_sketching) {
   SeuratObject::DefaultAssay(sc) = default_assay
 }
+
+DefaultAssay(sc) = "RNA"
 
 # Save Seurat object and layer data
 # Note: counts and normalized data have not been changed in this module, no copying needed
