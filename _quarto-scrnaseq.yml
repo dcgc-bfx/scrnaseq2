@@ -24,7 +24,7 @@ book:
   - "modules/6_clusterqc/clusterqc.qmd"
   - "modules/7_cluster_annotation/cluster_annotation.qmd"
   - "modules/8_cluster_composition/cluster_composition.qmd"
-  - "modules/10_deg_analysis/deg_analysis.qmd"
+#  - "modules/10_deg_analysis/deg_analysis.qmd"
   - "modules/9_export/export.qmd"
   - "references.qmd"
 
@@ -128,7 +128,7 @@ params:
     
     normalization_adt:
       default_assay: "ADT"
-      normalization_method: "CLR"
+      normalization_method: "log"
       cellcycle_remove: false
       cellcycle_remove_all: false
       vars_to_regress: null

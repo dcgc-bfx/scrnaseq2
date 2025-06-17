@@ -231,9 +231,9 @@ markers_list = lapply(SeuratObject::Assays(sc), function(assay) {
                                      latent_vars=param("latent_vars"),
                                      results=markers_filt_intermediate$all)
 
-  markers_filt_intermediate$all$gene = paste0(assay, "_", markers_filt_intermediate$all$gene)
-  markers_filt_intermediate$up$gene = paste0(assay, "_", markers_filt_intermediate$up$gene)
-  markers_filt_intermediate$down$gene = paste0(assay, "_", markers_filt_intermediate$down$gene)
+  markers_filt_intermediate$all$gene = paste0(markers_filt_intermediate$all$gene, assay, "_")
+  markers_filt_intermediate$up$gene = paste0(markers_filt_intermediate$up$gene, assay, "_")
+  markers_filt_intermediate$down$gene = paste0(markers_filt_intermediate$down$gene, assay, "_")
   
   # return(markers_filt_intermediate)
   return(list(
@@ -291,7 +291,7 @@ if (markers_found) {
         locations = cells_body(rows=rows_to_highlight)
       )  
 }
-CalloutBox("The prefix (RNA_, ADT_, or else) to the marker names signify what assay they come from.", type="note")
+CalloutBox("The prefix (_RNA, _ADT, or else) to the marker names signify what assay they come from.", type="note")
 ```
 
 ### Visualization of top marker genes

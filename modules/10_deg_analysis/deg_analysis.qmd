@@ -89,7 +89,7 @@ params:
       value:
           # Compare BM_LK_C vs BM_LK_R
           - Comparison1:
-                condition_column: "orig.ident"
+                condition_column: "condition"
                 condition1: "BM_LK_C"
                 condition2: "BM_LK_R"
                 bulk_by: "sample"

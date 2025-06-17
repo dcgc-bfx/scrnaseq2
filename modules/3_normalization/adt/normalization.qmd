@@ -21,7 +21,7 @@ params:
   
   # Which normalization should be used for analysis?
   # CLR (Seurat), log (just log-transformation), identity (use raw counts)
-  normalization_method: "CLR"
+  normalization_method: "log"
   
    # Whether or not to remove cell cycle effects
   cellcycle_remove: false

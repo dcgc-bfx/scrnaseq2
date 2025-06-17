@@ -201,7 +201,7 @@ In case the dataset contains 2 or more samples, we also calculate whether or not
 gt(tbl, rownames_to_stub=TRUE)
 ```
 
-## Samples per cluster
+## Conditions per cluster
 
 ```{r}
 #| label: cluster_composition_condition_per_cluster
@@ -243,7 +243,7 @@ tbl_bar$Percentage = as.numeric(tbl_bar$Percentage)
 p = ggplot(tbl_bar, aes(x=Cluster, y=Percentage, fill=Condition)) + 
   geom_bar(stat="identity" ) +
   AddPlotStyle(fill=ScColours(sc, "condition"),
-               legend_title="Sample",
+               legend_title="Condition",
                legend_position="bottom")
 p
 ```

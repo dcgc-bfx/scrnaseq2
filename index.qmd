@@ -38,7 +38,8 @@ module_dir = params$module_dir
 
 ## Scientific project
 
-The project focuses on comparison of Naive vs 10d Arthritis (4/group) mouse groups. The samples are named as 
+The project focuses on comparison of Naive vs 10d Arthritis (4/group) mouse groups. The samples are named as
+
 -   LSK
 -   LK
 -   BM monocytes
