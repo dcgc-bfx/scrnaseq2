@@ -1165,6 +1165,8 @@ DegsRunTest = function(contrast) {
 #' @param genesets A character vector specifying the genesets to be used for the ORA. Each entry specifies one analysis. Entries should have the form gs_cat:gs_subcat:gs_name and can contain wildcards (e.g. C5:GO:BP:*).
 #' @return A list with one or more ORA results.
 DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
+    library(clusterProfiler)
+  
     # Get DEGs
     degs = deg_result$results %>% 
       dplyr::filter(p_val_adj < deg_result$padj & abs(avg_log2FC) >= deg_result$log2FC) %>%

@@ -48,10 +48,10 @@ params:
   # subset_column: Categorial column in the barcode metadata to subset for tests (default: null)
   #                For example, use 'orig.ident' for sample and 'seurat_clusters' for cluster 
   # subset_group: Levels to subset (default: null)
-  #               Use 'level1+level2' to use multiple levels for one subset
-  #               Use 'level1+level2,level3' to do multiple subsets for testing
-  #                    Can also be a Excel/csv file with barcodes with 'barcode' or 'sample:original_barcode' per line
-  #                    Original barcode refers to the one used in the dataset
+  #               Use 'level1+level2' to use multiple levels for one subset or 'level1+level2,level3' for multiple subsets
+  #               Use '*' to use all levels as subsets
+  #               Can also be a Excel/csv file with barcodes with 'barcode' or 'sample:original_barcode' per line
+  #               Original barcode refers to the one used in the dataset
   #
   # bulk_by: Generate bulk samples for each condition through aggregating barcodes over one or more other barcode columns (default: null)
   #          Control the number of barcodes aggregated per bulk sample with downsample_n
@@ -74,8 +74,8 @@ params:
   #            The following tests can use covariates: 'LR', 'poisson', 'negbinom', 'MAST', 'DESeq2', 'DESeq2LRT'.
   #
   # design: For DESeq2 tests, specify a design formula for testing. (default: null). 
-  #                Overwrites the 'covariate' entry. Include the term 'condition_groups' for specifying the condition in the design formula.
-  #                For 'DESeq2LRT', specify a design formula for the full model and the reduced model.
+  #         Overwrites the 'covariate' entry. Include the term 'condition_groups' for specifying the condition in the design formula.
+  #         For 'DESeq2LRT', specify a design formula for the full model and the reduced model.
   # deseq2_results_args: For DESeq2 tests, additional arguments (format key: value) passed to the DESeq2 results function (default: null)
   # 
   # padj: Maximum adjusted p-value (default: 0.05)
@@ -83,7 +83,9 @@ params:
   # min_pct: Minimum percentage of barcodes expressing a feature in one group (default: 0.01)
   #
   # ora_genesets: Genesets to use for over-representation analysis (default: null).
-  #               See the global 'ora_genesets' parameter for more information.
+  #               See the global 'genesets' parameter for more information.
+  # gsea_genesets: Genesets to use for over-representation analysis (default: null).
+  #               See the global 'genesets' parameter for more information.
   #
   contrasts:
       value:
@@ -160,14 +162,14 @@ params:
   # For example: homo_sapiens => Homo sapiens
   msigdb_species: null
   
-  # User-defined genesets in Excel or CSV file(s) to use for ORA instead of MSigDB. The files should have these columns: gs_cat,
+  # User-defined genesets in Excel or CSV file(s) to use for ORA or GSEA instead of MSigDB. The files should have these columns: gs_cat,
   # gs_subcat, gs_name, gene_id, gene_symbol. If null, MSigDB will be used.
-  ora_geneset_files: null
+  geneset_files: null
   
-  # Genesets to use for ORA. List entries should have the form gs_cat:gs_subcat:gs_name. Wildcards are allowed. 
+  # Genesets to use for ORA or GSEA. List entries should have the form gs_cat:gs_subcat:gs_name. Wildcards are allowed. 
   # For example, when using MSigDB, 'C5:GO:BP:*' will use all genesets in the C5 category, GO:BP (gene ontology, biological process) subcategory. Multiple entries can be provided and result in multiple analyses.
   # Genesets can also specified in the contrasts section.
-  ora_genesets: 
+  genesets: 
   - "C5:GO:BP:*"
   - "C5:GO:MF:*"
   
@@ -178,16 +180,6 @@ params:
     - "Comparison2"
     - "Comparison3"
     - "Comparison4"
-    
-  # User-defined genesets in Excel or CSV file(s) to use for GSEA instead of MSigDB. The files should have these columns: gs_cat, gs_subcat, gs_name, gene_id, gene_symbol. If null, MSigDB will be used.
-  gsea_geneset_files: null
-  
-  # Genesets used for GSEA. List entries should have the form gs_cat:gs_subcat:gs_name. Wildcards are allowed. 
-  # For example, when using MSigDB, 'C5:GO:BP:*' will use all genesets in the C5 category, GO:BP (gene ontology, biological process) subcategory. Multiple entries can be provided and result in multiple analyses.
-  # Genesets can also specified in the contrasts section.
-  gsea_genesets: 
-  - "C5:GO:BP:*"
-  - "C5:GO:MF:*"
   
   # Top n number of genesets, ranked by NES, for which to produce GSEA plots (showing running score and ranked list metrics) per analysis. These plots will not be included in the report but can be found in the results directory.
   gsea_num_plots: 5
@@ -304,29 +296,29 @@ if (is.character(param("contrasts")) && file.exists(param("contrasts"))) {
   }
   
   # Read Excel file and split into list, remove NA entries
-  contrasts_list = readxl::read_excel(contrasts_file, sheet=1, col_names=TRUE)
-  contrasts_list = split(contrasts_list, seq(nrow(contrasts)))
+  contrasts_content = readxl::read_excel(contrasts_file, sheet=1, col_names=TRUE)
+  contrasts_content = split(contrasts_list, seq(nrow(contrasts_content)))
   
-  contrasts_list = purrr::map(contrasts_list, function(contrast) {
+  contrasts_content = purrr::map(contrasts_content, function(contrast) {
       is_na = is.na(contrast)
       if (sum(is_na) > 0) contrast[[is_na]] = NULL
       return(contrast)
   })
 
 } else {
-  contrasts_list = param("contrasts")
+  contrasts_content = param("contrasts")
     
   # Read from yaml parameter and prepare list
-  contrasts_list = purrr::map(seq(contrasts_list), function(i) {
-      contrast = contrasts_list[[i]][[1]]
-      contrast$name = names(contrasts_list[[i]])
+  contrasts_content = purrr::map(seq(contrasts_content), function(i) {
+      contrast = contrasts_content[[i]][[1]]
+      contrast$name = names(contrasts_content[[i]])
       return(contrast)
   })
 }
 
 # For each contrast, collect the necessary information (which groups to compare, the assay to use, etc).
 # Note: Each contrast entry is a list either of length 1 (if there is only one comparison) or of length >1 (if the comparison is done for multiple subsets). The names of the list elements are the names of the contrasts.
-contrasts_list = NewContrastsList(sc, contrasts_list, type="deg")
+contrasts_list = NewContrastsList(sc, contrasts_content, type="deg")
 
 # For each contrast, prepare an individual Seurat object for the comparison. If multiple subsets are analysed, prepare multiple objects. Bulk-aggregate if requested. Downsample if requested.
 # Note: This is a list of contrasts with of lists of comparisons, so we use map_depth need to specify the depth of the list.
@@ -497,7 +489,7 @@ if (have_deg_comparisons) {
 #| include: !expr have_ora
 
 # Custom genesets for over-representation analysis
-ora_geneset_files = param("ora_geneset_files")
+ora_geneset_files = param("geneset_files")
 
 if (have_ora) {
   # Get genesets to test from MSigDB or user input file
@@ -513,7 +505,7 @@ if (have_ora) {
       # Run ORA and add to list
       deg_result[["ora_results"]] = DegsRunOraTest(deg_result=deg_result,
                                term2gene_db=ora_term2gene_db,
-                               genesets=deg_result[["ora_genesets"]] %||% param("ora_genesets"))
+                               genesets=deg_result[["ora_genesets"]] %||% param("genesets"))
     } else {
       # Else just add empty list
       deg_result[["ora_results"]] = list()
