@@ -378,14 +378,14 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
     } else if (method == "vst") {
       hvf_info = SeuratObject::HVFInfo(sc[[assay]],
                                        method="vst",
-                                       layer=paste("data", n, sep="."),
+                                       layer=paste("counts", n, sep="."),
                                        status=TRUE)
       assertthat::assert_that(!is.null(hvf_info),
                               msg=FormatString("No variable feature information available for {assay}."))
     } else if (method == "scran") {
       hvf_info = SeuratObject::HVFInfo(sc[[assay]],
                                        method="scran",
-                                       layer=paste("data", n, sep="."),
+                                       layer=paste("counts", n, sep="."),
                                        status=TRUE)
       assertthat::assert_that(!is.null(hvf_info),
                               msg=FormatString("No variable feature information available for {assay}."))
