@@ -366,7 +366,6 @@ for(name in run_ora){
   if (data_type != "feature_data") stop(FormatString("Comparison {name} cannot be used for over-representation analysis. Please remove for parameter 'run_ora'."))
 
 }
-
 have_ora = length(run_ora) > 0
 
 # Which contrasts should be analysed with GSEA?
@@ -410,7 +409,7 @@ if (is.logical(export_contrasts)) {
 have_export_contrasts = length(export_contrasts) > 0
 ```
 
-## DEGs
+## DEG
 
 If requested, we identify genes that are differentially expressed between two groups of cells. Groups can be defined by columns in the cell metadata. Different types of tests can be used and input data for testing can be the different assays as well as the computed dimensionality reductions. Resulting _p_-values are adjusted using the Bonferroni method. The names of differentially expressed genes per cluster, alongside statistical measures and additional gene annotation are written to file.
 
@@ -442,6 +441,7 @@ if (have_deg_comparisons) {
         
       # Get DEG tables for each comparison and add names (needed if multiple subsets were analysed)
       deg_tables = purrr::map(deg_results, "results")
+      if (is.null(names(deg_tables)) & length(deg_tables) == 1) names(deg_tables) = "Results"
       
       # Add Ensembl annotation to the DEG tables. This is only done when genes are tested not reductions or barcode metadata.
       # This table is empty if Ensembl was not used for gene annotations.
@@ -454,96 +454,33 @@ if (have_deg_comparisons) {
       }
       
       # Collect configuration
-      config_names = c("condition_column", "condition1", "condition2", "bulk_by", "pseudobulk_samples", "assay", "test", "padj", "log2FC", "min_pct", "covariate", "formula", "downsample_n")
+      config_names = c("condition_column", "condition1", "condition2", "subset_column", "subset_groups", "bulk_by", "pseudobulk_samples", "assay", "layer", "test", "padj", "log2FC", "min_pct", "downsample_n", "covariate", "design", "deseq2_results_args")
       config_values = purrr::map_chr(config_names, function(n) {
-        v = deg_results[[1]][[n]] %||% "-"
-        v = paste(v, collapse=ifelse(n %in% c("condition1", "condition2"), "+", ","))
-        return(v)
+        v = as.character(deg_results[[1]][[n]] %||% "-")
+        if (n %in% c("condition1", "condition2")) v = paste(v, collapse="+")
+        if (n %in% "subset_groups") {
+            v = purrr::map_chr(deg_results, function(deg_result) return(paste(deg_result$subset_group, collapse="+"))) %>% 
+                paste(collapse=", ")
+        }
+        return(paste(v, collapse=","))
       })
-      if ("subset_column" %in% names(deg_results[[1]])) {
-        config_names = c(config_names, "subset_column")
-        config_values[["subset_column"]] = deg_results[[1]]$subset_column
-        config_names = c(config_names, "subset_groups")
-        config_values[["subset_group"]] = purrr::map_chr(deg_results, function(deg_result) return(paste(deg_result$subset_group, collapse="+"))) %>% paste(collapse=", ")
-      }
-      config_df = data.frame(Config=config_names,
-                             Value=config_values)
-      rownames(config_df) = NULL
+      config_desc = c("condition column", "condition group 1", "condition group 2", "subset column", "subset groups",
+                     "bulk by", "pseudobulk samples", "assay", "data", "test", "maximum adjusted p-value",
+                     "minimum absolute log2 foldchange", "minimum percentage of expressing cells", "downsample n", "covariate", "design formula", "DESeq2 results arguments")
+
+      deg_configuration_table = data.frame(Config=config_names, Desc=config_desc, Value=config_values)
+      rownames(deg_configuration_table) = NULL
       
       # Write to file
       outfile = paste0("degs_", deg_results[[1]]$name, ".xlsx")
       DegsWriteToFile(deg_tables,
                       annotation=annot_ensembl,
                       file=file.path(module_dir, "results", outfile),
-                      parameter=config_df)
+                      parameter=deg_configuration_table)
     }
 } else {
     deg_results_list = list()
     CalloutBox("No DEG tests requested.", type="note")
-}
-```
-
-```{r}
-#| label: deg_analysis_run_ora
-#| eval: !expr have_ora
-#| include: !expr have_ora
-
-# Custom genesets for over-representation analysis
-ora_geneset_files = param("geneset_files")
-
-if (have_ora) {
-  # Get genesets to test from MSigDB or user input file
-  ora_term2gene_db = DegsGetGenesets(msigdb_species=param("msigdb_species") %||% param("species"), 
-                                      is_msigdb_species_name = !is.null(param("msigdb_species")),
-                                      geneset_files=ora_geneset_files)
-
-  # Run overrepresentation analysis (ORA)
-  deg_results_list = purrr::map_depth(deg_results_list, .depth=2, function(deg_result) {
-    # Is ORA requested for this DEG analysis?
-    name = deg_result[["name"]]
-    if (name %in% run_ora) {
-      # Run ORA and add to list
-      deg_result[["ora_results"]] = DegsRunOraTest(deg_result=deg_result,
-                               term2gene_db=ora_term2gene_db,
-                               genesets=deg_result[["ora_genesets"]] %||% param("genesets"))
-    } else {
-      # Else just add empty list
-      deg_result[["ora_results"]] = list()
-    }
-    
-    return(deg_result)
-  })
-
-  # Write ORA results to files
-  for (i in seq_along(deg_results_list)) {
-    deg_results = deg_results_list[[i]]
-    
-    # Get ORA results for each comparison
-    ora_tables = purrr::map(deg_results, function(deg_result) {
-      ora_result = deg_result[["ora_results"]]
-      
-      # If no ORA was done, this will be an empty list
-      if (length(ora_result) == 0) return(NULL)
-      
-      # If multiple gene sets were analysed, join the result tables
-      ora_table = purrr::map_dfr(names(ora_result), function(set_name) {
-        ora_res = ora_result[[set_name]]
-        ora_tbl = ora_res %>% 
-          as.data.frame() %>%
-          dplyr::mutate(GeneSet=set_name, .before=1)
-        return(ora_tbl)
-      })
-      
-      return(ora_table)
-    })
-    ora_tables = purrr::discard(ora_tables, is.null)
-    if (length(ora_tables) == 0) next
-    
-    # Write to file
-    outfile = paste0("degs_", names(deg_results_list)[i], "_ora.xlsx")
-    DegsWriteOraToFile(ora_tables,
-                       file=file.path(module_dir, "results", outfile))
-  }
 }
 ```
 
@@ -593,8 +530,8 @@ deg_summary_table = purrr::map_depth(deg_results_list, .depth=2, function(deg_re
 deg_summary_table = deg_summary_table %>% 
     dplyr::select(Comparison, Condition, Group1, Group2, Subset, SubsetGroup, Sign, Sign_up, Sign_down)
 
-gt::gt(deg_summary_table) %>%
-    gt::sub_missing(columns=1:ncol(deg_summary_table), missing_text="")
+gt(deg_summary_table) %>%
+    sub_missing(columns=1:ncol(deg_summary_table), missing_text="")
 ```
 
 ```{r}
@@ -602,88 +539,6 @@ gt::gt(deg_summary_table) %>%
 #| results: asis
 #| eval: !expr have_deg_comparisons
 #| include: !expr have_deg_comparisons
-
-# Chunk template for the configuration
-chunk_template_configuration = "
-* condition column: {{condition_column}}
-* condition group 1: {{condition1}}
-* condition group 2: {{condition2}}
-* subset column: {{subset_column}}
-* subset groups: {{subset_group}}
-* bulk by: {{bulk_by}}
-* pseudobulk samples: {{pseudobulk_samples}}
-* assay: {{assay}}
-* data: {{data}}
-* test: {{test}}
-* maximum adjusted p-value: {{padj}}
-* minimum absolute log2 foldchange: {{log2FC}}
-* minimum percentage of expressing cells: {{min_pct}}
-* covariate: {{covariate}}
-* downsample n: {{downsample_n}}
-* output file(s): 
-  * DEGs: degs_{{name}}.xlsx
-  * Overrepresentation analysis (if requested): degs_{{name}}_ora.xlsx
-  * Figures: 
-    * fig-deg_analysis_deg_plots_{{name}}_SUBSET-1.png/pdf
-    * fig-deg_analysis_deg_ora_{{name}}_SUBSET_ANALYSIS-1.png/pdf
-"
-
-# Chunk template for comparison:
-# - number of deg
-# - top 5 genes
-# - scatter and volcano plot
-chunk_template_comparison = "
-\`\`\`{r}
-#| label: tbl-deg_analysis_deg_summary_{{name}}_{{i}}
-#| tbl-cap: 'DEG results for {{name_subset}}'
-
-deg_results_table = deg_summary_table %>% 
-    dplyr::filter(Comparison == '{{name}}', SubsetGroup=='{{subset_group}}') %>%
-    dplyr::select(Condition, Group1, Group2, Subset, SubsetGroup, Sign, Sign_up, Sign_down)
-    
-gt::gt(deg_results_table) %>%
-    gt::sub_missing(columns=1:ncol(deg_results_table), missing_text='') %>%
-    gt::fmt_number(columns=2:ncol(deg_results_table), decimals=3, use_seps=FALSE)
-\`\`\`
-
-\`\`\`{r}
-#| label: tbl-deg_analysis_deg_topfive_{{name}}_{{i}}
-#| tbl-cap: 'Top five results for {{name_subset}}'
-
-
-fc_col = dplyr::case_match(deg_result[['data_type']], 'feature_data' ~ 'avg_log2FC', 'reduction' ~ 'avg_diff', 'barcode_metadata' ~ 'avg_diff')
-top5_degs = deg_result$results %>% 
-    dplyr::select(gene, !!sym(fc_col), p_val_adj, condition1, condition2) %>%
-    head(5)
-    
-gt::gt(top5_degs)
-\`\`\`
-
-
-\`\`\`{r}
-#| label: fig-deg_analysis_deg_plots_{{name}}_{{i}}
-#| fig-cap: 'Scatter and volcano plot for {{name_subset}}'
-#| fig-height: 4
-
-patchwork::wrap_plots(deg_result$scatter_plot, deg_result$volcano_plot)
-\`\`\`
-"
-
-# Chunk template for ORA
-chunk_ora = "
-\`\`\`{r}
-#| label: fig-deg_analysis_deg_ora_{{name}}_{{i}}_{{j}}
-#| fig-cap: 'Top 10 overrepresented terms of geneset {{ora_res_name}} for {{name_subset}}'
-
-# Plot the top 10 terms
-enrichplot:::barplot.enrichResult(ora_res, x='FoldEnrichment', font.size=11, showCategory=10, label_format=40) +
-  geom_text(aes(label=Count), hjust=1, size=11/.pt, color='firebrick') +
-  AddPlotStyle(legend_position='bottom', legend_title='Adj. p-value') +
-  viridis::scale_fill_viridis(direction = -1, 
-                              breaks = function(x) return(c(min(x), max(x))), 
-                              labels=scales::scientific)
-\`\`\`
-"
 
 # Generate report sections for each DEG comparison
 if (have_deg_comparisons) {
@@ -695,45 +550,37 @@ if (have_deg_comparisons) {
     name = deg_results[[1]]$name
     cat(FormatString("### {name}\n\n", quote=FALSE))
     
-    # Fill in the configuration chunk template and render/knit
-    cat("This is the general configuration for the DEG analysis for this comparison:\n\n")
-    
-    
-* condition column: {{condition_column}}
-* condition group 1: {{condition1}}
-* condition group 2: {{condition2}}
-* subset column: {{subset_column}}
-* subset groups: {{subset_group}}
-* bulk by: {{bulk_by}}
-* pseudobulk samples: {{pseudobulk_samples}}
-* assay: {{assay}}
-* data: {{data}}
-* test: {{test}}
-* maximum adjusted p-value: {{padj}}
-* minimum absolute log2 foldchange: {{log2FC}}
-* minimum percentage of expressing cells: {{min_pct}}
-* covariate: {{covariate}}
-* downsample n: {{downsample_n}}
-* output file(s): 
-  * DEGs: degs_{{name}}.xlsx
-  * Overrepresentation analysis (if requested): degs_{{name}}_ora.xlsx
-  * Figures: 
-    * fig-deg_analysis_deg_plots_{{name}}_SUBSET-1.png/pdf
-    * fig-deg_analysis_deg_ora_{{name}}_SUBSET_ANALYSIS-1.png/pdf
-    
-    config_values = c(condition_column=deg_results[[1]]$condition_column, condition1=deg_results[[1]]$condition1, condition2=deg_results[[1]]$condition2,
-                 subset_column=deg_results[[1]]$subset_column %||% "-", subset_group=names(deg_results) %>% paste(collapse=", "),
-                 bulk_by=deg_results[[1]]$bulk_by %||% "-", pseudobulk_samples=deg_results[[1]]$pseudobulk_samples %||% "-",
-                 assay=deg_results[[1]]$assay, data=deg_results[[1]]$layer,
-                 test=deg_results[[1]]$test, padj=deg_results[[1]]$padj, log2FC=deg_results[[1]]$log2FC, min_pct=deg_results[[1]]$min_pct,
-                 covariate=deg_results[[1]]$covariate %||% "-", downsample_n=deg_results[[1]]$downsample_n %||% "-",
-                 deg_files=paste0("degs_", deg_results[[1]]$name, ".xlsx"),
-                 ora_files=paste0("degs_", deg_results[[1]]$name, "_ora.xlsx"))
-    config_names = c("condition column", "condition group 1", "condition group 2", "subset column", "subset groups",
+    # Collect configuration
+    config_names = c("condition_column", "condition1", "condition2", "subset_column", "subset_groups", "bulk_by", "pseudobulk_samples", "assay", "layer", "test", "padj", "log2FC", "min_pct", "downsample_n", "covariate", "design", "deseq2_results_args")
+    config_values = purrr::map_chr(config_names, function(n) {
+        v = as.character(deg_results[[1]][[n]] %||% "-")
+        if (n %in% c("condition1", "condition2")) v = paste(v, collapse="+")
+        if (n %in% "subset_groups") {
+            v = purrr::map_chr(deg_results, function(deg_result) return(paste(deg_result$subset_group, collapse="+"))) %>% 
+                paste(collapse=", ")
+        }
+        return(paste(v, collapse=","))
+    })
+    config_desc = c("condition column", "condition group 1", "condition group 2", "subset column", "subset groups",
                      "bulk by", "pseudobulk samples", "assay", "data", "test", "maximum adjusted p-value",
-                     "minimum absolute log2 foldchange", "minimum percentage of expressing cells", "covariate", "downsample n",)
-            
-                                      name=deg_results[[1]]$name)
+                     "minimum absolute log2 foldchange", "minimum percentage of expressing cells", "downsample n", "covariate", "design formula", "DESeq2 results arguments")
+    
+    deg_configuration_table = data.frame(Config=config_names, Desc=config_desc, Value=config_values)
+    rownames(deg_configuration_table) = NULL
+    deg_configuration_table = dplyr::filter(deg_configuration_table, Value != "-")
+    
+    # Configuration chunk template
+    chunk_template_deg_configuration = "
+\`\`\`{r}
+#| label: tbl-deg_analysis_deg_configuration_{{name}}
+#| tbl-cap: 'Configuration for DEG comparison {{name}}'
+
+gt(deg_configuration_table)
+\`\`\`
+"
+    # Then fill out the configuration chunk template and render/knit
+    chunk_filled =  knitr::knit_expand(text=chunk_template_deg_configuration, 
+                                         name=name)
     if(interactive()) {
       print(EvalKnitrChunk(chunk_filled))
     } else {
@@ -759,9 +606,48 @@ if (have_deg_comparisons) {
         subset_group = ""
       }
       
+      # Chunk template for comparison with number of DEG, top 5 genes as well as scatter and volcano plot
+      chunk_template_deg_comparison = "
+\`\`\`{r}
+#| label: tbl-deg_analysis_deg_summary_{{name}}_{{i}}
+#| tbl-cap: 'DEG results for {{name_subset}}'
+
+deg_results_table = deg_summary_table %>% 
+    dplyr::filter(Comparison == '{{name}}', SubsetGroup=='{{subset_group}}') %>%
+    dplyr::select(Condition, Group1, Group2, Subset, SubsetGroup, Sign, Sign_up, Sign_down)
+    
+gt(deg_results_table) %>%
+    sub_missing(columns=1:ncol(deg_results_table), missing_text='') %>%
+    fmt_number(columns=2:ncol(deg_results_table), decimals=3, use_seps=FALSE)
+\`\`\`
+
+\`\`\`{r}
+#| label: tbl-deg_analysis_deg_topfive_{{name}}_{{i}}
+#| tbl-cap: 'Top five results for {{name_subset}}'
+
+
+fc_col = dplyr::case_match(deg_result[['data_type']], 'feature_data' ~ 'avg_log2FC', 'reduction' ~ 'avg_diff', 'barcode_metadata' ~ 'avg_diff')
+
+top5_degs = deg_result$results %>% 
+    dplyr::select(gene, !!sym(fc_col), p_val_adj, condition1, condition2) %>%
+    head(5)
+    
+gt(top5_degs)
+\`\`\`
+
+\`\`\`{r}
+#| label: fig-deg_analysis_deg_plots_{{name}}_{{i}}
+#| fig-cap: 'Scatter and volcano plot for {{name_subset}}'
+#| fig-height: 4
+
+patchwork::wrap_plots(deg_result$scatter_plot, deg_result$volcano_plot)
+\`\`\`
+"
+
+      
       # Fill in the comparison chunk template and render/knit
       # This will include a top 5 table as well as the volcano and scatter plots
-      chunk_filled =  knitr::knit_expand(text=chunk_template_comparison, 
+      chunk_filled =  knitr::knit_expand(text=chunk_template_deg_comparison, 
                                          name=name,
                                          name_subset=ifelse(nchar(subset_group) > 0, 
                                                             FormatString("{name}, {subset_column}: {subset_group}", quote=FALSE), 
@@ -774,15 +660,107 @@ if (have_deg_comparisons) {
         chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
         cat('\n', chunk_filled, '\n', sep='\n')
       }
+    }
+  }
+}
+```
+
+## ORA
+
+```{r}
+#| label: deg_analysis_run_ora
+#| eval: !expr have_ora
+#| include: !expr have_ora
+
+# Custom genesets for over-representation analysis
+ora_geneset_files = param("geneset_files")
+
+if (have_ora) {
+  # Get genesets to test from MSigDB or user input file
+  ora_term2gene_db = DegsGetGenesets(msigdb_species=param("msigdb_species") %||% param("species"), 
+                                      is_msigdb_species_name = !is.null(param("msigdb_species")),
+                                      geneset_files=ora_geneset_files)
+
+  # Run overrepresentation analysis (ORA)
+  ora_results_list = purrr::map_depth(deg_results_list, .depth=2, function(deg_result) {
+    # Is ORA requested for this DEG analysis?
+    name = deg_result[["name"]]
+    ora_result = list(name=name)
+    if (name %in% run_ora) {
+      # Run ORA and add
+      ora_result[["results"]] = DegsRunOraTest(deg_result=deg_result,
+                               term2gene_db=ora_term2gene_db,
+                               genesets=deg_result[["ora_genesets"]] %||% param("genesets"))
+    } else {
+      # Else just add an empty list
+      ora_result[["results"]] = list()
+    }
+    
+    return(ora_result)
+  })
+  ora_results_list = ora_results_list[run_ora]
+
+  # Write ORA results to files
+  for (i in seq_along(ora_results_list)) {
+    ora_results = ora_results_list[[i]]
+    
+    # Get ORA results for each comparison
+    ora_tables = purrr::map(ora_results, function(ora_result) {
+      ora_result = ora_result[["results"]]
+      # If no ORA was done, this will be an empty list
+      if (length(ora_result) == 0) return(NULL)
+      
+      # If multiple gene sets were analysed, join the result tables
+      ora_table = purrr::map_dfr(names(ora_result), function(set_name) {
+        ora_res = ora_result[[set_name]]
+        ora_tbl = ora_res %>% 
+          as.data.frame() %>%
+          dplyr::mutate(GeneSet=set_name, .before=1)
+        return(ora_tbl)
+      })
+      
+      return(ora_table)
+    })
+    ora_tables = purrr::discard(ora_tables, is.null)
+    if (length(ora_tables) == 0) next
+    if (is.null(names(ora_tables)) & length(ora_tables) == 1) names(ora_tables) = "Results"
+    
+    # Write to file
+    outfile = paste0("ora_", names(ora_results_list)[i], ".xlsx")
+    DegsWriteOraToFile(ora_tables,
+                       file=file.path(module_dir, "results", outfile))
+  }
+}
+```
+
+```{r}
+#| label: deg_analysis_ora_results
+#| results: asis
+#| eval: !expr have_deg_comparisons
+#| include: !expr have_deg_comparisons
+
+# Generate report sections for each ORA analysis
+if (have_ora) {
+  # Iterate over the comparisons
+  for (ora_results in ora_results_list) {
+    # ora_results: Result list for this comparison
+    
+    # Now show the result(s) for this comparison. If multiple subsets were analysed, there will be multiple results.
+    # Note: Since there can be multiple results, we include i as a counter to make them unique.
+    cat("Here are the test results:\n\n")
+    for (i in seq_along(ora_results)) {
+      # deg_result: DEG analysis for this subset comparison
+      ora_result = ora_results[[i]]
+      name = ora_result$name
+      
+      # ora_result: ORA analysis for this subset comparison
+      ora_result = ora_result[["results"]]
       
       # Now plot ORA results (if available)
-      ora_result = deg_result[["ora_results"]]
-      
       if (length(ora_result) > 0) {
         # For each ORA result, fill in the ORA chunk template and render/knit
         # Note: Since there can be multiple results, we include j as a counter to make them unique.
         # Layout is two columns
-        cat("The following functional terms are significantly over-represented:\n\n")
         cat("::: {.panel-tabset}\n")
         for (j in seq_along(ora_result)) {
           cat(FormatString("##### {j}\n\n", quote=FALSE))
@@ -799,6 +777,22 @@ if (have_deg_comparisons) {
           cat("* thereof tested (at least 10, at most 500 genes in geneset):", sum(genesets_lengths >= 10 & genesets_lengths<=500), "\n")
           cat("* thereof significant (adjusted p-value < 0.05):", nrow(ora_res), "\n")
           cat("\n")
+          
+          # Chunk template for ORA
+          chunk_ora = "
+\`\`\`{r}
+#| label: fig-deg_analysis_deg_ora_{{name}}_{{i}}_{{j}}
+#| fig-cap: 'Top 10 overrepresented terms of geneset {{ora_res_name}} for {{name_subset}}'
+
+# Plot the top 10 terms
+enrichplot:::barplot.enrichResult(ora_res, x='FoldEnrichment', font.size=11, showCategory=10, label_format=40) +
+  geom_text(aes(label=Count), hjust=1, size=11/.pt, color='firebrick') +
+  AddPlotStyle(legend_position='bottom', legend_title='Adj. p-value') +
+  viridis::scale_fill_viridis(direction = -1, 
+                              breaks = function(x) return(c(min(x), max(x))), 
+                              labels=scales::scientific)
+\`\`\`
+"
           
           # Fill in the ORA chunk template and render/knit
           # This will generate an ORA barplot
@@ -823,6 +817,7 @@ if (have_deg_comparisons) {
   }
 }
 ```
+
 
 ## GSEA
 
@@ -971,8 +966,8 @@ gsea_summary_table = purrr::map_depth(gsea_results_list, .depth=2, function(gsea
     purrr::flatten() %>% 
     dplyr::bind_rows()
 
-gt::gt(gsea_summary_table) %>%
-    gt::sub_missing(columns=1:ncol(gsea_summary_table), missing_text="")
+gt(gsea_summary_table) %>%
+    sub_missing(columns=1:ncol(gsea_summary_table), missing_text="")
 ```
 
 ```{r}
@@ -1015,8 +1010,8 @@ chunk_template_gsea_summary = "
 gsea_results_table = gsea_summary_table %>% 
     dplyr::filter(Comparison == '{{name}}', SubsetGroup=='{{subset_group}}')
     
-gt::gt(gsea_results_table) %>%
-    gt::sub_missing(columns=1:ncol(gsea_results_table), missing_text='')
+gt(gsea_results_table) %>%
+    sub_missing(columns=1:ncol(gsea_results_table), missing_text='')
 \`\`\`
 "
 
