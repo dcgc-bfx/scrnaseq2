@@ -1213,10 +1213,12 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
       
       # Older clusterProfiler versions do not have RichFactor, FoldEnrichment and zScore. Set it to NA.
       if (!"RichFactor" %in% colnames(ora@result)) {
-        ora@result$RichFactor = as.numeric(NA)
+        ora@result$RichFactor = ora@result$Count / as.numeric(sub("/\\d+", "", ora@result$BgRatio))
       }
       if (!"FoldEnrichment" %in% colnames(ora@result)) {
-        ora@result$FoldEnrichment = as.numeric(NA)
+        gene_ratio = purrr::map_dbl(ora@result$GeneRatio, function(g) return(eval(parse(text=g))))
+        bg_ratio = purrr::map_dbl(ora@result$BgRatio, function(g) return(eval(parse(text=g))))
+        ora@result$FoldEnrichment = gene_ratio / bg_ratio
       }
       if (!"zScore" %in% colnames(ora@result)) {
         ora@result$zScore = as.numeric(NA)

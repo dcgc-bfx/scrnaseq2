@@ -687,13 +687,29 @@ if (have_ora) {
     name = deg_result[["name"]]
     ora_result = list(name=name)
     if (name %in% run_ora) {
-      # Run ORA and add
+      # Run ORA and add results
       ora_result[["results"]] = DegsRunOraTest(deg_result=deg_result,
                                term2gene_db=ora_term2gene_db,
                                genesets=deg_result[["ora_genesets"]] %||% param("genesets"))
+      
+      # Also create bar plots with the top 15 terms
+      ora_result[["plots"]] = purrr::map(ora_result[["results"]], function(ora) {
+          # If there are no results, return NULL
+          if (nrow(ora) == 0) return(NULL)
+          
+          p = enrichplot:::dotplot(ora, color='p.adjust', x='FoldEnrichment', size='Count', font.size=11, showCategory=15, label_format=50) +
+              AddPlotStyle() +
+              scale_fill_gradient(high="#327eba", low="#e06663",
+                                   breaks=scales::pretty_breaks(4), labels=scales::scientific) +
+              scale_size_continuous(breaks=scales::pretty_breaks(3))
+          
+          return(p)
+      })
+      
     } else {
       # Else just add an empty list
       ora_result[["results"]] = list()
+      ora_result[["plots"]] = list()
     }
     
     return(ora_result)
@@ -785,12 +801,7 @@ if (have_ora) {
 #| fig-cap: 'Top 10 overrepresented terms of geneset {{ora_res_name}} for {{name_subset}}'
 
 # Plot the top 10 terms
-enrichplot:::barplot.enrichResult(ora_res, x='FoldEnrichment', font.size=11, showCategory=10, label_format=40) +
-  geom_text(aes(label=Count), hjust=1, size=11/.pt, color='firebrick') +
-  AddPlotStyle(legend_position='bottom', legend_title='Adj. p-value') +
-  viridis::scale_fill_viridis(direction = -1, 
-                              breaks = function(x) return(c(min(x), max(x))), 
-                              labels=scales::scientific)
+
 \`\`\`
 "
           
