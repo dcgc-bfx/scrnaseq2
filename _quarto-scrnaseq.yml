@@ -43,14 +43,14 @@ params:
   general:
 
     # General
-    project_id: "bfx1234"
+    project_id: "project"
     species: "homo_sapiens"
     ensembl: 104
 
     # Technical
-    verbose: true
-    on_disk_counts: true
-    on_disk_use_tmp: true
+    verbose: false
+    on_disk_counts: false
+    on_disk_use_tmp: false
     cores: 8
 
     # Analysis
@@ -63,13 +63,13 @@ params:
     - "pERCC_RNA"
     - "pXIST_RNA"
     - "pChrY_RNA"
-    - "scrublet_doublet_scores"
+    - "doublet_scores"
     use_sketching: false
 
   modules:
   
     read_data:
-      default_assay: RNA
+      default_assay: "RNA"
       datasets_file: "datasets/10x_pbmc_datasets.xlsx"
       downsample_barcodes_n: null
       downsample_barcodes_equally: false
@@ -80,12 +80,17 @@ params:
       spatial_coordinate_type:
         - "centroids"
         - "segmentations"
+      visiumhd_bin_sizes:
+      - 8
+      - 16
 
     qc_filtering_rna:
       barcode_qc_cor:
       - "nFeature_RNA nCount_RNA"
       - "nFeature_RNA pMito_RNA"
-      barcode_filter: null
+      barcode_filter: !expr list(
+          nFeature_RNA=c(200, NA), 
+          pMito_RNA=c(0, 50))
       feature_filter: !expr list(
         min_counts = 1,
         min_cells = 3)
@@ -102,7 +107,7 @@ params:
       num_barcodes_for_sketching: 50000
 
     dimensionality_reduction_rna:
-      dimensionality_reduction_method: "PCA"
+      dimensionality_reduction_method: "pca"
       dim_n_compute: 50
       dim_n: 20
       integration_methods: null
@@ -129,8 +134,9 @@ params:
       file_known_markers: null
 
     export:
-      export_loupe: true
-      export_loupe_normalized: true
+      export_metadata: true
+      create_loupe_file: true
+      export_xenium_analysis_file: false
       export_cellxgene: true
       export_sc: true
-      export_sc_on_disk: false
+      convert_on_disk_layers: false

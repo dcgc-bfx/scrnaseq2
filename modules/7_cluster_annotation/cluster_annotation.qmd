@@ -13,6 +13,9 @@ params:
   
   # Default assay.
   default_assay: null
+  
+  # Metadata column for defining the clusters
+  cluster_column: "seurat_clusters"
 
   # Thresholds to define marker genes; only genes expressed in at least N%% of cells in each group are tested
   marker_pct: 0.25
@@ -71,8 +74,14 @@ library(ggplot2)
 library(future)
 library(patchwork)
 
-# Get module name and directory (needed to access files within the module directory)
-module_name = params$module_name
+library(clusterProfiler)
+library(msigdbr)
+library(stringr)
+library(dplyr)
+library(scales)
+library(openxlsx)
+
+# Get module directory (needed to access files within the module directory)
 module_dir = params$module_dir
 ```
 
@@ -90,6 +99,7 @@ source("R/functions_io.R")
 source("R/functions_plotting.R")
 source("R/functions_analysis.R")
 source("R/functions_degs.R")
+source("R/functions_enrichment.R")
 
 # Be verbose or not
 verbose = param("verbose")
@@ -117,27 +127,37 @@ if (!is.null(param("prev_module_dir"))) {
 }
 prev_sc_obj = file.path(prev_module_dir, "sc", "sc.rds")
 if(!file.exists(prev_sc_obj)) {
-  stop(FormatString("Could not find a sc.rds file in {{prev_module_dir}}. Was the respective module already run?"))
+  stop(FormatString("Could not find a sc.rds file in {prev_module_dir}. Was the respective module already run?"))
 }
 sc = SeuratObject::LoadSeuratRds(prev_sc_obj)
 
-# Move on-disk layers to faster temp location if requested
-on_disk_counts = param("on_disk_counts")
-on_disk_use_tmp = param("on_disk_use_tmp")
-
-if (on_disk_counts & on_disk_use_tmp) {
-  on_disk_path = tempdir()
-  with_progress({
-    sc = UpdateMatrixDirs(sc, dir=on_disk_path)
-  }, enable=verbose)
-} else {
-  on_disk_path = file.path(module_dir, "sc")
+# Check that the Seurat object is okay
+if (length(SeuratObject::Layers(sc)) == 0) {
+  stop("No layers found in Seurat object. Please check the input object.")
 }
 
 # Set default assay standard
 default_assay = param("default_assay")
 if (is.null(default_assay)) default_assay = Seurat::DefaultAssay(sc)
 Seurat::DefaultAssay(sc) = default_assay
+
+# ON-DISK LAYERS (if used)
+on_disk_counts = param("on_disk_counts")
+
+# If requested, move on-disk layers to faster temp location for faster access
+on_disk_use_tmp = param("on_disk_use_tmp")
+if (on_disk_counts & on_disk_use_tmp) {
+  on_disk_path = tempdir()
+  with_progress({
+    sc = UpdateMatrixDirs(sc, dir=on_disk_path)
+  }, enable=verbose)
+}
+
+# Get image names
+# At the moment an image is associated with only one assay.
+# For other assays, we plot all images.
+image_names = SeuratObject::Images(sc, assay=default_assay)
+if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
 ## Marker genes
@@ -167,24 +187,28 @@ In addition to detecting marker genes, it might be informative to detect genes t
 # Find DEGs for every cluster compared to all remaining cells 
 # Report up-regulated DEGS (=markers NAMING CONVENTION) and down-regulated ones
 
-# Prepare SCT for marker detection
-if (grepl(pattern="_SCT$", x=default_assay, perl=TRUE)) sc = Seurat::PrepSCTFindMarkers(object=sc, assay=default_assay)
+bcs = SeuratObject::Cells(sc[[default_assay]])
+barcode_metadata = sc[[]][bcs, ]
 
+# Metadata column containing the cluster information
+cluster_column = param("cluster_column")
 
 # Latest best-practice paper recommends to use a Wilcox test
 # RunPresto is a wrapper around "immunogenomics/presto", which is a fast implementation of a Wilcox test
 markers = SeuratWrappers::RunPrestoAll(object=sc,
                                        assay=default_assay,
+                                       group.by=cluster_column,
                                        test.use="wilcox",
                                        slot="data",
                                        only.pos=FALSE,
                                        min.pct=param("marker_pct"),
                                        logfc.threshold=param("marker_log2FC"),
                                        latent.vars=param("latent_vars"),
+                                       max.cells.per.ident=1000,
                                        verbose=FALSE)
 
 # If no markers were found, initialize the table so that further downstream chunks run
-if (ncol(markers)==0) markers = DegsEmptyMarkerResultsTable(levels(sc$seurat_clusters))
+if (ncol(markers)==0) markers = DegsEmptyMarkerResultsTable(levels(barcode_metadata[, cluster_column]))
 
 # Sort markers (function "DegsSort" in "R/functions_degs.R")
 markers = markers %>% DegsSort(group=c("cluster"))
@@ -198,7 +222,7 @@ markers_found = nrow(markers_filt$all) > 0
 markers_out = cbind(markers_filt$all, DegsAvgDataPerIdentity(sc, genes=markers_filt$all$gene, assay=default_assay))
 
 # Add marker table to Seurat object
-Seurat::Misc(sc, paste0("markers_", default_assay)) = list(condition_column="seurat_clusters", test="wilcox", 
+Seurat::Misc(sc, paste0("markers_", default_assay)) = list(condition_column=cluster_column, test="wilcox", 
                                    log2FC=param("marker_log2FC"), 
                                    min_pct=param("marker_pct"), 
                                    assay=default_assay, 
@@ -317,7 +341,7 @@ p
             for (gene in names(plist)) {
                 # Note: 'gene_patched' is 'gene' but with special characters removed since it will be used for the plot name
                 chunk_filled =  knitr::knit_expand(text=chunk_template1, type=type, cluster=cl, gene=gene, gene_patched=MakeNamesValid(gene))
-                if(interactive()) {
+                if (interactive()) {
                     print(EvalKnitrChunk(chunk_filled))
                 } else {
                     chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
@@ -355,7 +379,7 @@ p
         
         # Print
         chunk_filled =  knitr::knit_expand(text=chunk_template2, type=type, caption=caption)
-        if(interactive()) {
+        if (interactive()) {
             print(EvalKnitrChunk(chunk_filled))
         } else {
             chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
@@ -365,6 +389,90 @@ p
     cat(":::\n")
 }
 ```
+
+### Over-representation analysis of marker genes
+
+::: {.callout-note}
+
+This section presents the results of the over-representation analysis (ORA) performed on the marker genes identified for each cluster, focusing specifically on the [C8 collection](https://www.gsea-msigdb.org/gsea/msigdb/human/collections.jsp#C8) (cell type signature genesets) of the Molecular Signatures Database (MSigDB). ORA is a statistical method that determines whether a set of genes is enriched in a particular biological process or pathway (geneset). The analysis helps to identify cell type signatures that are significantly over-represented in the marker genes of each cluster, providing insights into the cell annotation of clusters.
+
+:::
+
+::: {.callout-note}
+
+The genesets present in C8 collection covers various cell types from Heart, GI Tract, Pancreas, Kidney, Liver, the Immune system, Retina, Olfactory tissue, and the Brain. So do not be surprised if you see a cell type annotated here that should not be in your data.
+
+The C8 collection contains the genesets for <i>Homo sapiens</i>. Using MSigDbr R-package, these genesets are retrieved and converted to target organism. Check [msigdbr::msigdbr_species()](https://cran.r-project.org/web/packages/msigdbr/vignettes/msigdbr-intro.html) for supported species.
+
+:::
+
+```{r}
+#| label: fig-cluster_annotation_markers_ora
+#| echo: false
+#| results: asis
+#| fig-cap: "Over-representation analysis of marker genes"
+
+species = gsub("_", " ", stringr::str_to_title(param("species")))
+species_tibble = msigdbr_species()
+
+if (any(species_tibble$species_name == species)) {
+  geneset_msigdb = msigdbr(species=species, category="C8")
+  term2gene = geneset_msigdb %>% 
+    dplyr::select(gs_name, gene_symbol) %>% 
+    as.data.frame()
+
+  # Get marker genes per cluster
+  markers_up_per_cluster = split(markers_filt$up$gene, markers_filt$up$cluster)
+  markers_down_per_cluster = split(markers_filt$down$gene, 
+                                    markers_filt$down$cluster)
+
+  # Perform ORA for each cluster
+  ora_up_results = lapply(names(markers_up_per_cluster), function(cluster) {
+    perform_ora(genes=markers_up_per_cluster[[cluster]], 
+    universe=rownames(sc), 
+    cluster=cluster, 
+    term2gene=term2gene)
+  })
+
+  # Combine results
+  ora_up_results_combined = do.call(rbind, ora_up_results)
+
+   # Plot results
+  if (!is.null(ora_up_results_combined) && nrow(ora_up_results_combined) > 0) {
+    top_terms = ora_up_results_combined %>%
+      group_by(Cluster) %>%
+      top_n(3, wt = -p.adjust) %>%
+      ungroup() %>%
+      mutate(Cluster=factor(as.numeric(Cluster))) %>%
+      mutate(Description=factor(Description, levels=
+                                    unique(Description[order(Cluster)])))
+    
+    p = ggplot(top_terms, aes(x=Cluster, y=Description, size=Count, 
+                               color=p.adjust)) +
+      geom_point() +
+      scale_color_viridis_c(direction=-1, 
+                            labels=label_scientific(digits=3)) +
+      theme_minimal() +
+      AddPlotStyle(xlab="Cluster", ylab="C8 genesets", legend_position="right") + 
+      theme(axis.text.x=element_text(size=6, angle=75, hjust=1)) +
+      labs(size="Gene Count", color="Adjusted p-value") +
+      scale_y_discrete(labels=function(y) str_wrap(gsub("_", " ", y), 
+                                                     width=30)) + 
+      coord_flip()
+
+    print(p)
+    
+    names(ora_up_results) = names(markers_up_per_cluster)
+  } else {
+    CalloutBox("No significant up-regulated terms found for any cluster.", 
+               type="note")
+  }
+} else {
+  CalloutBox("ORA skipped; provided species {species} not in MSigdbr.", 
+             type="note")
+}
+```
+
 ## Known marker genes {.tabset}
 
 Do cells in individual clusters express provided known marker genes?
@@ -420,14 +528,14 @@ if (!is.null(file_known_markers)) {
     known_markers_list = known_markers_list[!is_empty]
     
     # Count what is left
-    if(length(known_markers_list) > 0) { 
+    if (length(known_markers_list) > 0) { 
         known_markers_n = length(known_markers_list) 
         known_markers_vect = unlist(known_markers_list) %>% unique() %>% sort()
         idx_dotplot = sapply(seq(known_markers_list), function(x) length(known_markers_list[[x]]) <= 50)
     }
     
     # Calculate combined scores with UCell
-    if(length(known_markers_list) > 0) {
+    if (length(known_markers_list) > 0) {
         # Calculate scores based on the Mann-Whitney U statistic using UCell
         with_progress({
             known_markers_scores = CalculateModuleScoreUCell(matrix=Seurat::GetAssayData(sc, assay=default_assay, layer="counts"), features=known_markers_list, chunk_size=10000)
@@ -491,7 +599,7 @@ plist[['{{name}}']]
     cat("#####", name, "\n")
     
     chunk_filled =  knitr::knit_expand(text=chunk_template, name=name, i=i)
-    if(interactive()) {
+    if (interactive()) {
       print(EvalKnitrChunk(chunk_filled))
     } else {
       chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
@@ -549,7 +657,7 @@ plist[['{{name}}']]
   for (i in seq(plist)) {
     name = names(plist)[i]
     chunk_filled =  knitr::knit_expand(text=chunk_template, name=name, i=i)
-    if(interactive()) {
+    if (interactive()) {
       print(EvalKnitrChunk(chunk_filled))
     } else {
       chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
@@ -557,6 +665,8 @@ plist[['{{name}}']]
     }
   }
   
+} else {
+  CalloutBox("No known marker genes were provided and hence combined score plots are skipped.", type="note")
 }
 ```
 
@@ -605,7 +715,7 @@ plist[['{{gene}}']]
         # Loop through genes
         for (gene in names(plist)) {
             chunk_filled =  knitr::knit_expand(text=chunk_template, gene=gene, gene_patched=MakeNamesValid(gene), i=i)
-            if(interactive()) {
+            if (interactive()) {
                 print(EvalKnitrChunk(chunk_filled))
             } else {
                 chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
@@ -632,10 +742,10 @@ plist[['{{gene}}']]
 #| results: asis
 
 # Write markers
-outfile = paste0("markers.xlsx")
+outfile = FormatString("markers_assay_{default_assay}.xlsx", quote=FALSE)
 
 # Bring gene column to the first position, for better reading of the results
-markers_out = markers_out %>% dplyr::select(gene, everything())
+markers_out = markers_out %>% dplyr::select(gene, dplyr::everything())
 
 # Add Ensembl annotation if Ensembl was used 
 # This table has 0 columns if no Ensembl was used
@@ -643,11 +753,39 @@ annot_ensembl = sc[[default_assay]][[]] %>% dplyr::select(dplyr::starts_with("en
 
 # Split by cluster and write to file (function "DegsWriteToFile" in "R/functions_degs.R")
 invisible(DegsWriteToFile(split(markers_out, markers_out$cluster),
-                          annotation=annot_ensembl,
-                          file=file.path(module_dir, "results", "markers.xlsx")))
+                          annot_ensembl=annot_ensembl,
+                          file=file.path(module_dir, "results", outfile)))
 
 # Note
 CalloutBox("Marker features are written to {outfile}.", type="note")
+```
+
+
+### ORA
+
+```{r}
+#| label: cluster_annotation_save_ora
+#| results: asis
+
+if (length(ora_up_results) > 0) {
+  # Save ORA results
+  outfile = FormatString("marker_annotation_C8_ora_assay_{default_assay}.xlsx", quote=FALSE)
+  
+  # Create a new Excel workbook
+  wb = createWorkbook()
+  
+  # Loop through the list and add each data frame as a sheet
+  for (name in names(ora_up_results)) {
+    addWorksheet(wb, name)  # Use the list name as sheet name
+    writeData(wb, name, ora_up_results[[name]])  # Write the data frame
+  }
+  
+  # Save the workbook
+  invisible(saveWorkbook(wb, file.path(module_dir, "results", outfile), overwrite=TRUE))
+  
+  # Note
+  CalloutBox("ORA results are written to {outfile}.", type="note")
+}
 ```
 
 ### Software
@@ -663,15 +801,15 @@ gt(sessioninfo)
 #| label: cluster_annotation_save_seurat
 #| results: asis
 
-# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
-
 # Save Seurat object and layer data
 outdir = file.path(module_dir, "sc")
 with_progress({
   SaveSeuratRdsWrapper(sc,
-                       on_disk_layers=on_disk_counts,
-                       outdir=outdir)
+                       outdir=outdir,
+                       write_disk_data=FALSE,
+                       relative_paths=FALSE,
+                       compress=FALSE
+                       )
 }, enable=verbose)
 ```
 

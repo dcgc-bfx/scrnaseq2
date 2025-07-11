@@ -45,15 +45,16 @@ FormatString = function(x, quote=TRUE, sep=", ") {
 #' @param x Character string that will be formatted by the FormatString function
 #' @param type Type of callout box. Can be: 'note', 'tip', 'important', 'caution' and 'warning'.
 #' @param print Whether to print (if TRUE) or to return (FALSE) the message box
+#' @param quote Whether to quote expanded variables in the message box
 #' @return Character string to generate a message box
-CalloutBox = function(x, type, print=TRUE) {
+CalloutBox = function(x, type, print=TRUE, quote=TRUE) {
   valid_types = c("note", "tip", "important", "caution", "warning")
   assertthat::assert_that(type %in% valid_types,
                           msg=FormatString("Callout box typ {type} but must be one of: {valid_types*}."))
   
   
   
-  x = paste0("\n\n::: callout-", type, "\n", FormatString(x), "\n:::\n\n")
+  x = paste0("\n\n::: callout-", type, "\n", FormatString(x, quote=quote), "\n:::\n\n")
   if (print) {
     cat(x)
   } else {
@@ -128,7 +129,7 @@ param = function(p=NULL) {
     
     # Get general parameter if available
     if ("general" %in% names(profile_params)) {
-      param_set = purrr::list_modify(param_set, !!!profile_params[["general"]])
+      param_set = purrr::list_assign(param_set, !!!profile_params[["general"]])
     }
     
     # Get module-specific parameter if available
@@ -136,7 +137,7 @@ param = function(p=NULL) {
       profile_module_params = profile_params[["modules"]]
       
       if (module_name %in% names(profile_module_params)) {
-        param_set = purrr::list_modify(param_set, !!!profile_module_params[[module_name]])
+        param_set = purrr::list_assign(param_set, !!!profile_module_params[[module_name]])
       }
     }
   }
@@ -374,8 +375,9 @@ EvalKnitrChunk = function(x) {
 #' 
 #' @param filter Filter from yaml configuration
 #' @param orig_idents The samples in the analysis
+#' @param metadata The barcode metadata table
 #' @return A filter with entries for each sample
-PrepareBarcodeFilter = function(filter, orig_idents) {
+PrepareBarcodeFilter = function(filter, orig_idents, metadata) {
   if (is.null(filter) | length(filter) == 0) {
     return(NULL)
   }
@@ -392,6 +394,21 @@ PrepareBarcodeFilter = function(filter, orig_idents) {
   
   # Apply sample_specific filter (overwrite or add)
   filter = purrr::list_modify(filter, !!!sample_specific_filter)
+  
+  # Deal with filter that are all NA - assume that they are numeric
+  filter = purrr::map_depth(filter, -1, function(f) {
+    if (all(is.na(f))) {
+      f = as.numeric(f)
+    }
+    return(f)
+  })
+  
+  # Make sure filter columns exist in metadata
+  filter_cols = purrr::map(filter, names) %>% 
+    unlist() %>% 
+    unique()
+  assertthat::assert_that(all(filter_cols %in% colnames(metadata)),
+                          msg=FormatString("Filter columns {filter_cols*} not found in barcode metadata."))
   
   return(filter)
 }
@@ -418,6 +435,14 @@ PrepareFeatureFilter = function(filter, orig_idents) {
   
   # Apply sample_specific filter (overwrite or add)
   filter = purrr::list_modify(filter, !!!sample_specific_filter)
+  
+  # Deal with filter that are all NA - assume that they are numeric
+  filter = purrr::map_depth(filter, -1, function(f) {
+    if (all(is.na(f))) {
+      f = as.numeric(f)
+    }
+    return(f)
+  })
   
   return(filter)
 }
@@ -466,8 +491,8 @@ ScLists = function(sc, lists=NULL, lists_slot=NULL) {
   stored_lists = Seurat::Misc(sc, slot=lists_slot)
   assertthat::assert_that(!is.null(stored_lists), 
                           msg=FormatString("No lists found in misc slot of Seurat object (list slot: {lists_slot})."))
+  
   if (is.null(lists)) lists = names(stored_lists)
-      
   assertthat::assert_that(all(lists %in% names(stored_lists)), 
                           msg=FormatString("List(s) {lists} not found in misc slot of Seurat object (list slot: {lists_slot})."))
   

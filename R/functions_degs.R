@@ -2033,6 +2033,7 @@ EmptyEnrichrDf = function(overlap_split=FALSE) {
   }
 }
 
+# this enrichr function is not used anymore
 #' Tests a list of entrez gene symbols for functional enrichment via Enrichr.
 # '
 #' @param genes: A vector of entrez gene symbols.

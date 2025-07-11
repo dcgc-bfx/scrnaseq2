@@ -8,7 +8,7 @@
 SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
     # Checks
     assertthat::assert_that(margin %in% c("1", "2"),
-                            msg=FormatString("Margin can only be 1 - rows or 2 - columns."))
+                            msg="Margin can only be 1 - rows or 2 - columns.")
     
     # Split counts into chunks for processing (if requested)
     chunks = NULL
@@ -68,7 +68,7 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
                 if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
                 totals = Matrix::rowSums(counts)
                 
-                row_lst = split(as.integer(counts@x)*(-1), counts@i) ## rows to list
+                row_lst = split(as.er(counts@x)*(-1), counts@i) ## rows to list
                 row_lst = lapply(row_lst, function(x) return(sort(x)*(-1)))
                 
                 top_n_cts = lapply(top_n, function(n) {
@@ -147,18 +147,29 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
     return(top_n_counts)
 }
 
+#' Calculate percentage per column in a matrix.
+#'
+#' @param matrix Sparse (dgCMatrix)
+#' @return A matrix with percentages
+CalculateColumnPerc = function(mat) {
+  totals = colSums(mat)
+  totals = ifelse(totals>0, totals, 1)
+  return(t(t(mat) / totals) * 100)
+}
+
 #' Calculates the median of rows or columns of a sparse (dgCMatrix) or iterable (IterableMatrix) matrix. 
 #'
 #' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
 #' @param margin Margin for which to calculate median. Can be: 1 - rows, 2 - columns. Default is 1.
 #' @param chunk_size Iterable matrices will be converted into sparse matrics. To avoid storing the entire matrix in memory, only process this number of rows/columns at once. Default is no chunks.
+#' @param fun Function to apply to the matrix (chunk) before calculating the median. The function's only argument is the matrix itself. Can be NULL.
 #' @return A named vector with medians.
-CalculateMedians = function(matrix, margin=1, chunk_size=NULL, cores=1){
+CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
                           msg="Margin can only be 1 - rows or 2 - columns.")
   
-  # Define chunks
+  # Split data into chunks of size chunk_size for parallel processing
   chunks = NULL
   if (!is.null(chunk_size)) {
     if (margin == 1) {
@@ -181,29 +192,45 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, cores=1){
   }
   
   if (!is.null(chunks)) {
-    # Analyse chunks
+    # Analyse chunks in parallel
+    # The number of workers can be configured with future::plan (at top level)
     msg = paste("Calculate medians per ", ifelse(margin==1, "barcodes", "features"))
     progr = progressr::progressor(along=chunks, message=msg)
     medians = furrr::future_map(chunks, function(counts) {
       progr()
       if (margin == 1) {
-        # Per barcode
+        # Analyse columns (per barcode)
+        
+        # If data is still an on-disk IterableMatrix, convert to sparse matrix
         if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
+        
+        # Apply user-defined function stored in variable 'fun'
+        if (!is.null(fun)) counts = fun(counts)
+        
+        # Calculate medians with function for sparse matrices
         mds = sparseMatrixStats::rowMedians(counts)
       } else {
-        # Per feature
+        # Analyse rows (per feature)
+        
+        # If data is still an on-disk IterableMatrix, convert to sparse matrix
         if (!is(counts, "dgCMatrix")) counts = as(counts, "dgCMatrix")
+        
+        # Apply user-defined function stored in variable 'fun'
+        if (!is.null(fun)) counts = fun(counts)
+        
+        # 
         mds = sparseMatrixStats::colMedians(counts)
       }
       return(mds)
-    }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("margin"))) %>% 
+    }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("margin", "fun"))) %>% 
       purrr::flatten_dbl()
     progr(type='finish')
   } else {
-    # Convert to sparse matrix
-    if (!is(matrix, "dgCMatrix")) {
-      matrix = as(matrix, "dgCMatrix")
-    }
+    # If data is still an on-disk IterableMatrix, convert to sparse matrix
+    if (!is(matrix, "dgCMatrix")) matrix = as(matrix, "dgCMatrix")
+    
+    # Apply user-defined function stored in variable 'fun'
+    if (!is.null(fun)) matrix = fun(matrix)
     
     # Calculate medians
     if (margin == 1) {
@@ -225,7 +252,7 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, cores=1){
 CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
-                          msg=FormatString("Margin can only be 1 - rows or 2 - columns."))
+                          msg="Margin can only be 1 - rows or 2 - columns.")
   
   # Define chunks
   chunks = NULL
@@ -279,7 +306,8 @@ CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
   }
   
   colnames(boxplot_stats) = c("min", "q25", "q50", "q75", "max")
-  boxplot_stats$IQR = boxplot_stats$q75 - boxplot_stats$q25
+  iqr = boxplot_stats$q75 - boxplot_stats$q25
+  boxplot_stats$IQR = ifelse(is.na(iqr), 0, iqr)
   
   boxplot_stats$lower_whisker = purrr::pmap_dbl(boxplot_stats, function(min, q50, IQR, ...) {
     if (IQR>0) {
@@ -356,7 +384,7 @@ CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
                                     storeRanks=FALSE,
                                     force.gc=FALSE,
                                     name = "")
-            ucell = as.data.frame(ucell[[1]][["cells_AUC"]])
+            ucell = as.data.frame(ucell[[1]])
             rownames(ucell) = colnames(counts)
             return(ucell)
         }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("features")))
@@ -399,34 +427,46 @@ CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
   if (length(genes_s) >= 20 & length(genes_g2m) >= 20) {
-      # For each layer (dataset)
-      # In this case, we need to split the Seurat object 
-      # (since CellCycleScoring and AddModuleScore still cannot work with layers)
-      sc_split = Seurat::SplitObject(sc, split.by="orig.ident")
-      cell_cycle_scores = furrr::future_map_dfr(sc_split, function(s) {
-          # Check that the genes exist
-          genes_s_exists = genes_s %in% rownames(s[[assay]])
-          genes_g2m_exists = genes_g2m %in% rownames(s[[assay]])
-          
-          
-          if (sum(genes_s_exists) >= 20 & sum(genes_g2m_exists) >= 20) {
-              s = Seurat::CellCycleScoring(s,
-                                           s.features=genes_s[genes_s_exists],
-                                           g2m.features=genes_g2m[genes_g2m_exists],
-                                           assay=assay,
-                                           verbose=verbose)
-              cc_scores = s[[c("Phase", "S.Score", "G2M.Score")]]
-              cc_scores[["CC.Difference"]] = cc_scores[["S.Score"]] - cc_scores[["G2M.Score"]]
-          } else {
-              barcodes = Cells(s)
-              cc_scores = data.frame(Phase=rep(NA, length(barcodes)) %>% as.character(), 
-                                     S.Score=rep(0, length(barcodes)) %>% as.numeric(), 
-                                     G2M.Score=rep(0, length(barcodes)) %>% as.numeric(), 
-                                     CC.Difference=rep(0, length(barcodes)) %>% as.numeric(),
-                                     row.names=barcodes)
-          }
-          return(cc_scores)
-      }, .options = furrr::furrr_options(seed=getOption("random_seed")))
+    # For each layer (dataset)
+    # since CellCycleScoring and AddModuleScore still cannot work with layers
+    # In this case, we just keep the data layers
+    layers = SeuratObject::Layers(sc, assay=assay, search="^data\\.")
+    sc_split = purrr::map(layers, function(l) {
+      # do not calculate nCount and nFeature
+      op = options(Seurat.object.assay.calcn = FALSE)
+      on.exit(expr = options(op), add = TRUE)
+      
+      data = SeuratObject::LayerData(sc, assay=assay, layer=l)
+      s = CreateAssay5Object(data=data)
+      s = CreateSeuratObject(s, assay=assay)
+      return(s)
+    })
+    
+    # Calculate cell cycle scores
+    cell_cycle_scores = furrr::future_map_dfr(sc_split, function(s) {
+        # Check that the genes exist
+        genes_s_exists = genes_s %in% rownames(s[[assay]])
+        genes_g2m_exists = genes_g2m %in% rownames(s[[assay]])
+        
+        
+        if (sum(genes_s_exists) >= 20 & sum(genes_g2m_exists) >= 20) {
+            s = Seurat::CellCycleScoring(s,
+                                         s.features=genes_s[genes_s_exists],
+                                         g2m.features=genes_g2m[genes_g2m_exists],
+                                         assay=assay,
+                                         verbose=verbose)
+            cc_scores = s[[c("Phase", "S.Score", "G2M.Score")]]
+            cc_scores[["CC.Difference"]] = cc_scores[["S.Score"]] - cc_scores[["G2M.Score"]]
+        } else {
+            barcodes = Cells(s)
+            cc_scores = data.frame(Phase=rep(NA, length(barcodes)) %>% as.character(), 
+                                   S.Score=rep(0, length(barcodes)) %>% as.numeric(), 
+                                   G2M.Score=rep(0, length(barcodes)) %>% as.numeric(), 
+                                   CC.Difference=rep(0, length(barcodes)) %>% as.numeric(),
+                                   row.names=barcodes)
+        }
+        return(cc_scores)
+    }, .options = furrr::furrr_options(seed=getOption("random_seed")))
   } else {
       barcodes = Cells(sc)
       cell_cycle_scores = data.frame(Phase=rep(NA, length(barcodes)) %>% as.character(), 
@@ -720,32 +760,51 @@ FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variabl
 #' 
 #' @param sc Seurat v5 object.
 #' @param method Dimensionality reduction method. Can be: pca.
+#' @param name Name of the reduction in the Seurat object. If NULL, will be the method name in lowercase letters.
 #' @param assay Assay to analyze. If NULL, will be default assay of the Seurat object.
 #' @param dim_n Number of dimensions to compute. Default is 50.
 #' @param verbose Be verbose.
 #' @return Seurat v5 object with a new (integrated) reduction.
-RunDimRedWrapper = function(sc, method="PCA", assay=NULL, dim_n=50, verbose=TRUE) {
+RunDimRedWrapper = function(sc, method="pca", name=NULL, assay=NULL, dim_n=50, verbose=TRUE) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
     
   # Checks
-  valid_methods = c("PCA")
+  method = tolower(method)
+  valid_methods = c("pca")
   assertthat::assert_that(method %in% valid_methods,
                           msg=FormatMessage("Method is {method} but must be one of: {valid_methods*}."))
   
+  # Reduction name and key
+  if (is.null(name)) {
+    reduction_name = paste0(method, "_pca") %>% tolower()
+  } else {
+    reduction_name = name
+  }
+  reduction_key = gsub("[\\._]+", " ", reduction_name) %>%
+    stringr::str_to_title() %>%
+    gsub(" ", "", .)
+  reduction_key = paste0(reduction_key, "_")
+
   # Run dimensionality reduction
-  if (method == "PCA") {
+  if (method == "pca") {
     sc = Seurat::RunPCA(sc,
                         assay=assay,
                         verbose=verbose, 
                         npcs=min(dim_n, ncol(sc)), 
                         seed.use=getOption("random_seed"),
-                        reduction.name="pca",
-                        reduction.key="Pca_")
-    SeuratObject::Misc(sc[["pca"]], slot="title") = "PCA"
+                        reduction.name=reduction_name,
+                        reduction.key=reduction_key)
     
-    # Set as active dimensionality reduction
-    DefaultReduct(sc, assay=assay) = "pca"
+    # Set title and method in misc slot
+    SeuratObject::Misc(sc[[reduction_name]], slot="title") = paste0("PCA", " (", assay, ")")
+    SeuratObject::Misc(sc[[reduction_name]], slot="method") = "PCA"
   }
+
+  # Set default assay for dimensionality reduction
+  SeuratObject::DefaultAssay(sc[[reduction_name]]) = assay
+  
+  # Set as active dimensionality reduction
+  DefaultReduct(sc, assay=assay) = reduction_name
 
   return(sc)
 }
@@ -761,54 +820,100 @@ RunDimRedWrapper = function(sc, method="PCA", assay=NULL, dim_n=50, verbose=TRUE
 #' @param additional_args List of additional arguments to be passed to the integration method.
 #' @param verbose Be verbose.
 #' @return Seurat v5 object with a new (integrated) reduction.
-IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduct='pca', new_reduct=NULL, new_reduct_suffix=NULL, additional_args=NULL, verbose=TRUE) {
+IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduct=NULL, new_reduct=NULL, new_reduct_suffix=NULL, additional_args=NULL, verbose=TRUE) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   if (is.null(orig_reduct)) orig_reduct = SeuratObject::DefaultDimReduc(sc)
 
   # Checks
   valid_integration_methods = c("CCAIntegration", "RPCAIntegration", "HarmonyIntegration", "FastMNNIntegration", "scVIIntegration")
   assertthat::assert_that(integration_method %in% valid_integration_methods,
-                          msg=FormatString("Variable features method must must be one of: {valid_integration_methods*}."))
+                          msg=FormatString("Integration method method must be one of: {valid_integration_methods*}."))
   
   assertthat::assert_that(orig_reduct %in% SeuratObject::Reductions(sc),
                           msg=FormatString("Original reduction {orig_reduct} is not part of the Seurat object."))
   
-  # New reduction name
-  if (is.null(new_reduct)) {
-    new_reduct = dplyr::case_match(integration_method,
-                                   "CCAIntegration" ~ "cca",
-                                   "RPCAIntegration" ~ "rpca",
-                                   "HarmonyIntegration" ~ "harmony",
-                                   "FastMNNIntegration" ~ "mnn",
-                                   "scVIIntegration" ~ "scvii")
-  }
-  
-  if (!is.null(new_reduct_suffix)) {
-    new_reduct = paste0(new_reduct, new_reduct_suffix)
-  }
-  
-  # Add method-specific additional arguments that are always required (set only if they are not already set)
+  # Collect method-specific arguments that are always required (set only if they are not already set)
   integration_method_arg = integration_method
   if (integration_method == "CCAIntegration") {
-    # Normalization method
-    if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="SCT", x=assay), "SCT", "LogNormalize")
+    # Layers to use
+    layers = SeuratObject::Layers(sc, assay=assay, search="^data\\.")
+    
+    # Name of new reduction
+    new_reduct = paste0(assay, "_cca") %>% tolower()
+    
+    # Method call
+    integration_method_arg = "CCAIntegration"
+    
+    # Reduction title
+    new_reduct_title = "CCA"
   } else if (integration_method == "RPCAIntegration") {
-    # Our fixed version of RPCAIntegration
-    integration_method_arg = RPCAIntegration_Fixed 
-    # Normalization method
-    if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="SCT", x=assay), "SCT", "LogNormalize")
+    # Layers to use
+    layers = SeuratObject::Layers(sc, assay=assay, search="^data\\.")
+    
+    # Name of new reduction
+    new_reduct = paste0(assay, "_rpca") %>% tolower()
+    
+    # Method call
+    integration_method_arg = "RPCAIntegration"
+    
+    # Reduction title
+    new_reduct_title = "RPCA"
+  } else if (integration_method == "HarmonyIntegration") {
+    # Layers to use
+    layers = SeuratObject::Layers(sc, assay=assay, search="^data\\.")
+    
+    # Name of new reduction
+    new_reduct = paste0(assay, "_harmony") %>% tolower()
+    
+    # Method call
+    integration_method_arg = "HarmonyIntegration"
+    
+    # Reduction title
+    new_reduct_title = "Harmony"
   } else if (integration_method == "FastMNNIntegration") {
+    # Layers to use
+    layers = SeuratObject::Layers(sc, assay=assay, search="^data\\.")
+    
+    # Name of new reduction
+    new_reduct = paste0(assay, "_mnn") %>% tolower()
+    
+    # Method call
+    integration_method_arg = "FastMNNIntegration"
+    
     # Name of batch-corrected assay
-    if (!"reconstructed.assay" %in% names(additional_args)) additional_args[["reconstructed.assay"]] = paste(assay, "mnn", sep=".")
+    if (!"reconstructed.assay" %in% names(additional_args)) additional_args[["reconstructed.assay"]] = paste0(assay, "mnn")
+    
     # Add grouping information
-    additional_args[["groups"]] = data.frame(group=Idents(sc))
+    additional_args[["groups"]] = data.frame(group=SeuratObject::Idents(sc))
+    
+    # Reduction title
+    new_reduct_title = "FastMNN"
   } else if (integration_method == "scVIIntegration") {
-    # Our fixed version of scVIIntegration
+    # Layers to use
+    layers = SeuratObject::Layers(sc, assay=assay, search="^counts\\.")
+    
+    # Name of new reduction
+    new_reduct = paste0(assay, "_scvii") %>% tolower()
+    
+    # Method call
     integration_method_arg = scVIIntegration_Fixed
+
     # Conda environment for scVI
-    if (!"conda_env" %in% names(additional_args)) additional_args[["conda_env"]] = "base"
+    if (!"conda_env" %in% names(additional_args)) additional_args[["conda_env"]] = reticulate::py_config()[["python"]]
+
     # Add grouping information
     additional_args[["groups"]] = data.frame(group=Idents(sc))
+    
+    # Reduction title
+    new_reduct_title = "scVII"
+  }
+  
+  # Normalization method argument
+  if (!"normalization.method" %in% names(additional_args)) additional_args[["normalization.method"]] = ifelse(grepl(pattern="sct", x=assay), "SCT", "LogNormalize")
+  
+  # Additional suffix for name or new reduction
+  if (!is.null(new_reduct_suffix)) {
+    new_reduct = paste0(new_reduct, new_reduct_suffix)
   }
   
   # Call integration method
@@ -817,19 +922,28 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
                              method=integration_method_arg,
                              orig.reduction=orig_reduct,
                              assay=assay,
+                             layers=layers,
                              new.reduction=new_reduct,
                              verbose=verbose),
                         additional_args)
                    )
   
-  # Add title
-  SeuratObject::Misc(sc[[new_reduct]], slot="title") = integration_method
+  # Add title and method
+  SeuratObject::Misc(sc[[new_reduct]], slot="title") = paste0(new_reduct_title, " (", assay,")")
+  SeuratObject::Misc(sc[[new_reduct]], slot="method") = integration_method
   
   # Set as active dimensionality reduction
   DefaultReduct(sc, assay=assay) = new_reduct
   
+  # Set default assay for dimensionality reduction
+  SeuratObject::DefaultAssay(sc[[new_reduct]]) = assay
+  
   # Fix key
-  SeuratObject::Key(sc[[new_reduct]]) = stringr::str_to_title(SeuratObject::Key(sc[[new_reduct]]))
+  new_reduct_key = gsub("[\\._]+", " ", new_reduct) %>%
+    stringr::str_to_title() %>%
+    gsub(" ", "", .)
+  new_reduct_key = paste0(new_reduct_key, "_")
+  SeuratObject::Key(sc[[new_reduct]]) = new_reduct_key
 
   # Post-process
   if (integration_method == "CCAIntegration") {
@@ -840,7 +954,7 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
     
   } else if (integration_method == "FastMNNIntegration") {
     # Drop assay with corrected counts
-    #sc[[paste(assay, "Mnn", sep=".")]] = NULL
+    sc[[paste0(assay, "mnn")]] = NULL
     
   } else if (integration_method == "scVIIntegration") {
     
@@ -849,117 +963,45 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   return(sc)
 }
 
-#####################################################################################
-# This is a copy of the Seurat::RPCAIntegration from the Seurat develop branch:     #
-# - cannot scale data since only counts                                             #
-#####################################################################################
-RPCAIntegration_Fixed <- function (object = NULL, assay = NULL, layers = NULL, orig = NULL, 
-                                   new.reduction = "integrated.dr", reference = NULL, features = NULL, 
-                                   normalization.method = c("LogNormalize", "SCT"), dims = 1:30, 
-                                   k.filter = NA, scale.layer = "scale.data", dims.to.integrate = NULL, 
-                                   k.weight = 100, weight.reduction = NULL, sd.weight = 1, sample.tree = NULL, 
-                                   preserve.order = FALSE, verbose = TRUE, ...) {
-    op <- options(Seurat.object.assay.version = "v3", Seurat.object.assay.calcn = FALSE)
-    on.exit(expr = options(op), add = TRUE)
-    normalization.method <- match.arg(arg = normalization.method)
-    features <- features %||% SelectIntegrationFeatures5(object = object)
-    assay <- assay %||% 'RNA'
-    layers <- layers %||% Layers(object = object, search = 'data')
-    #check that there enough cells present
-    ncells <- sapply(X = layers, FUN = function(x) {ncell <-  dim(object[x])[2]
-    return(ncell) })
-    if (min(ncells) < max(dims))  {
-        abort(message = "At least one layer has fewer cells than dimensions specified, please lower 'dims' accordingly.")
-    }
-    if (normalization.method == 'SCT') {
-        #create grouping variables
-        groups <- CreateIntegrationGroups(object, layers = layers, scale.layer = scale.layer)
-        object.sct <- CreateSeuratObject(counts = object, assay = 'SCT')
-        object.sct$split <- groups[,1]
-        object.list <- SplitObject(object = object.sct, split.by = 'split')
-        object.list <- PrepSCTIntegration(object.list = object.list, anchor.features = features)
-        object.list <- lapply(X = object.list, FUN = function(x) {
-            x <- RunPCA(object = x, features = features, verbose = FALSE, npcs = max(dims))
-            return(x)
-        }
-        )
-    } else {
-        object.list <- list()
-        for (i in seq_along(along.with = layers)) {
-            object.list[[i]] <- CreateSeuratObject(
-              SeuratObject::CreateAssay5Object(data=object[layers[i]][features,])
-            )
-            VariableFeatures(object =  object.list[[i]]) <- features
-            object.list[[i]] <- ScaleData(object = object.list[[i]], verbose = TRUE)
-            object.list[[i]] <- RunPCA(object = object.list[[i]], verbose = TRUE, npcs=max(dims))
-            suppressWarnings(object.list[[i]][['RNA']]$counts <- NULL)
-        }
-    }
-    anchor <- FindIntegrationAnchors(object.list = object.list,
-                                     anchor.features = features,
-                                     scale = FALSE,
-                                     reduction = 'rpca',
-                                     normalization.method = normalization.method,
-                                     dims = dims,
-                                     k.filter = k.filter,
-                                     reference = reference,
-                                     verbose = verbose,
-                                     ...
-    )
-    slot(object = anchor, name = "object.list") <- lapply(
-        X = slot(
-            object = anchor,
-            name = "object.list"),
-        FUN = function(x) {
-            suppressWarnings(expr = x <- DietSeurat(x, features = features[1:2]))
-            return(x)
-        })
-    object_merged <- IntegrateEmbeddings(anchorset = anchor,
-                                         reductions = orig,
-                                         new.reduction.name = new.reduction,
-                                         dims.to.integrate = dims.to.integrate,
-                                         k.weight = k.weight,
-                                         weight.reduction = weight.reduction,
-                                         sd.weight = sd.weight,
-                                         sample.tree = sample.tree,
-                                         preserve.order = preserve.order,
-                                         verbose = verbose
-    )
-    
-    output.list <- list(object_merged[[new.reduction]])
-    names(output.list) <- c(new.reduction)
-    return(output.list)
-}
-
-####################################################################################
-# This is a copy of the Seurat::scVIIntegration with the following bugs fixed:     #
-# - cannot use on-disk matrices                                                    #
-####################################################################################
+# This function is a copy of the scVIIntegration (from the SeuratWrappers) with some bugs fixed.
+# We keep the original code (e.g. <- instead of =) and only fix the bugs.
 scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers = "counts", 
                                   conda_env = NULL, new.reduction = "integrated.dr", ndims = 30, 
                                   nlayers = 2, gene_likelihood = "nb", max_epochs = NULL, ...) 
 {
-  reticulate::use_condaenv(conda_env, required = TRUE)
+  # BUG/FIX - AP: Only use conda environment if specified
+  if (!is.null(conda_env)) reticulate::use_condaenv(conda_env, required = TRUE)
+  #
+  
   sc <- reticulate::import("scanpy", convert = FALSE)
+  scvi <- reticulate::import("scvi", convert = FALSE)
   anndata <- reticulate::import("anndata", convert = FALSE)
   scipy <- reticulate::import("scipy", convert = FALSE)
-  scvi <- reticulate::import("scvi", convert = FALSE)
-  scvi$settings$seed = 0L
-  object <- JoinLayers(object = object, layers = "counts")
-  adata <- sc$AnnData(X = scipy$sparse$csr_matrix(as(Matrix::t(LayerData(object, 
-                                                                         layer = "counts")[features, ]), "dgCMatrix")), obs = data.frame(group=groups), var = object[[]][features, 
-                                                                         ])
-  scvi$model$SCVI$setup_anndata(adata, batch_key = "group")
-  model = scvi$model$SCVI(adata = adata, n_latent = as.integer(x = ndims), 
-                          n_layers = as.integer(x = nlayers), gene_likelihood = gene_likelihood)
   if (is.null(max_epochs)) {
-    max_epochs <- reticulate::r_to_py(x = max_epochs)
+    max_epochs <- reticulate::r_to_py(max_epochs)
   }
   else {
-    max_epochs <- as.integer(x = max_epochs)
+    max_epochs <- as.integer(max_epochs)
   }
+  batches <- SeuratWrappers:::.FindBatches(object, layers=layers)
+  object <- JoinLayers(object = object, layers="counts")
+  
+  # BUG/FIX - AP: If on-disk matrices are used (with BPCells), convert to dgCMatrix first
+  counts_matrix <- as(t(SeuratObject::LayerData(object, layer="counts")[features, ]), "dgCMatrix")
+  adata <- sc$AnnData(X = scipy$sparse$csr_matrix(counts_matrix), obs = batches, var = object[[]][features,])
+  #
+  
+  # Set number of workers and batch size
+  num_workers <- future::nbrOfWorkers()
+  scvi$settings$dl_num_workers <- as.integer(num_workers)
+  scvi$settings$num_threads <- as.integer(num_workers)
+  scvi$settings$batch_size <- as.integer(512)
+  
+  scvi$model$SCVI$setup_anndata(adata, batch_key = "batch")
+  model <- scvi$model$SCVI(adata = adata, n_latent = as.integer(x = ndims), 
+                           n_layers = as.integer(x = nlayers), gene_likelihood = gene_likelihood)
   model$train(max_epochs = max_epochs)
-  latent = model$get_latent_representation()
+  latent <- model$get_latent_representation()
   latent <- as.matrix(latent)
   rownames(latent) <- reticulate::py_to_r(adata$obs$index$values)
   colnames(latent) <- paste0(new.reduction, "_", 1:ncol(latent))

@@ -71,6 +71,7 @@ AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, lege
 #' @param capitalize If TRUE, capitalize the first letter of the caption.
 #' @return A list of captions.
 GeneratePlotCaptions = function(plot_names, assay_names=NULL, split=NULL, capitalize=TRUE) {
+  if (length(plot_names) == 0) return(NULL)
 
   # Split names into two parts if requested
   if (!is.null(split)) {
@@ -174,10 +175,14 @@ GeneratePlotCaptions = function(plot_names, assay_names=NULL, split=NULL, capita
 #' contains filters per dataset. Filters for numeric columns must numeric vectors with min and max. Filter
 #' for character/factor columns must be character vectors with the values that should be kept. 
 #' level contains the filter values
+#' @param assay The assay of the barcodes. If NULL, defaults to default assay of the Seurat object.
 #' @param log10 If set to TRUE, show the y-axis in log10. Can also be a regular expression to apply only to specific columns. Only numeric columns will be affected.
 #' @return A list of ggplot2 objects.
-PlotBarcodeQC = function(sc, qc, filter=NULL, log10=FALSE) {
-  barcode_metadata = sc[[]]
+PlotBarcodeQC = function(sc, qc, filter=NULL, assay=NULL, log10=FALSE) {
+  # Get assay and barcodes
+  if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
+  bcs = SeuratObject::Cells(sc[[assay]])
+  barcode_metadata = sc[[]][bcs, ]
   
   # Determine QC type (numeric or non-numeric)
   is_numeric = purrr::map_lgl(qc, function(q) return(is.numeric(barcode_metadata[, q, drop=TRUE])))
@@ -213,7 +218,7 @@ PlotBarcodeQC = function(sc, qc, filter=NULL, log10=FALSE) {
   names(qc_thresholds_other) = qc[!is_numeric]
   
   # Plot numeric QC
-  plist_numeric = Seurat::VlnPlot(sc, features=qc[is_numeric], combine=FALSE, pt.size=0, layer="counts")
+  plist_numeric = Seurat::VlnPlot(sc, features=qc[is_numeric], combine=FALSE, pt.size=0, layer="counts", assay=assay)
   names(plist_numeric) = qc[is_numeric]
   
   plist_numeric = purrr::map(names(plist_numeric), function(n) {
@@ -281,10 +286,14 @@ PlotBarcodeQC = function(sc, qc, filter=NULL, log10=FALSE) {
 #' @param qc Pairs of barcode metadata columns to plot.
 #' @param filter A nested list where the first level is the barcode metadata column and the second levels 
 #' contains filters per dataset. Filters for numeric columns must numeric vectors with min and max. Filter
+#' @param assay The assay of the barcodes. If NULL, defaults to default assay of the Seurat object.
 #' for character/factor columns must be character vectors with the values that should be kept.
 #' @return A list of ggplot2 objects.
-PlotBarcodeQCCor = function(sc, qc, filter=NULL) {
-  barcode_metadata = sc[[]]
+PlotBarcodeQCCor = function(sc, qc, filter=NULL, assay=NULL) {
+  # Get assay and barcodes
+  if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
+  bcs = SeuratObject::Cells(sc[[assay]])
+  barcode_metadata = sc[[]][bcs, ]
   
   # Check QC type (only numeric allowed)
   qc_cols = purrr::flatten(qc) %>%
@@ -320,7 +329,7 @@ PlotBarcodeQCCor = function(sc, qc, filter=NULL) {
     f2 = c[2]
     
     # Plot QC feature f1 vs f2
-    p = Seurat::FeatureScatter(sc, feature1=f1, feature2=f2, shuffle=TRUE, seed=getOption("random_seed"))
+    p = Seurat::FeatureScatter(sc, cells=SeuratObject::Cells(sc[[assay]]), feature1=f1, feature2=f2, shuffle=TRUE, seed=getOption("random_seed"))
     p = p + AddPlotStyle(col=ScColours(sc, "orig.ident"))
     
     # Add filter thresholds for f1
@@ -380,6 +389,12 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
                                        method="vst",
                                        layer=paste("counts", n, sep="."),
                                        status=TRUE)
+      if (is.null(hvf_info)) {
+        hvf_info = SeuratObject::HVFInfo(sc[[assay]],
+                                 method="vst",
+                                 layer=paste("counts", n, sep="."),
+                                 status=TRUE)
+      }
       assertthat::assert_that(!is.null(hvf_info),
                               msg=FormatString("No variable feature information available for {assay}."))
     } else if (method == "scran") {
@@ -387,6 +402,12 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
                                        method="scran",
                                        layer=paste("counts", n, sep="."),
                                        status=TRUE)
+      if (is.null(hvf_info)) {
+        hvf_info = SeuratObject::HVFInfo(sc[[assay]],
+                                 method="scran",
+                                 layer=paste("counts", n, sep="."),
+                                 status=TRUE)
+      }
       assertthat::assert_that(!is.null(hvf_info),
                               msg=FormatString("No variable feature information available for {assay}."))
       
@@ -445,7 +466,7 @@ PlotRLE = function(sc, assay=NULL, layer="counts", nbarcodes=500, is_log=FALSE) 
   # Checks
   layers = SeuratObject::Layers(sc[[assay]], layer)
   assertthat::assert_that(length(layers) > 0,
-                          msg=FormatString("Could not find data for layer {{layer}} of assay {assay}."))
+                          msg=FormatString("Could not find data for layer {layer} of assay {assay}."))
   
   if (!is(sc[[assay]], "SCTAssay")) {
     # Standard assays
@@ -529,42 +550,62 @@ PlotRLE = function(sc, assay=NULL, layer="counts", nbarcodes=500, is_log=FALSE) 
 #' be passed on to SpatialDimPlot (sequencing-based) or ImageDimPlot (image-based).
 #'
 #' @param sc Seurat v5 object.
-#' @param images One or more images (name: image.XX) or FOV (name: fov.XXX). If NULL, will use all images in Seurat object.
+#' @param images One or more images. If NULL, will use all images in Seurat object.
+#' @param assay Get all images with this default assay.
 #' @return A list of ggplot2 objects.
-DimPlotSpatial = function(sc, images=NULL, ...) {
-    if (is.null(images)) images = SeuratObject::Images(sc) 
-    
-    plist = purrr::map(images, function(i) {
-        if (grepl("^fov\\.", i)) {
-            # Xenium FOV plot
-            return(Seurat::ImageDimPlot(sc, fov=i, ...))
-        } else {
-            # Visium image plot
-            return(Seurat::SpatialDimPlot(sc, images=i, ...))
-        }
-    })
-    return(plist)
+DimPlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
+  # If NULL, use the default assay of the Seurat object
+  if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
+  
+  # If images is NULL, get all images with default assay 'image_assay'
+  if (is.null(images)) {
+    images = SeuratObject::Images(sc, assay=assay)
+  }
+
+  # Plot
+  plist = purrr::map(images, function(i) {
+    image_type = class(sc@images[[i]])
+    if (grepl("Visium", image_type)) {
+      # Visium image plot
+      return(Seurat::SpatialDimPlot(sc, images=i, ...))
+    } else {
+      # Xenium FOV plot
+      return(Seurat::ImageDimPlot(sc, fov=i, ...))
+    }
+  })
+  names(plist) = images
+  return(plist)
 }
 
 #' Wrapper for spatial feature plots. Takes as input a Seurat v5 object, one or more image names and other parameters to 
 #' be passed on to SpatialFeaturePlot (sequencing-based) or ImageFeaturePlot (image-based).
 #'
 #' @param sc Seurat v5 object.
-#' @param images One or more images (name: image.XX) or FOV (name: fov.XXX). If NULL, will use all images in Seurat object.
+#' @param images One or more images. If NULL, will use all images in Seurat object.
+#' @param assay Get all images with this default assay.
 #' @return A list of ggplot2 objects.
-FeaturePlotSpatial = function(sc, images=NULL, ...) {
-    if (is.null(images)) images = SeuratObject::Images(sc) 
-    
-    plist = purrr::map(images, function(i) {
-        if (grepl("^fov\\.", i)) {
-            # Xenium FOV plot
-            return(Seurat::ImageFeaturePlot(sc, fov=i, ...))
-        } else {
-            # Visium image plot
-            return(Seurat::SpatialFeaturePlot(sc, images=i, ...))
-        }
-    })
-    return(plist)
+FeaturePlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
+  # If NULL, use the default assay of the Seurat object
+  if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
+  
+  # If images is NULL, get all images with default assay 'image_assay'
+  if (is.null(images)) {
+    images = SeuratObject::Images(sc, assay=assay)
+  }
+  
+  # Plot
+  plist = purrr::map(images, function(i) {
+    image_type = class(sc@images[[i]])
+    if (grepl("Visium", image_type)) {
+      # Visium image plot
+      return(Seurat::SpatialFeaturePlot(sc, images=i, ...))
+    } else {
+      # Xenium FOV plot
+      return(Seurat::ImageFeaturePlot(sc, fov=i, ...))
+    }
+  })
+  names(plist) = images
+  return(plist)
 }
 
 #' Transform a matrix cells (rows) x htos (cols) into a format that can be understood by feature_grid: cell class, name hto1, value hto1, name hto2, value hto2

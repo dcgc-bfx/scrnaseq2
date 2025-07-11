@@ -30,16 +30,16 @@ params:
   #                                   b) Specify 'ENSEMBL' to fetch gene information from Ensembl (gene features only), c) Leave empty or specify 'NO' to not rename features.
   #                                   If a dataset contains multiple assays, this option can be specified multiple times (comma-separated). 
   # - barcode_suffix (can be empty): Suffix to add to the barcodes. If left empty, numeric suffixes will be added ('-1', '-2', etc). If set to 'NO', no suffixes are added.
-  datasets_file: "datasets/10x_xenium_mouse_brain.xlsx"
+  datasets_file: "datasets/10x_pbmc_datasets.xlsx"
   
-  # Default assay. All cells must have this assay.
-  default_assay: RNA
+  # Default assay. Must be one of the assays listed in the 'assays' column of the datasets file. For VisiumHD, must include the bin size (e.g. RNA008).
+  default_assay: "RNA"
   
   # For large datasets: Do not keep counts in memory but store on disk in matrix directories. Computations will access only the relevant parts of the data. Once done, matrix directories will be saved together with the Seurat object in the module directory.
-  on_disk_counts: true
+  on_disk_counts: false
   
   # For large datasets: Copy matrix directories to a temporary directory for computations. This will improve performance if the temporary directory  has a better performance than normal disks (e.g. SSD). Once done, matrix directories will be copied back to the module directory. The temporary directory will be deleted once the R session exists.
-  on_disk_use_tmp: true
+  on_disk_use_tmp: false
   
   # Downsample data to at most n barcodes per sample
   downsample_barcodes_n: null
@@ -60,10 +60,15 @@ params:
   # When parsing plate information, set the name of the single-cell experiment (orig.ident) for each cell to the cell name after having removed the plate information
   plate_information_update_identity: false
 
-  # For 10x Xenium in situ data: Load cell "centroids", cell "segmentations" or both (default).
+  # For 10x Xenium in situ data: Load cell "centroids", cell "segmentation" or both (default).
   spatial_coordinate_type:
     - "centroids"
     - "segmentations"
+    
+  # For 10x Visium HD data: Which bin sizes to import.
+  visiumhd_bin_sizes:
+    - 8
+    - 16
   
   # Number of cores to use for computations
   cores: 4
@@ -79,7 +84,7 @@ execute:
 
 # Read data
 
-This workflow supports pre-processed data from a variety of sources, including single-cell data from platforms and protocols such as 10x Genomics, SmartSeq-2, Parse Biosciences and Scale Biosciences. Additionally, it can handle spatial data from the 10x Visium and 10x Xenium platforms.
+This workflow supports pre-processed data from a variety of sources, including single-cell data from platforms and protocols such as 10x Genomics, Smart-seq2 and Parse Biosciences. Additionally, it supports spatial data from the 10x Visium and 10x Xenium platforms.
 
 ```{r}
 #| label: setup
@@ -98,7 +103,6 @@ library(ggplot2)
 library(future)
 
 # Get module directory (needed to access files within the module directory)
-module_name = params$module_name
 module_dir = params$module_dir
 ```
 
@@ -166,16 +170,13 @@ for (i in 1:nrow(datasets)) {
   assertthat::assert_that(!is.na(datasets$path[i]),
                             msg=FormatString("Column 'path' cannot be empty or NA (row {i})."))
   
-  # Default assay must be present in all datasets - potential fix: Add an empty default assay table for each dataset without default assay - but is it neccessary (?)
   default_assay = param("default_assay")
-  assertthat::assert_that(default_assay %in% (strsplit(datasets$assays[i], ",") %>% unlist() %>% trimws()),
-                            msg=FormatString("Each dataset must contain the default assay {default_assay} (dataset {path})."))
 }
 
 # If barcode_suffix is NA, generates suffixes per experiment (-1, -2, ...) 
 if (any(is.na(datasets$barcode_suffix))) {
   assertthat::assert_that(sum(is.na(datasets$barcode_suffix)) == nrow(datasets),
-                            msg=FormatString("If one barcode suffix is empty/NA, all barcode suffixes need to be empty/NA."))
+                            msg="If one barcode suffix is empty/NA, all barcode suffixes need to be empty/NA.")
   datasets$barcode_suffix = factor(datasets$experiment, level=unique(datasets$experiment)) %>% as.integer() %>% paste0("-", .)
 }
 
@@ -272,15 +273,7 @@ cat(":::\n")
 
 ## Read counts and create Seurat object
 
-We next read the data into a Seurat object.
-
-::: {.callout-tip title="What is Seurat and which information is contained in a Seurat object?" collapse="true"}
-
-Seurat is an R-package that is used for the analysis of single-cell RNA-seq data. We read pre-processed data as described above, and convert it to a count matrix in R. In the case of single-cell RNA-seq 10x data, the count matrix contains the number of unique RNA molecules (UMIs) per gene and cell. In the case of single-cell RNA-seq SmartSeq-2 data, the count matrix contains the number of reads per gene and cell.
-
-In addition to the count matrix, the workflow stores additional information in the Seurat object, including but not limited to the normalized data, dimensionality reduction and cluster results.
-
-:::
+We next read the counts for each dataset. Here is the summary of barcodes and features for each dataset:
 
 ```{r}
 #| label: read_data_read_counts
@@ -296,19 +289,27 @@ counts_lst = list()
 
 for (i in 1:nrow(datasets)) {
   ###############################################################################
-  # Get experiment, sample, dataset path, technology, assays and barcode suffix #
+  # Get experiment, sample, path(s), technology, assays and barcode suffix #
   ###############################################################################
+
+  # Sample
   sample = datasets$sample[i]
+  # Experiment = dataset = orig.ident
   experiment = datasets$experiment[i]
-  path = datasets$path[i]
+  # Technology
   technology = datasets$technology[i]
+  # Assay(s) to read
   assays = strsplit(datasets$assays[i], split=",") %>% unlist() %>% trimws()
+  # Barcode suffix strategy (how to rename)
   barcode_suffix = datasets$barcode_suffix[i]
   if (is.na(barcode_suffix)) {
     barcode_suffix = paste0("-", i)
   } else if (barcode_suffix=='NO') {
     barcode_suffix = NULL
   }
+  
+  # Dataset file path
+  path = datasets$path[i]
 
   #########################
   # Read barcode metadata #
@@ -317,6 +318,7 @@ for (i in 1:nrow(datasets)) {
   if (is.na(barcode_metadata_files)) {
     barcode_metadata = NULL
   } else {
+    # Can be multiple files
     barcode_metadata_files = strsplit(barcode_metadata_files, split=",")  %>% unlist() %>% trimws()
     barcode_metadata = purrr::map(barcode_metadata_files, ReadMetadata)
     if (length(barcode_metadata) == 1) {
@@ -331,6 +333,7 @@ for (i in 1:nrow(datasets)) {
   if (is.na(feature_metadata_files)) {
     feature_metadata = NULL
   } else {
+    # Can be multiple files
     feature_metadata_files = strsplit(feature_metadata_files, split=",")  %>% unlist() %>% trimws()
     feature_metadata = purrr::map(feature_metadata_files, ReadMetadata)
     if (length(feature_metadata) == 1) {
@@ -342,13 +345,17 @@ for (i in 1:nrow(datasets)) {
   # Read counts #
   ###############
   
+  # For Visium HD; which bin sizes to use
+  visiumhd_bin_sizes = param("visiumhd_bin_sizes")
+  
   # Read counts
   counts_lst[[i]] = ReadCounts(path=path,
-                                    technology=technology,
-                                    assays=assays,
-                                    barcode_metadata=barcode_metadata,
-                                    feature_metadata=feature_metadata,
-                                    barcode_suffix=barcode_suffix)
+                               technology=technology,
+                               assays=assays,
+                               barcode_metadata=barcode_metadata,
+                               feature_metadata=feature_metadata,
+                               barcode_suffix=barcode_suffix,
+                               visiumhd_bin_sizes=visiumhd_bin_sizes)
   
   #################################
   # If requested, rename features #
@@ -373,7 +380,6 @@ for (i in 1:nrow(datasets)) {
   for (j in seq_along(counts_lst[[i]])) {
     assay = attr(counts_lst[[i]][[j]], "assay")
     feature_metadata = attr(counts_lst[[i]][[j]], "feature_metadata")
-    
     
     if (rename_features[j] == 'NO') {
       # 'NO': no renaming - just keep the current row names
@@ -418,7 +424,6 @@ for (i in 1:nrow(datasets)) {
       new_feature_names = ifelse(is.na(new_feature_names) | nchar(new_feature_names)==0, rownames(feature_metadata), new_feature_names)
     }
 
-    
     # Now make new feature names Seurat-compatible
     if (any(grepl(pattern="_", x=new_feature_names, fixed=TRUE))) {
       CalloutBox(x="New feature names contain '_' after renaming for dataset {path}, assay {assay}. All occurences will be replaced with '-'.", type="warning")
@@ -436,7 +441,6 @@ for (i in 1:nrow(datasets)) {
   for (j in seq_along(counts_lst[[i]])) {
     attr(counts_lst[[i]][[j]], "sample") = sample
     attr(counts_lst[[i]][[j]], "orig.ident") = experiment
-    attr(counts_lst[[i]][[j]], "path") = path
   }
 }
 
@@ -491,59 +495,7 @@ for (i in seq(counts_lst)) {
     attr(counts_lst[[i]][[j]], "path") = path
   }
 }
-
-######################################################
-# If requested, write counts to matrix directory     #
-# else convert to in-memory matrix of type dgCMatrix #
-######################################################
-
-# - allows to analyse big datasets
-# - requires Seurat v5 and BPcells
-
-on_disk_counts = param("on_disk_counts")
-on_disk_use_tmp = param("on_disk_use_tmp")
-if (on_disk_use_tmp) {
-  on_disk_path = tempdir()
-} else {
-  on_disk_path = file.path(module_dir, "tmp")
-}
-
-for (i in seq(counts_lst)) {
-  for(j in seq_along(counts_lst[[i]])) {
-    # Metadata gets lost when saving
-    feature_metadata = attr(counts_lst[[i]][[j]], "feature_metadata")
-    barcode_metadata = attr(counts_lst[[i]][[j]], "barcode_metadata")
-    technology = attr(counts_lst[[i]][[j]], "technology")
-    assay = attr(counts_lst[[i]][[j]], "assay")
-    sample = attr(counts_lst[[i]][[j]], "sample")
-    experiment = attr(counts_lst[[i]][[j]], "orig.ident")
-    path = attr(counts_lst[[i]][[j]], "path")
-  
-    if (on_disk_counts) {
-      # Write counts to matrix directory
-      # Then open matrix directory for analysis
-      #counts_lst[[i]][[j]] = BPCells::open_matrix_dir(file.path(on_disk_path, paste(assay, "counts", experiment, sep=".")))
-      counts_lst[[i]][[j]] = WriteCounts_MatrixDir(counts=counts_lst[[i]][[j]],
-                                                   path=file.path(on_disk_path, paste(assay, "counts", experiment, sep=".")),
-                                                   overwrite=TRUE)
-    } else {
-      # Convert to in-memory matrix
-      counts_lst[[i]][[j]] = as(counts_lst[[i]][[j]], "dgCMatrix")
-    }
-    
-    # Add attributes barcode_metadata and feature_metadata, as well as technology and assay
-    attr(counts_lst[[i]][[j]], "feature_metadata") = feature_metadata
-    attr(counts_lst[[i]][[j]], "barcode_metadata") = barcode_metadata
-    attr(counts_lst[[i]][[j]], "technology") = technology
-    attr(counts_lst[[i]][[j]], "assay") = assay
-    attr(counts_lst[[i]][[j]], "sample") = sample
-    attr(counts_lst[[i]][[j]], "orig.ident") = experiment
-    attr(counts_lst[[i]][[j]], "path") = path
-  }
-}
 ```
-
-Here is the summary of barcodes and features for each dataset:
 
 ```{r}
 #| label: tbl-read_data_counts_summary
@@ -560,10 +512,11 @@ counts_summary = data.frame(
 gt(counts_summary)
 ```
 
-In case, the count datasets are very big, it is possible to (randomly) sample barcodes to generate smaller count subsets which may be faster to analyse but still give meaningful results. The number of barcodes to sample can either be a fix number or the number of barcodes in the smallest sample. Similarly, it is also possible to sample down features.
+In case, the count datasets are very big, it is possible to (randomly) sample barcodes to generate smaller count subsets which may be faster to analyse but still give meaningful results. The number of barcodes to sample can either be a fixed number or the number of barcodes in the smallest sample. Similarly, it is also possible to sample down features.
 
 ```{r}
 #| label: read_data_downsample
+#| results: asis
 
 # Downsample barcodes (cells, nuclei or spots)
 
@@ -676,7 +629,76 @@ if (!is.null(downsample_barcodes_n) & !is.null(downsample_features_n)) {
 }
 ```
 
-Next, we create the Seurat object. This is a summary representation of the object:
+It is also possible to store the raw and normalized count on disk and only load them into memory when needed. This significantly reduces the memory footprint of downstream analyses. Furthermore, the resulting Seurat object is much smaller because the counts are stored in extra directories. However, this also means that these directories always have to be provided in addition to the Seurat object when running analyses.
+
+```{r}
+#| label: read_data_write_on_disk_matrices
+#| results: asis
+
+######################################################
+# If requested, write counts to matrix directory     #
+# else convert to in-memory matrix of type dgCMatrix #
+######################################################
+
+# - allows to analyse big datasets
+# - requires Seurat v5 and BPcells
+on_disk_counts = param("on_disk_counts")
+on_disk_use_tmp = param("on_disk_use_tmp")
+if (on_disk_use_tmp) {
+  on_disk_path = tempdir()
+} else {
+  on_disk_path = file.path(module_dir, "tmp")
+}
+
+for (i in seq(counts_lst)) {
+  for(j in seq_along(counts_lst[[i]])) {
+    # Metadata gets lost when saving
+    feature_metadata = attr(counts_lst[[i]][[j]], "feature_metadata")
+    barcode_metadata = attr(counts_lst[[i]][[j]], "barcode_metadata")
+    technology = attr(counts_lst[[i]][[j]], "technology")
+    assay = attr(counts_lst[[i]][[j]], "assay")
+    sample = attr(counts_lst[[i]][[j]], "sample")
+    experiment = attr(counts_lst[[i]][[j]], "orig.ident")
+    path = attr(counts_lst[[i]][[j]], "path")
+    
+    if (on_disk_counts) {
+      # Write counts to matrix directory
+      # Then open matrix directory for analysis
+      counts_lst[[i]][[j]] = WriteCounts_MatrixDir(counts=counts_lst[[i]][[j]],
+                                                   path=file.path(on_disk_path, paste(assay, "counts", experiment, sep=".")),
+                                                   overwrite=TRUE)
+    } else {
+      # Convert to in-memory matrix
+      counts_lst[[i]][[j]] = as(counts_lst[[i]][[j]], "dgCMatrix")
+    }
+    
+    # Add attributes barcode_metadata and feature_metadata, as well as technology and assay
+    attr(counts_lst[[i]][[j]], "feature_metadata") = feature_metadata
+    attr(counts_lst[[i]][[j]], "barcode_metadata") = barcode_metadata
+    attr(counts_lst[[i]][[j]], "technology") = technology
+    attr(counts_lst[[i]][[j]], "assay") = assay
+    attr(counts_lst[[i]][[j]], "sample") = sample
+    attr(counts_lst[[i]][[j]], "orig.ident") = experiment
+    attr(counts_lst[[i]][[j]], "path") = path
+  }
+  
+  if (on_disk_counts) {
+    CalloutBox(x="Raw and normalized counts will be stored on disk. The names of the corresponding directories have the following structure: counts/data.assay.dataset.", type="note")
+  } else {
+    CalloutBox(x="Raw and normalized counts will be kept in memory and stored in the Seurat object.", type="note")
+  }
+}
+```
+
+Next, we create the Seurat object. 
+
+::: {.callout-tip title="What is Seurat and which information is contained in a Seurat object?" collapse="true"}
+
+Seurat is an R-package that is used for the analysis of single-cell RNA-seq data. We read pre-processed data as described above, and convert it to a count matrix in R. In the case of single-cell RNA-seq 10x data, the count matrix contains the number of unique RNA molecules (UMIs) per gene and cell. In the case of single-cell RNA-seq SmartSeq-2 data, the count matrix contains the number of reads per gene and cell.
+
+In addition to the count matrix, the workflow stores additional information in the Seurat object, including but not limited to the normalized data, dimensionality reduction and cluster results.
+
+:::
 
 ```{r}
 #| label: read_data_seurat_object
@@ -684,151 +706,126 @@ Next, we create the Seurat object. This is a summary representation of the objec
 
 # Create Seurat object with assays and metadata for barcodes (cells, nuclei or spots) and features (genes, peaks or proteins)
 
-# List all assays in all datasets
-all_assays = purrr::map_depth(counts_lst, 2, attr, "assay") %>% 
+# List all assays and get default assay
+all_assays = purrr::map_depth(counts_lst, 2, attr, "assay") %>%
   purrr::flatten() %>% 
   unlist() %>% 
   unique()
 
-#################
-# Default assay #
-#################
-
-# Collect default assay datasets
 default_assay = param("default_assay")
-has_assay = purrr::map(counts_lst, purrr::pluck_exists, default_assay) %>% purrr::flatten_lgl()
-assay_counts_lst = purrr::map(counts_lst[has_assay], purrr::pluck, default_assay)
-names(assay_counts_lst) = purrr::map(assay_counts_lst, attr, "orig.ident") %>% unlist()
+assertthat::assert_that(default_assay %in% all_assays,
+                        msg=FormatString("Default assay {default_assay} not found. Available assays are: {all_assays*}."))
+all_assays = c(default_assay, setdiff(all_assays, default_assay))
 
-# Collect barcode metadata (from all assays/datasets)
-barcode_metadata = purrr::map_dfr(seq_along(counts_lst), function(i) {
-  metadata = data.frame(rowname=colnames(assay_counts_lst[[i]]))
-  metadata$orig.ident = attr(assay_counts_lst[[i]], "orig.ident")
-  metadata$sample = attr(assay_counts_lst[[i]], "sample")
-  metadata$technology = attr(assay_counts_lst[[i]], "technology")
+# Create Seurat object by iteratively adding all assays
+sc = NULL
+for(assay in all_assays) {
+  # Collect counts matrices for assay
+  assay_counts_lst = purrr::map(counts_lst, function(cts_lst) {
+    cts_lst = purrr::keep(cts_lst, function(cts) return(attr(cts, "assay") == assay))
+  }) %>% purrr::flatten()
+  orig_idents = purrr::map_chr(assay_counts_lst, attr, "orig.ident") %>% unname()
+  names(assay_counts_lst) = orig_idents
   
-  bc_meta = attr(assay_counts_lst[[i]], "barcode_metadata") %>% 
-    tibble::rownames_to_column()
-  bc_meta$sample = NULL
-  bc_meta$technology = NULL
-  bc_meta$orig.ident = NULL
-  metadata = dplyr::left_join(metadata, bc_meta, by="rowname")
-  rownames(metadata) = metadata$rowname
-  
-  metadata = metadata %>% dplyr::select(-rowname)
-  return(metadata)
-})
-barcode_metadata$orig.ident = factor(barcode_metadata$orig.ident, levels=unique(barcode_metadata$orig.ident))
-barcode_metadata$sample = factor(barcode_metadata$sample, levels=unique(barcode_metadata$sample))
-barcode_metadata$technology = factor(barcode_metadata$technology, levels=unique(barcode_metadata$technology))
-
-# Collect feature metadata for default assay datasets
-# Group by feature name and make unique values
-feature_metadata = purrr::map(seq_along(assay_counts_lst), function(i) {
-  metadata = attr(assay_counts_lst[[i]], "feature_metadata") %>% tibble::rownames_to_column()
-  return(metadata)
-}) %>% dplyr::bind_rows()
-
-feature_metadata = feature_metadata %>% 
-  dplyr::group_by(rowname) %>%
-  dplyr::summarise_all(dplyr::first, na_rm=TRUE) %>% 
-  as.data.frame()
-rownames(feature_metadata) = feature_metadata$rowname
-feature_metadata = feature_metadata %>% dplyr::select(-rowname)
-
-# Remove since we do not need these attributes
-for(i in seq_along(assay_counts_lst)) {
-  attr(assay_counts_lst[[i]], "barcode_metadata") = NULL
-  attr(assay_counts_lst[[i]], "feature_metadata") = NULL
-}
-
-# Create Seurat default assay object
-assay_obj = SeuratObject::CreateAssay5Object(counts=assay_counts_lst)
-if (length(assay_counts_lst) == 1) {
-  n = names(assay_counts_lst)
-  assay_obj = split(assay_obj, rep(n, ncol(assay_obj)))
-}
-rownames(assay_obj@meta.data) = rownames(assay_obj)
-
-# Add to Seurat default assay object
-assay_obj = SeuratObject::AddMetaData(assay_obj, metadata=feature_metadata)
-
-# Create Seurat object
-sc = Seurat::CreateSeuratObject(counts=assay_obj, meta.data=barcode_metadata, assay=default_assay, names.delim=NULL, names.field=NULL)
-
-# Fix NA values in barcode metadata
-n =  paste("nCount", default_assay, sep="_")
-i = is.na(sc[[]][, n]) %>% which()
-sc[[]][i, n] = 0
-
-n =  paste("nFeature", default_assay, sep="_")
-i = is.na(sc[[]][, n]) %>% which()
-sc[[]][i, n] = 0
-
-################
-# Other assays #
-################
-
-# Add other assays to Seurat object
-for(a in setdiff(all_assays, default_assay)) {
-  # Collect assay datasets
-  has_assay = purrr::map(counts_lst, purrr::pluck_exists, a) %>% purrr::flatten_lgl()
-  assay_counts_lst = purrr::map(counts_lst[has_assay], purrr::pluck, a)
-  names(assay_counts_lst) = purrr::map(assay_counts_lst, attr, "orig.ident") %>% unlist()
+  # Collect barcode metadata
+  barcode_metadata = purrr::map_dfr(assay_counts_lst, function(cts) {
+    metadata = data.frame(rowname=colnames(cts))
+    metadata$orig.ident = attr(cts, "orig.ident")
+    metadata$sample = attr(cts, "sample")
+    metadata$technology = attr(cts, "technology")
+    
+    bc_meta = attr(cts, "barcode_metadata") %>% 
+      tibble::rownames_to_column()
+    bc_meta$sample = NULL
+    bc_meta$technology = NULL
+    bc_meta$orig.ident = NULL
+    metadata = dplyr::left_join(metadata, bc_meta, by="rowname")
+    rownames(metadata) = metadata$rowname
+    
+    metadata = metadata %>% dplyr::select(-rowname)
+    return(metadata)
+  })
+  barcode_metadata$orig.ident = factor(barcode_metadata$orig.ident, levels=unique(barcode_metadata$orig.ident))
+  barcode_metadata$sample = factor(barcode_metadata$sample, levels=unique(barcode_metadata$sample))
+  barcode_metadata$technology = factor(barcode_metadata$technology, levels=unique(barcode_metadata$technology))
   
   # Collect feature metadata for default assay datasets
   # Group by feature name and make unique values
-  feature_metadata = purrr::map(seq_along(assay_counts_lst), function(i) {
-    metadata = attr(assay_counts_lst[[i]], "feature_metadata") %>% tibble::rownames_to_column()
+  feature_metadata = purrr::map(assay_counts_lst, function(cts) {
+    metadata = attr(cts, "feature_metadata") %>% tibble::rownames_to_column()
     return(metadata)
   }) %>% dplyr::bind_rows()
-
+  
   feature_metadata = feature_metadata %>% 
     dplyr::group_by(rowname) %>%
     dplyr::summarise_all(dplyr::first, na_rm=TRUE) %>% 
     as.data.frame()
   rownames(feature_metadata) = feature_metadata$rowname
   feature_metadata = feature_metadata %>% dplyr::select(-rowname)
-
+  
   # Remove since we do not need these attributes
-  for(i in seq_along(assay_counts_lst)) {
+  for (i in seq_along(assay_counts_lst)) {
     attr(assay_counts_lst[[i]], "barcode_metadata") = NULL
     attr(assay_counts_lst[[i]], "feature_metadata") = NULL
   }
   
-  # Create Seurat default assay object
+  # Create Seurat default assay object, make sure that layers are named "counts.dataset"
   assay_obj = SeuratObject::CreateAssay5Object(counts=assay_counts_lst)
   if (length(assay_counts_lst) == 1) {
     n = names(assay_counts_lst)
     assay_obj = split(assay_obj, rep(n, ncol(assay_obj)))
   }
   rownames(assay_obj@meta.data) = rownames(assay_obj)
-
-  # Add to Seurat default assay object
+  
+  # Add feature metadata to Seurat default assay object
   assay_obj = SeuratObject::AddMetaData(assay_obj, metadata=feature_metadata)
-  sc[[a]] = assay_obj
   
-  # Fix NA values in barcode metadata
-  n =  paste("nCount", a, sep="_")
-  i = is.na(sc[[]][, n]) %>% which()
-  sc[[]][i, n] = 0
-  
-  n =  paste("nFeature", a, sep="_")
-  i = is.na(sc[[]][, n]) %>% which()
-  sc[[]][i, n] = 0
-  
+  if (is.null(sc)) {
+    # If it is the first assay, create the Seurat object
+    sc = Seurat::CreateSeuratObject(counts=assay_obj, meta.data=barcode_metadata, assay=default_assay, names.delim=NULL, names.field=NULL)
+  } else {
+    # Else add to the Seurat object using two different approaches
+    sc_barcodes = purrr::map(SeuratObject::Assays(sc), function(a) return(SeuratObject::Cells(sc[[a]]))) %>% 
+      unlist() %>% 
+      unique()
+    assay_obj_barcodes = SeuratObject::Cells(assay_obj)
+    
+    if (all(assay_obj_barcodes %in% sc_barcodes)) {
+      # a) Overlapping barcodes (all already exist in the Seurat object)
+      # just add the assay
+      sc[[assay]] = assay_obj
+    } else if (all(!assay_obj_barcodes %in% sc_barcodes)) {
+      # b) Non-overlapping barcodes (all barcodes are new to the Seurat object)
+      # Create a separate Seurat object and then merge
+      s = Seurat::CreateSeuratObject(counts=assay_obj, meta.data=barcode_metadata, assay=assay, names.delim=NULL, names.field=NULL)
+      
+      # Collect barcode metadata factor levels of both datasets combined (since merge removes the factors)
+      barcode_metadata_levels = purrr::map(dplyr::bind_rows(sc[[]], s[[]]), levels) %>% purrr::compact()
+
+      # Merge
+      sc = merge(sc, s)
+      
+      # Restore factor levels
+      for (col in names(barcode_metadata_levels)) {
+        sc@meta.data[, col] = factor(sc@meta.data[, col], levels=barcode_metadata_levels[[col]])
+      }
+    } else {
+      # c) only some barcodes overlap (some barcodes are new to the Seurat object)
+      # not possible
+      stop("Some barcodes are new to the Seurat object and some are already present. This is not supported.")
+    }
+  }
 }
 
-#########
-# Other #
-#########
+# Set default assay
+SeuratObject::DefaultAssay(sc) = default_assay
 
 # Parse plate information if requested
 parse_plate_information = param("parse_plate_information")
 plate_information_regex = param("plate_information_regex")
 plate_information_update_identity = param("plate_information_update_identity")
   
-if (parse_plate_information & any(grepl(pattern=plate_information_regex, sc$orig_barcode))) {
+if (parse_plate_information & any(grepl(pattern=plate_information_regex, x=sc$orig_barcode))) {
   # Parse plate information
   plate_information = ParsePlateInformation(sc$orig_barcode, pattern=plate_information_regex)
   rownames(plate_information) = colnames(sc)
@@ -862,19 +859,23 @@ if (parse_plate_information & any(grepl(pattern=plate_information_regex, sc$orig
 # Set default identity
 Seurat::Idents(sc) = "orig.ident"
 
-# Remove cells with zero counts
-names_nonzero_cells = sc[[]] %>% dplyr::filter(.data[[paste0("nCount_", default_assay)]] > 0) %>% rownames()
-n_zero_cells = sc[[]] %>% dplyr::filter(.data[[paste0("nCount_", default_assay)]] == 0) %>% nrow()
-if (n_zero_cells > 0) {
-  sc = subset(sc, cells=names_nonzero_cells)
-  CalloutBox("Removed {n_zero_cells} cells with zero counts.", type="note")
-}
+# Remove big objects that are not needed anymore and call garbage collector
+rm(counts_lst, assay_counts_lst, assay_obj, barcode_metadata, feature_metadata)
+invisible(gc())
+
+# Add datasets to Seurat object
+sc@misc$datasets = datasets
+
+# Note: Previously we also removed cells with zero counts since they caused an error in downstream analysis.
+# This is now fixed and filtering of these cells will be done in the qc modules.
 ```
 
-```{r}
-#| label: read_data_seurat_object_print
+This is a summary representation of the object:
 
-# Print sc
+```{r}
+#| label: read_data_print_seurat_object
+
+# Print
 sc
 ```
 
@@ -892,31 +893,22 @@ sc = ScAddColours(sc, colours=list(
 ))
 ```
 
-For spatial workflows, we add the image information.
+For spatial datasets, we read the image information and add it to the Seurat object.
 
 ```{r}
 #| label: read_data_read_images
 
-# Read images
+# Read images  (10x Visium, 10x Visium HD and 10x Xenium only)
 
-# Add images (10x Visium and 10x Xenium only)
-for (i in seq_along(counts_lst)) {
-  technology = attr(counts_lst[[i]][[1]], "technology")
-  orig_ident = attr(counts_lst[[i]][[1]], "orig.ident")
-  path = attr(counts_lst[[i]][[1]], "path")
-  default_assay = param("default_assay")
-  
-  # Two technologies have image data
-  if (technology == "10x_visium") {
-    # 10x Visium: image is in subdirectory 'spatial'
-    image_dir = file.path(dirname(path), "spatial")
-    assertthat::assert_that(dir.exists(image_dir),
-                                msg=FormatString("10x Visium dataset {path} does not have a directory 'spatial' with spatial data."))
-  } else if (technology == "10x_xenium") {
-    # 10x Xenium_ image is in the same directory
-    image_dir = dirname(path)
-  } else {
-    # other: skip
+# Per dataset
+for (i in 1:nrow(datasets)) {
+  # Experiment = orig.ident, technology and path
+  orig_ident = datasets$experiment[i]
+  technology = datasets$technology[i]
+  path = datasets$path[i]
+
+  # Three technologies have image data
+  if (!technology %in% c("10x_visium", "10x_visiumhd" ,"10x_xenium")) {
     next
   }
   
@@ -925,36 +917,61 @@ for (i in seq_along(counts_lst)) {
     dplyr::filter(orig.ident==orig_ident) %>%
     dplyr::select(orig_barcode)
   barcodes = setNames(rownames(barcodes), barcodes$orig_barcode)
-  j = match(barcodes, Cells(sc))
+  j = match(barcodes, SeuratObject::Cells(sc))
   barcodes = barcodes[order(j)]
+
+  # Image directorie(s) and default assays associated to the images
+  # Image key (to access in Seurat object)
+  if (technology == "10x_visiumhd") {
+    # For Visium there is an image for each bin size
+    visiumhd_bin_sizes = param("visiumhd_bin_sizes")
+    visiumhd_bin_sizes = sprintf("%03d", visiumhd_bin_sizes)
+    image_dir = file.path(path, paste0("square_", visiumhd_bin_sizes, "um"), "spatial")
+    default_image_assay = paste0(gsub("\\d+$", "", default_assay), visiumhd_bin_sizes)
+    image_key = paste0("image", ".", orig_ident, visiumhd_bin_sizes)
+  } else if (technology == "10x_visium") {
+    image_dir = file.path(path, "spatial")
+    default_image_assay = default_assay
+    image_key = paste0("image", ".", orig_ident)
+  } else if (technology == "10x_xenium") {
+    image_dir = dirname(path)
+    default_image_assay = default_assay
+    image_key = paste0("image", ".", orig_ident)
+  }
   
-  # Read image
+  # For Xenium: which coordinate type to use
   spatial_coordinate_type = param("spatial_coordinate_type")
-  with_progress({
-      image = ReadImage(image_dir=image_dir, 
-                        technology=technology, 
-                        assay=default_assay, 
+  
+  # Read in image(s)
+  image_lst = purrr::map(seq_along(image_dir), function(j) {
+    with_progress({
+      image = ReadImage(image_dir=image_dir[j],
+                        technology=technology,
+                        assay=default_image_assay[j],
                         barcodes=barcodes,
                         coordinate_type=spatial_coordinate_type)
-  }, enable=verbose)
-  
-  # Add image (10x visium) or field of view (10x xenium)
-  if (technology == "10x_visium") {
-    key = "image"
-  } else if (technology == "10x_xenium") {
-    key = "fov"
+      }, enable=verbose)
+    return(image)
+  })
+
+  # Add to Seurat object
+  for (j in seq_along(image_lst)) {
+    # Update image key(s)
+    SeuratObject::Key(image_lst[[j]]) = paste0(gsub("[^[:alnum:]]", "", image_key[j]), "_")
+    
+    # Add to Seurat object
+    sc[[image_key[j]]] = image_lst[[j]]
+    
+    # If additional barcode metadata is provided, add as well
+    barcode_metadata = attr(image_lst[[j]], "barcode_metadata")
+    if (!is.null(barcode_metadata)) {
+      sc = Seurat::AddMetaData(sc, barcode_metadata)
+    }
   }
-  key = paste0(key, "." , orig_ident)
-  image@key = paste0(gsub("[^[:alnum:]]", "", key), "_")
-  sc[[key]] = image
   
-  # If additional barcode metadata is provided, add as well
-  barcode_metadata = attr(image, "barcode_metadata")
-  if (!is.null(barcode_metadata)) {
-    sc = Seurat::AddMetaData(sc, barcode_metadata)
-  }
-  
-  sc
+  # Remove image_lst and call garbage collector
+  rm(image_lst)
+  invisible(gc())
 }
 ```
 
@@ -966,7 +983,6 @@ Finally, we calculate some basic statistics such as the precentage of counts in 
 #| label: read_data_basic_stats
 
 # Calculate basic statistics for barcodes (cells, nuclei or spots)
-
 # Top n features for calculation of percentage of counts
 top_n = c(5, 50)
 
@@ -1017,19 +1033,18 @@ for (a in Seurat::Assays(sc)) {
 # Calculate for each assay
 for (a in Seurat::Assays(sc)) {
   # And each layer (dataset)
-  for (l in SeuratObject::Layers(sc[[a]], "^counts")) {
+  for (l in SeuratObject::Layers(sc[[a]], search="^counts\\.")) {
     # Get data for layer (sample)
     counts = sc[[a]][l]
-    bcs = counts %>% colnames()
-    total_counts = sc[[]][bcs, paste0("nCount_", a), drop=TRUE]
-    counts_perc = t(t(counts)/total_counts)*100
     
     # Calculate feature filters
     num_bcs_expr = rowSums(counts >= 1)
-
-    # Calculate median percentage of counts per feature
+    
+    # Split counts into batches of 2000 barcodes. 
+    # Then for each batch calculate the percentage of counts for each feature per barcode. 
+    # Then return the median for each feature.
     with_progress({
-      counts_median = CalculateMedians(counts_perc, margin=1, chunk_size=2000)
+      counts_median = CalculateMedians(counts, margin=1, chunk_size=2000, fun=CalculateColumnPerc)
     }, enable=verbose)
     
     # Add to metadata
@@ -1038,9 +1053,13 @@ for (a in Seurat::Assays(sc)) {
     sc[[a]][[paste("medianPerc", n, sep="_")]] = counts_median
   }
 }
+
+# Remove counts and counts_perc
+rm(counts)
+invisible(gc())
 ```
 
-The following table shows available metadata (columns) of the first 5 cells (rows). These metadata provide additional information about the cells in the dataset, such as the sample a cell belongs to ("orig.ident"), the number of mapped reads (“nCounts_RNA”), or the above mentioned number of unique genes detected ("nFeature_RNA").
+The following table shows available metadata (columns) of the first 5 cells (rows). These metadata provide additional information about the cells in the dataset, such as the sample a cell belongs to ("orig.ident"), the number of mapped reads (“nCounts_RNA”), or the above mentioned number of unique features detected ("nFeature_RNA").
 
 ```{r}
 #| label: tbl-read_data_barcode_metadata
@@ -1108,7 +1127,7 @@ for (a in Seurat::Assays(sc)) {
   
   # VIOLIN PLOTS
   # Make violin plots and combine into patchworked object
-  plist = PlotBarcodeQC(sc, qc=barcode_qc, log10="nCount")
+  plist = PlotBarcodeQC(sc, qc=barcode_qc, log10="nCount", assay=a)
   p = patchwork::wrap_plots(plist, ncol=2)
   
   # Make chunk template for violin plots
@@ -1132,13 +1151,19 @@ p
   }
   
   ## SPATIAL PLOTS
-  if (length(SeuratObject::Images(sc)) > 0) {
+  
+  # At the moment an image is associated with only one assay.
+  # For other assays, we plot all images.
+  image_names = SeuratObject::Images(sc, assay=a)
+  if (length(image_names)==0) image_names = SeuratObject::Images(sc)
+  
+  if (length(image_names) > 0) {
     
     # For each QC metric
     for(q in barcode_qc) {
       
       # Make spatial plots split by sample
-      plist = FeaturePlotSpatial(sc, features=q, combine=FALSE) %>% purrr::flatten()
+      plist = FeaturePlotSpatial(sc, images=image_names, features=q, combine=FALSE) %>% purrr::flatten()
       plist = purrr::map(plist, function(p) {
         p =  p + theme(legend.title=element_blank())
         p = p + viridis::scale_fill_viridis(trans=ifelse(grepl(pattern="nCount", q), "log10", "identity"))
@@ -1146,14 +1171,15 @@ p
       })
       
       # Make captions
-      orig_idents = SeuratObject::Images(sc) %>% gsub("^(fov|image)\\.", "", .)
-      captions = GeneratePlotCaptions(q, assay_names=SeuratObject::Assays(sc)) %>% paste("for dataset {orig_idents}") %>% FormatString()
+      idents = names(plist) %>% gsub("^image\\.", "", .)
+      captions = GeneratePlotCaptions(q, assay_names=SeuratObject::Assays(sc)) %>% paste("for dataset {idents}") %>% FormatString()
       
       # Make chunk template for spatial plots
       chunk_template = "
 \`\`\`{r}
 #| label: fig-read_data_basic_summary_spatial_{{qc}}_dataset_{{dataset}}
 #| fig-cap: {{caption}}
+#| dev: png
 
 plist[[{{i}}]]
 \`\`\`
@@ -1161,8 +1187,8 @@ plist[[{{i}}]]
       # Fill out and print spatial plots
       cat("::: panel-tabset\n")
       for(i in seq_along(plist)) {
-        cat ("##### ", orig_idents[i], "\n\n")
-        chunk_filled =  knitr::knit_expand(text=chunk_template, qc=q, i=i, dataset=orig_idents[i], caption=captions[i])
+        cat ("##### ", idents[i], "\n\n")
+        chunk_filled =  knitr::knit_expand(text=chunk_template, qc=q, i=i, dataset=idents[i], caption=captions[i])
         if(interactive()) {
           print(EvalKnitrChunk(chunk_filled))
         } else {
@@ -1185,8 +1211,8 @@ plist[[{{i}}]]
 #| results: asis
 
 # Write annotation
-outfile = paste0("annotation_", default_assay, ".xlsx")
-openxlsx::write.xlsx(x=sc[[default_assay]][[]], file=file.path(module_dir, "results", outfile), row.names=TRUE)
+outfile = FormatString("feature_annotation_assay_{default_assay}.xlsx", quote=FALSE)
+openxlsx::write.xlsx(x=sc[[default_assay]][[]], file=file.path(module_dir, "results", outfile), rowNames=TRUE)
 
 # Note
 CalloutBox("Feature annotation for the default assay {default_assay} is written to {outfile}.", type="note")
@@ -1214,15 +1240,15 @@ gt(paraminfo)
 #| label: read_data_save_seurat
 #| results: asis
 
-# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
-
 # Save Seurat object and layer data
 outdir = file.path(module_dir, "sc")
 with_progress({
   SaveSeuratRdsWrapper(sc,
-                       on_disk_layers=on_disk_counts,
-                       outdir=outdir)
+                       outdir=outdir,
+                       write_disk_data=on_disk_counts,
+                       relative_paths=FALSE,
+                       compress=FALSE
+                       )
 }, enable=verbose)
 ```
 
