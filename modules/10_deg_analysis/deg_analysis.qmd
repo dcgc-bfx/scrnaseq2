@@ -49,6 +49,7 @@ params:
   #                For example, use 'orig.ident' for sample and 'seurat_clusters' for cluster 
   # subset_group: Levels to subset (default: null)
   #               Use 'level1+level2' to use multiple levels for one subset or 'level1+level2,level3' for multiple subsets
+  #               Use '!level1' or '!level1+level2 to use all but these levels (i.e. negate)
   #               Use '*' to use all levels as subsets
   #               Can also be a Excel/csv file with barcodes with 'barcode' or 'sample:original_barcode' per line
   #               Original barcode refers to the one used in the dataset
@@ -69,7 +70,7 @@ params:
   # 
   # test: Type of test for identifying differentially expressed genes (default: 'wilcox')
   #       Can be 'wilcox', 'bimod', 'roc', 't', 'negbinom', 'poisson', 'LR', 'MAST', 'DESeq2', 'DESeq2LRT'.
-  #       Tests 'DESeq2' and 'DESeq2LRT' can only be run with  'bulk_by'/'pseudobulk_samples'. 
+  #       Tests 'DESeq2' and 'DESeq2LRT' can only be used together with 'bulk_by'/'pseudobulk_samples'. 
   # covariate: One or more columns to include as covariates (batches) for testing (default: null).
   #            The following tests can use covariates: 'LR', 'poisson', 'negbinom', 'MAST', 'DESeq2', 'DESeq2LRT'.
   #
@@ -86,6 +87,9 @@ params:
   #               See the global 'genesets' parameter for more information.
   # gsea_genesets: Genesets to use for over-representation analysis (default: null).
   #               See the global 'genesets' parameter for more information.
+  # gsea_deseq2: Calculate fold changes for GSEA with DESeq2 instead of simplying dividing the means (default: false).
+  #              Allows to use the parameters 'covariate', 'design' and 'deseq2_results_args'.
+  #              Can only be used together with 'bulk_by'/'pseudobulk_samples'.
   #
   contrasts:
       value:
@@ -110,6 +114,7 @@ params:
                 bulk_by: "seurat_clusters"
                 test: "DESeq2"
                 design: "~ condition_groups + seurat_clusters"
+                gsea_deseq2: true
           # Compare pbmc_1k vs pbmc_5k. Generate 5 pseudo-bulk replicates per cluster and condition. 
           # Use DESeq2 with a LRT test that compares two different models across seurat_clusters.
           - Comparison4:
@@ -322,7 +327,7 @@ contrasts_list = NewContrastsList(sc, contrasts_content, type="deg")
 
 # For each contrast, prepare an individual Seurat object for the comparison. If multiple subsets are analysed, prepare multiple objects. Bulk-aggregate if requested. Downsample if requested.
 # Note: This is a list of contrasts with of lists of comparisons, so we use map_depth need to specify the depth of the list.
-contrasts_list = purrr::map_depth(contrasts_list, .depth=2, function(contrast) return(PrepareDegContrast(sc, contrast)))
+contrasts_list = purrr::map_depth(contrasts_list, .depth=2, function(contrast) return(PrepareDegContrast(sc, contrast, cast_to_sparse=TRUE)))
 
 # Which contrasts should be DEG tested?
 run_deg = param("run_deg")
@@ -600,7 +605,7 @@ gt(deg_configuration_table)
       if ("subset_column" %in% names(deg_result)) {
         subset_column = deg_result$subset_column
         subset_group = paste(deg_result$subset_group, collapse="+")
-        cat(FormatString("#### {i}. {subset_column} - {subset_group}", quote=FALSE), '\n\n')
+        cat(FormatString("#### {i}. {subset_column} - '{subset_group}'", quote=FALSE), '\n\n')
       } else {
         subset_column = ""
         subset_group = ""
@@ -672,49 +677,40 @@ patchwork::wrap_plots(deg_result$scatter_plot, deg_result$volcano_plot)
 #| eval: !expr have_ora
 #| include: !expr have_ora
 
-# Custom genesets for over-representation analysis
-ora_geneset_files = param("geneset_files")
-
 if (have_ora) {
+  # Custom genesets for over-representation analysis
+  ora_geneset_files = param("geneset_files")
+
   # Get genesets to test from MSigDB or user input file
   ora_term2gene_db = DegsGetGenesets(msigdb_species=param("msigdb_species") %||% param("species"), 
                                       is_msigdb_species_name = !is.null(param("msigdb_species")),
                                       geneset_files=ora_geneset_files)
 
   # Run overrepresentation analysis (ORA)
-  ora_results_list = purrr::map_depth(deg_results_list, .depth=2, function(deg_result) {
-    # Is ORA requested for this DEG analysis?
-    name = deg_result[["name"]]
-    ora_result = list(name=name)
-    if (name %in% run_ora) {
-      # Run ORA and add results
-      ora_result[["results"]] = DegsRunOraTest(deg_result=deg_result,
-                               term2gene_db=ora_term2gene_db,
-                               genesets=deg_result[["ora_genesets"]] %||% param("genesets"))
-      
-      # Also create bar plots with the top 15 terms
-      ora_result[["plots"]] = purrr::map(ora_result[["results"]], function(ora) {
-          # If there are no results, return NULL
-          if (nrow(ora) == 0) return(NULL)
-          
-          p = enrichplot:::dotplot(ora, color='p.adjust', x='FoldEnrichment', size='Count', font.size=11, showCategory=15, label_format=50) +
-              AddPlotStyle() +
-              scale_fill_gradient(high="#327eba", low="#e06663",
-                                   breaks=scales::pretty_breaks(4), labels=scales::scientific) +
-              scale_size_continuous(breaks=scales::pretty_breaks(3))
-          
-          return(p)
-      })
-      
-    } else {
-      # Else just add an empty list
-      ora_result[["results"]] = list()
-      ora_result[["plots"]] = list()
-    }
+  ora_results_list = purrr::map_depth(deg_results_list[run_ora], .depth=2, function(deg_result) {
+
+    # Run ORA and get results
+    ora_result = DegsRunOraTest(deg_result=deg_result,
+                             term2gene_db=ora_term2gene_db,
+                             genesets=deg_result[["ora_genesets"]] %||% param("genesets"))
+    
+    # Also add bar plots with the top 15 terms
+    ora_result[["plots"]] = purrr::map(ora_result[["results"]], function(ora) {
+        # If there are no results, return NULL
+        if (nrow(ora) == 0) return(NULL)
+        
+        p = enrichplot:::dotplot(ora, color='p.adjust', x='FoldEnrichment', size='Count', font.size=11, showCategory=15, label_format=40) +
+            AddPlotStyle() +
+            scale_fill_gradient(high="#327eba", low="#e06663",
+                                 breaks=scales::pretty_breaks(4), labels=scales::scientific) +
+            scale_size_continuous(breaks=scales::pretty_breaks(3)) +
+            xlab("Fold enrichment (list vs background)")
+        
+        return(p)
+    })
     
     return(ora_result)
   })
-  ora_results_list = ora_results_list[run_ora]
 
   # Write ORA results to files
   for (i in seq_along(ora_results_list)) {
@@ -723,13 +719,14 @@ if (have_ora) {
     # Get ORA results for each comparison
     ora_tables = purrr::map(ora_results, function(ora_result) {
       ora_result = ora_result[["results"]]
+      
       # If no ORA was done, this will be an empty list
       if (length(ora_result) == 0) return(NULL)
       
       # If multiple gene sets were analysed, join the result tables
       ora_table = purrr::map_dfr(names(ora_result), function(set_name) {
-        ora_res = ora_result[[set_name]]
-        ora_tbl = ora_res %>% 
+        ora = ora_result[[set_name]]
+        ora_tbl = ora %>% 
           as.data.frame() %>%
           dplyr::mutate(GeneSet=set_name, .before=1)
         return(ora_tbl)
@@ -752,24 +749,39 @@ if (have_ora) {
 ```{r}
 #| label: deg_analysis_ora_results
 #| results: asis
-#| eval: !expr have_deg_comparisons
-#| include: !expr have_deg_comparisons
+#| eval: !expr have_ora
+#| include: !expr have_ora
 
 # Generate report sections for each ORA analysis
 if (have_ora) {
   # Iterate over the comparisons
   for (ora_results in ora_results_list) {
     # ora_results: Result list for this comparison
+    name = ora_results[[1]]$name
+    
+    # Print header
+    cat(FormatString("### {name}\n\n", quote=FALSE))
     
     # Now show the result(s) for this comparison. If multiple subsets were analysed, there will be multiple results.
     # Note: Since there can be multiple results, we include i as a counter to make them unique.
     cat("Here are the test results:\n\n")
     for (i in seq_along(ora_results)) {
-      # deg_result: DEG analysis for this subset comparison
+      # ora_result: ORA analysis for this subset comparison (includes tables and plots)
       ora_result = ora_results[[i]]
-      name = ora_result$name
       
-      # ora_result: ORA analysis for this subset comparison
+      # Add a header if there are multiple subsets
+      if ("subset_column" %in% names(ora_result)) {
+        subset_column = ora_result$subset_column
+        subset_group = paste(ora_result$subset_group, collapse="+")
+        cat(FormatString("#### {i}. {subset_column} - '{subset_group}'", quote=FALSE), '\n\n')
+      } else {
+        subset_column = ""
+        subset_group = ""
+      }
+
+      
+      # Now split into tables and plots
+      ora_plots = ora_result[["plots"]]
       ora_result = ora_result[["results"]]
       
       # Now plot ORA results (if available)
@@ -779,19 +791,19 @@ if (have_ora) {
         # Layout is two columns
         cat("::: {.panel-tabset}\n")
         for (j in seq_along(ora_result)) {
-          cat(FormatString("##### {j}\n\n", quote=FALSE))
-          
-          # ORA result
-          ora_res = ora_result[[j]]
+          # ORA result for one gene set
+          ora = ora_result[[j]]
           ora_res_name = names(ora_result)[j]
+          ora_plot = ora_plots[[j]]
           
           # Print some general stats
+          cat(FormatString("##### {ora_res_name}\n\n", quote=FALSE))
           cat("* geneset name:", ora_res_name, "\n")
-          genesets = ora_res@geneSets
+          genesets = ora@geneSets
           cat("* number of terms in geneset:", length(genesets), "\n")
           genesets_lengths = purrr::map_int(genesets, length)
           cat("* thereof tested (at least 10, at most 500 genes in geneset):", sum(genesets_lengths >= 10 & genesets_lengths<=500), "\n")
-          cat("* thereof significant (adjusted p-value < 0.05):", nrow(ora_res), "\n")
+          cat("* thereof significant (adjusted p-value < 0.05):", nrow(ora), "\n")
           cat("\n")
           
           # Chunk template for ORA
@@ -800,8 +812,8 @@ if (have_ora) {
 #| label: fig-deg_analysis_deg_ora_{{name}}_{{i}}_{{j}}
 #| fig-cap: 'Top 10 overrepresented terms of geneset {{ora_res_name}} for {{name_subset}}'
 
-# Plot the top 10 terms
-
+# Plot the top terms
+ora_plot
 \`\`\`
 "
           
@@ -829,7 +841,6 @@ if (have_ora) {
 }
 ```
 
-
 ## GSEA
 
 Gene Set Enrichment Analysis (GSEA) is a computational method used to determine whether a predefined set of genes shows statistically significant differences in expression between two biological states (e.g., disease vs. control). GSEA evaluates gene sets, which are groups of genes that share common biological functions, chromosomal locations, or regulation.
@@ -837,10 +848,10 @@ Gene Set Enrichment Analysis (GSEA) is a computational method used to determine 
 ```{r}
 #| label: deg_analysis_run_gsea
 
-# Custom genesets for gene-set enrichment analysis
-gsea_geneset_files = param("gsea_geneset_files")
-
 if (have_gsea) {
+  # Custom genesets for gene-set enrichment analysis
+  gsea_geneset_files = param("geneset_files")
+  
   # Get genesets to test from MSigDB or user input file
   gsea_term2gene_db = DegsGetGenesets(msigdb_species=param("msigdb_species") %||% param("species"), 
                                       is_msigdb_species_name = !is.null(param("msigdb_species")),
@@ -853,7 +864,7 @@ if (have_gsea) {
     gsea_result[["results"]] = DegsRunGseaTest(
       contrast=contrast,
       term2gene_db=gsea_term2gene_db, 
-      genesets=contrast[["gsea_genesets"]] %||% param("gsea_genesets")
+      genesets=contrast[["gsea_genesets"]] %||% param("genesets")
     )
     
     # Dump entries that are not used anymore

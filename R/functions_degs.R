@@ -549,6 +549,21 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
           
           contrast[["deseq2_results_args"]] = deseq2_args
         }
+        
+        # ora_genesets - which gene sets to use for ORA
+        if ("ora_genesets" %in% names(contrast)) contrast[["ora_genesets"]] = unlist(contrast[["ora_genesets"]])
+        
+        # gsea_genesets - which gene sets to use for GSEA
+        if ("gsea_genesets" %in% names(contrast)) contrast[["gsea_genesets"]] = unlist(contrast[["gsea_genesets"]])
+        
+        # gsea_deseq2 - use DESeq2 to calculate fold changes for GSEA
+        if (!"gsea_deseq2" %in% names(contrast)) contrast[["gsea_deseq2"]] = FALSE
+        contrast[["gsea_deseq2"]] = unlist(contrast[["gsea_deseq2"]])[1]
+        if (any(grepl("true", contrast[["gsea_deseq2"]], ignore.case=TRUE))) {
+          contrast[["gsea_deseq2"]] = TRUE
+        } else {
+          contrast[["gsea_deseq2"]] = FALSE
+        }
 
         # Add contrast row number
         contrast[["contrast_row"]] = i
@@ -602,8 +617,9 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
 #' 
 #' @param sc A Seurat single cell object.
 #' @param contrast A contrast configuration. Must have been set up with NewContrastsList.
+#' @param cast_to_sparse Convert on-disk matrices to in-memory sparse matrices (default: FALSE). May help with the performance but might result in much higher memory usage. 
 #' @return A contrast configuration with an 'object' entry for the Seurat object.
-PrepareDegContrast = function(sc, contrast) {
+PrepareDegContrast = function(sc, contrast, cast_to_sparse=FALSE) {
     barcode_metadata = sc[[]]
     name = contrast[["name"]]
         
@@ -641,15 +657,22 @@ PrepareDegContrast = function(sc, contrast) {
         assay_obj = suppressWarnings({subset(sc[[assay]],
                            cells=barcodes)})
         
+        # Remove scale.data layer (never needed and saves a lot of memory)
+        SeuratObject::DefaultLayer(assay_obj) = contrast[["layer"]]
+        SeuratObject::LayerData(assay_obj, layer="scale.data") = NULL
+        
+        # If requested, cast on-disk matrices to in-memory sparse matrices. Improves performance but may result in much higher memory usage
+        #if (cast_to_sparse) {
+        #  for(l in SeuratObject::Layers(assay_obj)) {
+        #    SeuratObject::LayerData(assay_obj, layer=l) = as(SeuratObject::LayerData(assay_obj, layer=l), "dgCMatrix")
+        #  }
+        #}
+        
         # Update feature metadata to include only feature_id, feature_name, feature_type
         feature_metadata = assay_obj[[]]
         feature_metadata = feature_metadata[, c("feature_id", "feature_name", "feature_type")]
         assay_obj@meta.data = data.frame()
         assay_obj = SeuratObject::AddMetaData(assay_obj, feature_metadata)
-        
-        # Remove scale.data layer (never needed and saves a lot of memory)
-        SeuratObject::DefaultLayer(assay_obj) = contrast[["layer"]]
-        SeuratObject::LayerData(assay_obj, layer="scale.data") = NULL
         
         # Set up Seurat object for this analysis
         sc_subset = SeuratObject::CreateSeuratObject(assay_obj, 
@@ -1033,7 +1056,7 @@ DegsRunTest = function(contrast) {
     if (min(condition_counts) >= 2) {
         # Run test
         if (contrast[["test"]] %in% c("DESeq2", "DESeq2LRT")) {
-            # design and reduced argument
+            # Arguments design and reduced formula
             design = reduced = NULL
             if ("design" %in% names(contrast)) {
                 design = contrast[["design"]][1] %>% as.character()
@@ -1041,7 +1064,7 @@ DegsRunTest = function(contrast) {
               if (contrast[["test"]] == "DESeq2LRT" & length(contrast[["design"]]) == 2) {
                 reduced = contrast[["design"]][2] %>% as.character()
               }
-            }        
+            }
   
             # Run DegsRunDESeq2
             deg_results = DegsRunDESeq2(contrast[["sc_subset"]],
@@ -1238,6 +1261,11 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
       return(ora)
     })
     
+    # Add some additional information
+    ora_result = list(results=ora_result, name=deg_result[["name"]])
+    if ("subset_column" %in% names(deg_result)) ora_result[["subset_column"]] = deg_result[["subset_column"]]
+    if ("subset_group" %in% names(deg_result)) ora_result[["subset_group"]] = deg_result[["subset_group"]]
+    
     return(ora_result)
 }
 
@@ -1250,14 +1278,43 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
 #' @return A list with one or more GSEA results.
 DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
   # Calculate fold changes
-  fold_changes = Seurat::FoldChange(object=contrast$sc_subset,
-                                    ident.1="condition1",
-                                    ident.2="condition2",
-                                    assay=contrast$assay,
-                                    slot=contrast$layer,
-                                    pseudocount.use=1,
-                                    base=2)
-  fold_changes = setNames(fold_changes$avg_log2FC, rownames(fold_changes))
+  if (FALSE) {
+    # Calculate fold change by running DESeq2
+    
+    # Arguments design and reduced formula
+    design = reduced = NULL
+    if ("design" %in% names(contrast)) {
+      design = contrast[["design"]][1] %>% as.character()
+      
+      if (contrast[["test"]] == "DESeq2LRT" & length(contrast[["design"]]) == 2) {
+        reduced = contrast[["design"]][2] %>% as.character()
+      }
+    }
+    
+    # Run DegsRunDESeq2
+    fold_changes = DegsRunDESeq2(contrast[["sc_subset"]],
+                                assay=SeuratObject::DefaultAssay(contrast[["sc_subset"]]), 
+                                ident_1="condition1",
+                                ident_2="condition2",
+                                test=dplyr::case_match(contrast[["test"]],
+                                                       "DESeq2" ~ "Wald",
+                                                       "DESeq2LRT" ~ "LRT"), 
+                                design=design, 
+                                reduced=reduced,
+                                random_seed=getOption("random_seed"),
+                                results_args=contrast[["deseq2_results_args"]])
+    fold_changes = setNames(fold_changes$avg_log2FC, rownames(fold_changes))
+  } else {
+    # Calculate fold change based on averages
+    fold_changes = Seurat::FoldChange(object=contrast$sc_subset,
+                                      ident.1="condition1",
+                                      ident.2="condition2",
+                                      assay=contrast$assay,
+                                      slot=contrast$layer,
+                                      pseudocount.use=1,
+                                      base=2)
+    fold_changes = setNames(fold_changes$avg_log2FC, rownames(fold_changes))
+  }
   fold_changes = fold_changes[order(fold_changes, decreasing=TRUE)]
   
   # Search the genesets specified by the genesets argument
@@ -1278,6 +1335,11 @@ DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
     gsea = clusterProfiler::GSEA(geneList=fold_changes, TERM2GENE=t2g, minGSSize=10, maxGSSize=500, seed=TRUE)
     return(gsea)
   })
+  
+  # Add some additional information
+  gsea_result = list(results=gsea_result, name=contrast[["name"]])
+  if ("subset_column" %in% names(contrast)) gsea_result[["subset_column"]] = contrast[["subset_column"]]
+  if ("subset_group" %in% names(contrast)) gsea_result[["subset_group"]] = contrast[["subset_group"]]
   
   return(gsea_result)
 }
