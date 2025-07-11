@@ -21,7 +21,8 @@ book:
   - "modules/6_clusterqc/clusterqc.qmd"
   - "modules/7_cluster_annotation/cluster_annotation.qmd"
   - "modules/8_cluster_composition/cluster_composition.qmd"
-  - "modules/9_export/export.qmd"
+  - "modules/10_deg_analysis/deg_analysis.qmd"
+  #- "modules/9_export/export.qmd"
   - "references.qmd"
 
 ####################
