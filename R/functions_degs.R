@@ -1,11 +1,54 @@
-#' Sets up a list with contrasts for analysis. Makes sure that all required information is available. Sets default and does basic checks. 
-#' Each contrast entry is a list either of length 1 (if there is only one comparison) or of length >1 (if the comparison is done for multiple subsets).
+#' Setup and Validate a List of Contrasts
+#'
+#' This function sets up a list of contrasts for downstream analyses and ensures
+#' that all required fields are present, defaults are set, and basic checks are performed.
+#' Each contrast entry is a list either of length 1 (single comparison) or >1 (comparisons
+#' across multiple subsets).
+#'
+#' @param sc A Seurat object containing barcode-level metadata in \code{sc[[]]}.
+#' @param contrasts_list A list of contrasts. Each contrast must at least contain:
+#'   \itemize{
+#'     \item \code{name}: Name of the contrast (alphanumeric, underscores, hyphens).
+#'     \item \code{condition_column}: Metadata column with condition labels.
+#'     \item \code{condition1}: First condition group (string or file with barcodes).
+#'     \item \code{condition2}: Second condition group (string or file with barcodes).
+#'   }
+#' @param type Type of contrast. Either:
+#'   \itemize{
+#'     \item \code{"deg"}: Differential expression contrasts (default).
+#'     \item \code{"compositional"}: Changes in cell composition.
+#'   }
+#'
+#' @return A list of contrasts. Each list entry is a validated contrast specification,
+#'   either of length 1 (single comparison) or expanded into multiple entries if
+#'   subsets are defined.
+#'
+#' @importFrom purrr map map_chr map_depth map walk keep reduce
+#' @importFrom assertthat assert_that
+#' @importFrom readr read_tsv
+#' @importFrom readxl read_excel
+#' @importFrom dplyr case_when
+#' @importFrom Seurat Assays Reductions DefaultAssay
+#' @importFrom SeuratObject Cells
+#' @export
 #' 
-#' @param sc A Seurat single cell object.
-#' @param contrasts_list A list of contrasts. Must at least contain 'name', condition_column', 'condition1' and 'condition2'.
-#' @param type Type of contrast. Can be 'deg' (for changes in gene expression) or 'compositional' (for changes in cell composition). Default is 'deg'.
-#' @return A list with contrasts. Each list entry is a list either of length 1 (if there is only one comparison per contrast) or of length >1 
-#' (if comparisons are done for multiple subsets for a contrast)
+#' @examples
+#' library(Seurat)
+#' sc <- CreateSeuratObject(matrix(rpois(2000, 5), nrow = 100, ncol = 20))
+#' sc$orig.ident <- sample(c("SampleA", "SampleB"), ncol(sc), replace = TRUE)
+#' sc$condition <- sample(c("Control", "Treatment"), ncol(sc), replace = TRUE)
+#'
+#' contrasts <- list(
+#'   list(
+#'     name = "Control_vs_Treatment",
+#'     condition_column = "condition",
+#'     condition1 = "Control",
+#'     condition2 = "Treatment"
+#'   )
+#' )
+#'
+#' contrast_list <- NewContrastsList(sc, contrasts, type = "deg")
+#' names(contrast_list)
 NewContrastsList = function(sc, contrasts_list, type='deg') {
     # If empty, return empty list
     if (length(contrasts_list) == 0) return(list())
@@ -612,13 +655,48 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
     return(contrasts_list)
 }
 
-#' Given a contrast configuration, prepares a Seurat object for DEG analysis. The function extracts all relevant 
-#' data and if requested bulk-aggregates and downsamples barcodes. Note that if a contrast has multiple comparisons (for each subset), this function needs to be run on each of them separately.
+#' Prepare a Seurat Object for DEG Analysis
+#'
+#' Given a contrast configuration, this function prepares a Seurat object
+#' for differential expression analysis. It extracts all relevant data,
+#' applies condition grouping, and if requested, bulk-aggregates or
+#' downsamples barcodes.  
 #' 
-#' @param sc A Seurat single cell object.
-#' @param contrast A contrast configuration. Must have been set up with NewContrastsList.
-#' @param cast_to_sparse Convert on-disk matrices to in-memory sparse matrices (default: FALSE). May help with the performance but might result in much higher memory usage. 
-#' @return A contrast configuration with an 'object' entry for the Seurat object.
+#' Note: if a contrast contains multiple comparisons (e.g., per subset),
+#' this function must be run separately for each.
+#'
+#' @param sc Seurat v5 object.
+#' @param contrast A contrast configuration. Must be created with
+#'   \code{NewContrastsList}.
+#' @param cast_to_sparse Logical. If \code{TRUE}, convert on-disk matrices
+#'   to in-memory sparse matrices. May improve performance but can increase
+#'   memory usage. Default is \code{FALSE}.
+#'
+#' @return A contrast configuration list with an added \code{sc_subset}
+#'   entry containing the prepared Seurat object.
+#'
+#' @importFrom Seurat CreateSeuratObject PseudobulkExpression
+#' @importFrom SeuratObject Cells AddMetaData CreateAssay5Object
+#'   DefaultLayer LayerData Features
+#' @importFrom Matrix Matrix
+#' @importFrom dplyr case_when group_by across mutate pull summarise
+#'   left_join filter slice_sample n
+#' @importFrom purrr keep
+#' @importFrom tibble rownames_to_column
+#' @importFrom assertthat assert_that
+#' @export
+#' 
+#' @examples
+#' \dontrun{
+#' contrast <- list(
+#'   name = "Treatment_vs_Control",
+#'   condition_column = "condition",
+#'   condition1 = "Treatment",
+#'   condition2 = "Control"
+#' )
+#' contrast <- NewContrastsList(sc, list(contrast))[[1]]
+#' contrast <- PrepareDegContrast(sc, contrast)
+#' }
 PrepareDegContrast = function(sc, contrast, cast_to_sparse=FALSE) {
     barcode_metadata = sc[[]]
     name = contrast[["name"]]
@@ -895,11 +973,53 @@ PrepareDegContrast = function(sc, contrast, cast_to_sparse=FALSE) {
     return(contrast)
 }
 
-#' Given a contrast configuration, prepares a Seurat object for compositional analysis.
+#' Prepare a Seurat Object for Compositional Analysis
+#'
+#' Given a contrast configuration, this function prepares a Seurat object
+#' for compositional analysis. It extracts relevant barcode metadata and,
+#' depending on the test type, constructs either a minimal object or one
+#' that includes feature counts.  
+#'
+#' Supported tests:  
+#' \itemize{
+#'   \item \code{none}, \code{fisher}, \code{sccoda}: minimal Seurat object
+#'   with barcode metadata only.
+#'   \item \code{miloR}: Seurat object with feature counts, barcode metadata,
+#'   and (later) reductions/graphs.
+#' }
+#'
+#' If the test is performed on a subset, only the subset’s barcodes are used.
+#' All other barcodes are labeled as \code{condition3}.
+#'
+#' @param sc Seurat v5 object.
+#' @param contrast A contrast configuration. Must be created with
+#'   \code{NewContrastsList}.
+#'
+#' @return A contrast configuration list with an added \code{sc_subset}
+#'   entry containing the prepared Seurat object.
+#'
+#' @importFrom Seurat CreateSeuratObject
+#' @importFrom SeuratObject Cells AddMetaData CreateAssay5Object
+#'   DefaultLayer LayerData Idents
+#' @importFrom Matrix Matrix
+#' @importFrom dplyr case_when group_by across mutate pull
+#' @importFrom purrr keep
+#' @importFrom assertthat assert_that
+#' @export
 #' 
-#' @param sc A Seurat single cell object.
-#' @param contrast A contrast configuration. Must have been set up with NewContrastsList.
-#' @return A contrast configuration with an 'object' entry for the Seurat object.
+#' @examples
+#' \dontrun{
+#' contrast <- list(
+#'   name = "Treatment_vs_Control",
+#'   condition_column = "condition",
+#'   compositional_column = "celltype",
+#'   condition1 = "Treatment",
+#'   condition2 = "Control",
+#'   test = "fisher"
+#' )
+#' contrast <- NewContrastsList(sc, list(contrast))[[1]]
+#' contrast <- PrepareCompositionalContrast(sc, contrast)
+#' }
 PrepareCompositionalContrast = function(sc, contrast) {
   barcode_metadata = sc[[]]
   name = contrast[["name"]]
@@ -1024,11 +1144,43 @@ PrepareCompositionalContrast = function(sc, contrast) {
   return(contrast)
 }
 
-#' Given a contrast configuration, runs a DEG test.
-#' Note that if a contrast has multiple comparisons (for each subset), this function needs to be run on each of them separately.
+#' Run a Differential Expression (DEG) Test
+#'
+#' Given a prepared contrast configuration, this function performs
+#' differential expression testing between two conditions.  
+#'
+#' Depending on the contrast configuration, the function supports:
+#' \itemize{
+#'   \item \code{Seurat::FindMarkers} with various test types (\code{wilcox},
+#'   \code{t}, \code{LR}, etc.).
+#'   \item \code{DESeq2} and \code{DESeq2LRT} tests via \code{DegsRunDESeq2}.
+#' }
+#'
+#' Automatically handles feature data, reductions, or barcode metadata,
+#' and enforces a minimum of two samples per group before testing.
+#'
+#' @param contrast A contrast configuration. Must have been set up with
+#'   \code{NewContrastsList} and prepared using \code{PrepareDegContrast}.
+#'
+#' @return A contrast list with DEG results added in \code{$results}.
+#'   The results table contains test statistics, adjusted p-values,
+#'   log fold-changes (or differences), per-condition means, and optional
+#'   pseudo-bulk values if applicable.
 #' 
-#' @param contrast A contrast configuration. Must have been set up with NewContrastsList followed by PrepareContrast.
-#' @return A contrast with DEG results.
+#' @importFrom Seurat FindMarkers
+#' @importFrom SeuratObject Layers LayerData GetAssayData DefaultAssay Idents
+#' @importFrom dplyr case_match inner_join relocate sym
+#' @importFrom tibble rownames_to_column
+#' @importFrom assertthat assert_that
+#' @export
+#' 
+#' @examples
+#' \dontrun{
+#' contrast <- PrepareDegContrast(sc, contrast)
+#' contrast[["test"]] <- "wilcox"
+#' contrast <- DegsRunTest(contrast)
+#' head(contrast$results)
+#' }
 DegsRunTest = function(contrast) {
     # When running FindMarkers, do not calculate nCounts and nFeatures (not needed); restore default on exit
     op = options(Seurat.object.assay.calcn=FALSE)
@@ -1180,13 +1332,54 @@ DegsRunTest = function(contrast) {
 }
 
 
-#' Runs an over-representation analysis (ORA) for an DEG result produced by DegsRunTest.
-#' Note that if there are multiple results (e.g. for each subset), this function needs to be run on each of them separately.
-#' 
-#' @param deg_result A DEG result produced by DegsRunTest.
-#' @param term2gene_db A data frame with genesets to be used for ORA. Must contain the columns 'gs_cat' (category of the geneset), 'gs_subcat' (sub-category of the geneset), 'gs_name' (name of the geneset), 'gene_symbol' (symbol of the gene in the geneset). See clusterProfiler documentation for more information.
-#' @param genesets A character vector specifying the genesets to be used for the ORA. Each entry specifies one analysis. Entries should have the form gs_cat:gs_subcat:gs_name and can contain wildcards (e.g. C5:GO:BP:*).
-#' @return A list with one or more ORA results.
+#' Run Over-Representation Analysis (ORA) on DEG Results
+#'
+#' Given a DEG result produced by \code{DegsRunTest}, this function performs
+#' over-representation analysis (ORA) using \pkg{clusterProfiler}.
+#'
+#' The user specifies a database of term-to-gene mappings (\code{term2gene_db})
+#' and a set of genesets of interest. ORA is run separately for each requested
+#' geneset, optionally with wildcard matching.
+#'
+#' @param deg_result A DEG result list produced by \code{DegsRunTest}.
+#'   Must contain at least a \code{$results} table with DEGs, as well as
+#'   thresholds \code{$padj} and \code{$log2FC}.
+#' @param term2gene_db A data frame containing term-to-gene mappings.
+#'   Must include the following columns:
+#'   \itemize{
+#'     \item \code{gs_cat} – category of the geneset
+#'     \item \code{gs_subcat} – sub-category of the geneset
+#'     \item \code{gs_name} – name of the geneset
+#'     \item \code{gene_symbol} – symbol of the gene
+#'   }
+#'   See the \pkg{clusterProfiler} documentation for more details.
+#' @param genesets A character vector specifying which genesets to use
+#'   for ORA. Each entry must have the form \code{gs_cat:gs_subcat:gs_name}.
+#'   Wildcards are supported (e.g. \code{"C5:GO:BP:*"}).
+#'
+#' @return A list containing:
+#'   \itemize{
+#'     \item \code{results} – a list of ORA results (\code{enrichResult} objects)
+#'       for each requested geneset.
+#'     \item \code{name} – the contrast name.
+#'     \item \code{subset_column}, \code{subset_group} – (optional) metadata
+#'       carried over from the input DEG result.
+#'   }
+#'
+#' @importFrom clusterProfiler enricher
+#' @importFrom dplyr filter pull select relocate
+#' @importFrom purrr map map_dbl
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' ora <- DegsRunOraTest(
+#'   deg_result = degs,
+#'   term2gene_db = term2gene_db,
+#'   genesets = c("C5:GO:BP:*", "C2:KEGG:*")
+#' )
+#' ora$results[["C5:GO:BP:*"]]
+#' }
 DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
     library(clusterProfiler)
   
@@ -1269,13 +1462,55 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
     return(ora_result)
 }
 
-#' Runs a geneset enrichment analysis (GSEA) for a constrast produced by PrepareContrast.
-#' Note that if there are multiple contrasts (e.g. for each subset), this function needs to be run on each of them separately.
-#' 
-#' @param contrast A contrast produced by PrepareContrast.
-#' @param term2gene_db A data frame with genesets to be used for GSEA. Must contain the columns 'gs_cat' (category of the geneset), 'gs_subcat' (sub-category of the geneset), 'gs_name' (name of the geneset), 'gene_symbol' (symbol of the gene in the geneset). See clusterProfiler documentation for more information.
-#' @param genesets A character vector specifying the genesets to be used for the GSEA. Each entry specifies one analysis. Entries should have the form gs_cat:gs_subcat:gs_name and can contain wildcards (e.g. C5:GO:BP:*).
-#' @return A list with one or more GSEA results.
+#' Run Gene Set Enrichment Analysis (GSEA) on a Contrast
+#'
+#' Given a contrast produced by \code{PrepareContrast}, this function
+#' performs Gene Set Enrichment Analysis (GSEA) using \pkg{clusterProfiler}.
+#'
+#' Fold changes are calculated either from DESeq2 results (if available) 
+#' or from the average expression values of the specified assay/layer. 
+#' The user specifies a database of term-to-gene mappings (\code{term2gene_db})
+#' and a set of genesets of interest. GSEA is run separately for each requested
+#' geneset, optionally with wildcard matching.
+#'
+#' @param contrast A contrast list produced by \code{PrepareContrast}.
+#'   Must contain a Seurat object subset with computed contrasts.
+#' @param term2gene_db A data frame containing genesets to be used for GSEA.
+#'   Must include the following columns:
+#'   \itemize{
+#'     \item \code{gs_cat} – category of the geneset
+#'     \item \code{gs_subcat} – sub-category of the geneset
+#'     \item \code{gs_name} – name of the geneset
+#'     \item \code{gene_symbol} – symbol of the gene
+#'   }
+#'   See \pkg{clusterProfiler} documentation for more details.
+#' @param genesets A character vector specifying which genesets to use
+#'   for GSEA. Each entry must have the form \code{gs_cat:gs_subcat:gs_name}.
+#'   Wildcards are supported (e.g. \code{"C5:GO:BP:*"}).
+#'
+#' @return A list containing:
+#'   \itemize{
+#'     \item \code{results} – a list of GSEA results (\code{gseaResult} objects)
+#'       for each requested geneset.
+#'     \item \code{name} – the contrast name.
+#'     \item \code{subset_column}, \code{subset_group} – (optional) metadata
+#'       carried over from the input contrast.
+#'   }
+#'
+#' @importFrom clusterProfiler GSEA
+#' @importFrom dplyr select
+#' @importFrom purrr map
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' gsea <- DegsRunGseaTest(
+#'   contrast = contrast,
+#'   term2gene_db = term2gene_db,
+#'   genesets = c("C5:GO:BP:*", "C2:KEGG:*")
+#' )
+#' gsea$results[["C5:GO:BP:*"]]
+#' }
 DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
   # Calculate fold changes
   if (FALSE) {
@@ -1344,12 +1579,58 @@ DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
   return(gsea_result)
 }
 
-#' Obtains genesets from MSigDB or user-defined input files.
-#' 
-#' @param msigdb_species Species name for MSigDB.
-#' @param is_msigdb_species_name Is the species name a name used by MSigDB? Default is FALSE. If not, try to make it compatible with MSigDB. This will do the following: homo_sapiens => Homo sapiens.
-#' @param geneset_files User-defined genesets in Excel or CSV file(s) to use instead of MSigDB. The files should have these columns: gs_cat (category), gs_subcat (subcategory), gs_name (geneset name), gene_id, gene_symbol.
-#' @return A table with genesets and the following columns: gs_cat, gs_subcat, gs_name, gene_id, gene_symbol.
+#' Obtain Genesets from MSigDB or User-Defined Files
+#'
+#' Retrieves genesets either from the Molecular Signatures Database (MSigDB)
+#' using \pkg{msigdbr}, or from user-supplied files in Excel/CSV/TSV/RDS format.
+#'
+#' If \code{geneset_files} is not provided, genesets are downloaded from MSigDB
+#' for the specified species. Species names are automatically converted into the
+#' format used by MSigDB unless \code{is_msigdb_species_name=TRUE}.
+#'
+#' If \code{geneset_files} are provided, the files must include the following
+#' columns: \code{gs_cat}, \code{gs_subcat}, \code{gs_name}, \code{gene_id},
+#' and \code{gene_symbol}.
+#'
+#' @param msigdb_species Species name for MSigDB. Examples: \code{"homo_sapiens"},
+#'   \code{"mus_musculus"}.
+#' @param is_msigdb_species_name Logical. If \code{TRUE}, use the provided species
+#'   name as-is. If \code{FALSE} (default), attempt to format the species name to
+#'   match MSigDB conventions (e.g. \code{"homo_sapiens"} → \code{"Homo sapiens"}).
+#' @param geneset_files Optional. A character vector of file paths to user-defined
+#'   genesets in \code{.csv}, \code{.tsv}, \code{.xls}, \code{.xlsx}, or \code{.rds}
+#'   format (optionally gzipped). Each file must contain the columns:
+#'   \code{gs_cat}, \code{gs_subcat}, \code{gs_name}, \code{gene_id},
+#'   \code{gene_symbol}.
+#'
+#' @return A \code{data.frame} of genesets with the following columns:
+#'   \itemize{
+#'     \item \code{gs_cat} – category of the geneset
+#'     \item \code{gs_subcat} – sub-category of the geneset
+#'     \item \code{gs_name} – name of the geneset
+#'     \item \code{gene_id} – identifier for the gene
+#'     \item \code{gene_symbol} – gene symbol
+#'   }
+#'
+#' @importFrom msigdbr msigdbr
+#' @importFrom readxl read_excel
+#' @importFrom readr read_delim
+#' @importFrom dplyr select
+#' @importFrom purrr map_dfr
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Download MSigDB Hallmark genesets for human
+#' gs <- DegsGetGenesets(msigdb_species="homo_sapiens")
+#'
+#' # Load user-defined genesets from Excel file
+#' gs <- DegsGetGenesets(
+#'   msigdb_species="homo_sapiens",
+#'   geneset_files=c("custom_genesets.xlsx")
+#' )
+#' }
 DegsGetGenesets = function(msigdb_species, is_msigdb_species_name=FALSE, geneset_files=NULL) {
   if (is.null(geneset_files)) {
     # No user input - get MSigDB
@@ -1402,20 +1683,74 @@ DegsGetGenesets = function(msigdb_species, is_msigdb_species_name=FALSE, geneset
   return(term2gene_db)
 }
 
-#' Run DESeq2 on bulk-aggregated single-cell dataset. Operates on raw counts and does not do pre-filtering of genes.
-#' 
-#' By default it compares two conditions (Wald test). Alternatively, it can do a log ratio test where it compares a full model to a reduced model to see which fits better. This is done for all levels of the condition_groups column together.
+#' Run DESeq2 on Bulk-Aggregated Single-Cell Data
 #'
-#' @param object Seurat object. Single-cell counts must have been aggregated into bulk samples. Object must have a 'condition_groups' column. 
-#' @param ident_1 Condition 1. Must be part of the 'condition_groups' column. Ignored for LRT tests.
-#' @param ident_2 Condition 2. Must be part of the 'condition_groups' column. Ignored for LRT tests.
-#' @param assay Assay to use for the analysis (default: default assay of Seurat object)
-#' @param test Use Wald or LRT test (default: Wald)
-#' @param design Design formula of the full model to test (default: ~condition_groups).
-#' @param reduced When doing an LRT test, design of the reduced model to compare (default: null).
-#' @param random_seed Random seed for reproducibility (default: 1)
-#' @param results_args Additional arguments that are passed to the results function of DESeq2.
-#' @return A data frame with DESeq2 results. Contains columns gene, p_val, p_val_adj, avg_log2FC, pct.1, pct.2.
+#' Performs differential expression testing on bulk-aggregated single-cell data
+#' using \pkg{DESeq2}. Operates directly on raw counts and does not perform
+#' pre-filtering of genes.  
+#'
+#' By default, compares two conditions with a Wald test. Alternatively, can run
+#' a likelihood ratio test (LRT) to compare a full model to a reduced model
+#' across all levels of the \code{condition_groups} column.
+#'
+#' @param object A Seurat object. Single-cell counts must have been aggregated
+#'   into bulk samples. The object must contain a column \code{condition_groups}
+#'   in its metadata.
+#' @param ident_1 Condition group 1. Must be present in the
+#'   \code{condition_groups} column. Ignored for LRT tests.
+#' @param ident_2 Condition group 2. Must be present in the
+#'   \code{condition_groups} column. Ignored for LRT tests.
+#' @param assay Assay to use for the analysis. Default is the active assay of
+#'   the Seurat object.
+#' @param test Statistical test to use. One of:
+#'   \itemize{
+#'     \item \code{"Wald"} (default): Wald test comparing \code{ident_1} vs
+#'       \code{ident_2}.
+#'     \item \code{"LRT"}: Likelihood ratio test comparing a full vs reduced
+#'       model.
+#'   }
+#' @param design Formula for the full model (default: \code{"~condition_groups"}).
+#' @param reduced Formula for the reduced model (only used when
+#'   \code{test="LRT"}). Default: \code{"~1"}.
+#' @param random_seed Random seed for reproducibility (default: \code{1}).
+#' @param results_args A list of additional arguments passed to
+#'   \code{\link[DESeq2]{results}}. If \code{NULL}, defaults to:
+#'   \code{contrast = c("condition_groups", ident_1, ident_2), alpha = 0.05, filterFun = ihw}.
+#'
+#' @return A \code{data.frame} of DESeq2 results with the following columns:
+#'   \itemize{
+#'     \item \code{gene} – gene identifier (rownames of the input assay)
+#'     \item \code{p_val} – raw p-value
+#'     \item \code{p_val_adj} – adjusted p-value (Benjamini–Hochberg)
+#'     \item \code{avg_log2FC} – average log2 fold-change between groups
+#'     \item \code{pct.1} – fraction of samples in condition 1 expressing the gene
+#'     \item \code{pct.2} – fraction of samples in condition 2 expressing the gene
+#'   }
+#'
+#' @importFrom DESeq2 DESeqDataSetFromMatrix DESeq results
+#' @importFrom IHW ihw
+#' @importFrom SeuratObject DefaultAssay GetAssayData
+#' @importFrom dplyr select
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Run DESeq2 Wald test
+#' degs <- DegsRunDESeq2(
+#'   object = sc_bulk,
+#'   ident_1 = "treated",
+#'   ident_2 = "control"
+#' )
+#'
+#' # Run DESeq2 LRT with reduced model
+#' degs <- DegsRunDESeq2(
+#'   object = sc_bulk,
+#'   assay = "RNA",
+#'   test = "LRT",
+#'   design = "~ condition_groups + batch",
+#'   reduced = "~ batch"
+#' )
+#' }
 DegsRunDESeq2 = function(object, ident_1, ident_2, assay=NULL, test="Wald", design="~condition_groups", reduced=NULL, random_seed=1, results_args=NULL) {
   
   # Need these packages preloaded
@@ -1483,12 +1818,41 @@ DegsRunDESeq2 = function(object, ident_1, ident_2, assay=NULL, test="Wald", desi
   return(dds_results)
 }
 
-#' Sorts table of differentially expressed genes per performed test. Introduces a signed p-value score calculated as follows:
-#' p_val_adj_score = -log10(p_val_adj) * sign(avg_log2FC).
-#' 
-#' @param degs Result table of the "Seurat::FindAllMarkers" function or the "Seurat::FindMarkers" function.
-#' @param group Group results first by column(s) before sorting.
-#' @return Sorted table with differentially expressed genes. 
+#' Sort Differential Expression Results
+#'
+#' Sorts the results of a differential expression test (e.g.
+#' \code{\link[Seurat]{FindMarkers}} or \code{\link[Seurat]{FindAllMarkers}}).  
+#' Adds a signed adjusted p-value score defined as:
+#'
+#' \deqn{p\_val\_adj\_score = -\log_{10}(p\_val\_adj) \times sign(\mathrm{FC})}
+#'
+#' where \eqn{\mathrm{FC}} is either \code{avg_log2FC} (for feature data) or
+#' \code{avg_diff} (for metadata/reduction data).
+#'
+#' @param degs A \code{data.frame} of differential expression results, typically
+#'   produced by \code{\link[Seurat]{FindMarkers}} or
+#'   \code{\link[Seurat]{FindAllMarkers}}.
+#' @param group Optional. A character vector of column names to group results by
+#'   before sorting (e.g. \code{"cluster"} when results span multiple groups).
+#'
+#' @return A \code{data.frame} of sorted differential expression results with an
+#'   additional column:
+#'   \itemize{
+#'     \item \code{p_val_adj_score} – signed adjusted p-value score, useful for
+#'       ranking genes.
+#'   }
+#'
+#' @importFrom dplyr group_by across all_of arrange
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Sort standard DEG results
+#' degs_sorted <- DegsSort(degs)
+#'
+#' # Sort by cluster first, then within cluster
+#' degs_sorted <- DegsSort(degs, group = "cluster")
+#' }
 DegsSort = function(degs, group=NULL) { 
   # Group first (if requested)
   if (!is.null(group)) degs = degs %>% dplyr::group_by(dplyr::across(dplyr::all_of(group)))
@@ -1507,13 +1871,45 @@ DegsSort = function(degs, group=NULL) {
   return(degs)
 }
 
-#' Filter table of differentially expressed genes.
-#' 
-#' @param degs Result table of the "Seurat::FindAllMarkers" or the "Seurat::FindMarkers" functions.
-#' @param cut_log2FC Log2 fold change threshold.
-#' @param cut_padj Adjusted p-value threshold; not advised for filtering markers
-#' @param split_by_dir Split filtered table into a table with all degs, a table with up-regulated degs and a table down-regulated degs.
-#' @return If split_by_dir is set to FALSE filtered table else list of filtered tables with all, up-regulated and down-regulated degs.
+#' Filter Differential Expression Results
+#'
+#' Filters the results of a differential expression test (e.g.
+#' \code{\link[Seurat]{FindMarkers}} or \code{\link[Seurat]{FindAllMarkers}}) by
+#' log2 fold change and optionally adjusted p-value. Can also split results into
+#' up- and down-regulated genes.
+#'
+#' @param degs A \code{data.frame} of differential expression results, typically
+#'   produced by \code{\link[Seurat]{FindMarkers}} or
+#'   \code{\link[Seurat]{FindAllMarkers}}.
+#' @param cut_log2FC Numeric. Threshold for absolute log2 fold change.
+#' @param cut_padj Optional numeric. Threshold for adjusted p-value. Not advised
+#'   when filtering marker genes (default: \code{NULL}).
+#' @param split_by_dir Logical. If \code{TRUE} (default), returns a list
+#'   containing three tables: all filtered genes, up-regulated genes, and
+#'   down-regulated genes. If \code{FALSE}, returns only the filtered table.
+#'
+#' @return Either:
+#'   \itemize{
+#'     \item A single \code{data.frame} of filtered DEGs (if
+#'       \code{split_by_dir = FALSE}).
+#'     \item A \code{list} with three elements: \code{all}, \code{up},
+#'       and \code{down} (if \code{split_by_dir = TRUE}).
+#'   }
+#'
+#' @importFrom dplyr filter
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Filter DEGs with log2FC >= 0.5
+#' degs_filtered <- DegsFilter(degs, cut_log2FC = 0.5)
+#'
+#' # Filter with log2FC >= 1 and adjusted p-value <= 0.05
+#' degs_filtered <- DegsFilter(degs, cut_log2FC = 1, cut_padj = 0.05)
+#'
+#' # Return a single filtered table instead of split by direction
+#' degs_filtered <- DegsFilter(degs, cut_log2FC = 0.25, split_by_dir = FALSE)
+#' }
 DegsFilter = function(degs, cut_log2FC, cut_padj=NULL, split_by_dir=TRUE) { 
   
   # Filter differentially expressed genes based on fold change 
@@ -1539,13 +1935,45 @@ DegsFilter = function(degs, cut_log2FC, cut_padj=NULL, split_by_dir=TRUE) {
   return(filt)
 }
 
-#' Display top marker genes (=up-regulated genes).
-#' 
-#' @param degs Result table of the "Seurat::FindAllMarkers" function (requires column "cluster")
-#' @param n Number of top genes to show
-#' @param column_1 First column to sort genes on
-#' @param column_2 Second column to sort genes on
-#' @return Data.frame of top genes 
+#' Display Top Up-Regulated Marker Genes
+#'
+#' Selects and displays the top up-regulated genes per cluster from the results
+#' of \code{\link[Seurat]{FindAllMarkers}}. Genes are ranked by two user-defined
+#' columns (e.g. adjusted p-value score and percentage difference).
+#'
+#' @param degs A \code{data.frame} of differential expression results produced by
+#'   \code{\link[Seurat]{FindAllMarkers}}. Must contain a \code{cluster} column.
+#' @param n Integer. Number of top genes to show per cluster (default: 5).
+#' @param column_1 Character. First column name to use for ranking genes
+#'   (default: \code{"p_val_adj_score"}).
+#' @param column_2 Character. Second column name to use for ranking genes
+#'   (default: \code{"pct.diff"}).
+#'
+#' @return A \code{data.frame} of the top up-regulated genes per cluster with
+#'   the following columns:
+#'   \itemize{
+#'     \item \code{cluster} – cluster ID
+#'     \item \code{gene} – gene symbol
+#'     \item \code{avg_log2FC} – average log2 fold change (rounded)
+#'     \item \code{p_val} – raw p-value (scientific notation)
+#'     \item \code{p_val_adj} – adjusted p-value (scientific notation)
+#'     \item \code{pct.1}, \code{pct.2} – fraction of cells expressing the gene
+#'       in each group
+#'   }
+#'
+#' @importFrom dplyr mutate group_by top_n ungroup transmute
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Show top 5 markers per cluster by adjusted p-value score and percent diff
+#' top_markers <- DegsUpDisplayTop(degs, n = 5)
+#'
+#' # Rank instead by log2FC and percent difference
+#' top_markers <- DegsUpDisplayTop(degs, n = 10,
+#'                                 column_1 = "avg_log2FC",
+#'                                 column_2 = "pct.diff")
+#' }
 DegsUpDisplayTop = function(degs, n=5, column_1="p_val_adj_score", column_2="pct.diff") { 
   
   # Calculate difference in percentage of cells that express the gene
@@ -1568,12 +1996,45 @@ DegsUpDisplayTop = function(degs, n=5, column_1="p_val_adj_score", column_2="pct
   return(top)
 }
 
-#' Creates a DEG scatterplot.
-#' 
-#' @param deg_result A list entry with DEG results obtained with RunDEGTests
-#' @param font_size The base font size. Default is 11.
-#' @return A ggplot scatterplot
-DegsScatterPlot = function(deg_result, font_size=11) {
+#' Create a DEG Scatterplot
+#'
+#' Generates a scatterplot comparing average expression values between two
+#' conditions from a DEG test result. Significant up- and down-regulated genes
+#' are highlighted, and the top DEGs in each direction are labeled.
+#'
+#' @param deg_result A list entry with DEG results obtained from
+#'   \code{\link{DegsRunTest}} (via \code{RunDEGTests}). Must contain
+#'   \code{results}, \code{condition1}, \code{condition2}, \code{padj}, and
+#'   optionally \code{log2FC}.
+#' @param n_label Integer. Number of top DEGs to label per direction
+#'   (default: 5).
+#' @param font_size Base font size in points for axis labels and titles
+#'   (default: 11). Text labels are automatically scaled for plotting.
+#'
+#' @return A \code{ggplot} scatterplot object showing condition1 vs condition2
+#'   expression with DEGs colored by status (\code{"up"}, \code{"down"},
+#'   \code{"none"}). Top DEGs are labeled.
+#'
+#' @details
+#' - For feature data, DEGs are defined by adjusted p-value and log2 fold change
+#'   thresholds.
+#' - For reduction or barcode metadata, DEGs are defined by adjusted p-value
+#'   only.
+#' - If \code{log2FC > 0}, dashed threshold lines are added to the plot.
+#'
+#' @importFrom ggplot2 ggplot aes geom_point geom_abline scale_color_manual
+#' @importFrom ggrepel geom_text_repel
+#' @importFrom dplyr filter group_by slice_min
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Run a DEG test and plot scatterplot with top 10 genes labeled
+#' contrast <- PrepareContrast(...)
+#' deg_result <- DegsRunTest(contrast)
+#' DegsScatterPlot(deg_result, n_label = 10, font_size = 12)
+#' }
+DegsScatterPlot = function(deg_result, n_label=5, font_size=11) {
     # Get condition names. If multiple, join by '+'.
     group1 = paste(deg_result[["condition1"]], collapse="+")
     group2 = paste(deg_result[["condition2"]], collapse="+")
@@ -1601,10 +2062,14 @@ DegsScatterPlot = function(deg_result, font_size=11) {
     lims = c(min(c(deg_table$condition1, deg_table$condition2)), max(deg_table$condition1, deg_table$condition2))
     
     # Get the top 5 up- and down-regulated DEGs
-    top10_deg_table = deg_table %>% 
-        dplyr::filter(deg_status %in% c("up", "down")) %>%
-        dplyr::group_by(deg_status) %>%
-        dplyr::slice_min(order_by=abs(p_val ), n=5, with_ties=FALSE)
+    # top10_deg_table = deg_table %>% 
+    #     dplyr::filter(deg_status %in% c("up", "down")) %>%
+    #     dplyr::group_by(deg_status) %>%
+    #     dplyr::slice_min(order_by=abs(p_val ), n=5, with_ties=FALSE)
+    top_deg_table = deg_table %>% 
+      dplyr::filter(deg_status %in% c("up", "down")) %>%
+      dplyr::group_by(deg_status) %>%
+      dplyr::slice_min(order_by=abs(p_val ), n=n_label, with_ties=FALSE)
     
     # Make plot
     # Note: Font size in theme is measured in pt but font size in geom_text is measured in mm.
@@ -1613,7 +2078,7 @@ DegsScatterPlot = function(deg_result, font_size=11) {
     p = ggplot(deg_table, aes(x=condition1, y=condition2, col=deg_status)) + 
         geom_abline(slope=1, intercept=0, col="lightgrey") +
         geom_point() +
-        ggrepel::geom_text_repel(data=top10_deg_table, aes(x=condition1, y=condition2, col=deg_status, label=gene), size=font_size / .pt, colour="black") +
+        ggrepel::geom_text_repel(data=top_deg_table, aes(x=condition1, y=condition2, col=deg_status, label=gene), size=font_size / .pt, colour="black") +
         scale_color_manual("Gene status", values=c(none="grey", up="darkgoldenrod1", down="steelblue"), 
                            labels=c(none='none', up='up', down='down')) +
         xlim(lims) + 
@@ -1625,16 +2090,44 @@ DegsScatterPlot = function(deg_result, font_size=11) {
         p = p + geom_abline(slope=1, intercept=c(-log2FC, log2FC), col="lightgrey", lty=2)
     }
     
-    
     return(p)
 }
 
-#' Creates a DEG volcano plot
-#' 
-#' @param deg_result A list entry with DEG results obtained with RunDEGTests
-#' @param font_size The base font size. Default is 11.
-#' @return A ggplot volcano plot
-DegsVolcanoPlot = function(deg_result, font_size=11) {
+#' Create a DEG Volcano Plot
+#'
+#' Generates a volcano plot of DEGs, highlighting significant
+#' up- and down-regulated genes and labeling the top DEGs.
+#'
+#' @param deg_result A list entry with DEG results obtained from
+#'   \code{\link{RunDEGTests}}. Must contain \code{results},
+#'   \code{condition1}, \code{condition2}, \code{padj}, and optionally
+#'   \code{log2FC}.
+#' @param n_label Integer. Number of top DEGs to label per direction
+#'   (default: 5).
+#' @param font_size Base font size in points for axis labels and titles
+#'   (default: 11). Text labels are automatically scaled for plotting.
+#'
+#' @return A \code{ggplot} object volcano plot with DEGs colored by status
+#'   (\code{"up"}, \code{"down"}, \code{"none"}). Top DEGs are labeled.
+#'
+#' @details
+#' - For feature data, DEGs are defined by adjusted p-value and log2 fold change
+#'   thresholds.
+#' - For reduction or barcode metadata, DEGs are defined by adjusted p-value
+#'   only.
+#' - If \code{log2FC > 0}, vertical dashed lines are added at thresholds.
+#'
+#' @importFrom ggplot2 ggplot aes geom_point geom_vline scale_color_manual
+#' @importFrom ggrepel geom_text_repel
+#' @importFrom dplyr filter group_by slice_min
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' deg_result <- DegsRunTest(contrast)
+#' DegsVolcanoPlot(deg_result, n_label = 10, font_size = 12)
+#' }
+DegsVolcanoPlot = function(deg_result, n_label=5, font_size=11) {
     # Get condition names. If multiple, join by '+'.
     group1 = paste(deg_result[["condition1"]], collapse="+")
     group2 = paste(deg_result[["condition2"]], collapse="+")
@@ -1671,10 +2164,10 @@ DegsVolcanoPlot = function(deg_result, font_size=11) {
     deg_table$p_val_log10_n[i] = 0
     
     # Get the top 5 up- and down-regulated DEGs
-    top10_deg_table = deg_table %>% 
+    top_deg_table = deg_table %>% 
         dplyr::filter(deg_status %in% c("up", "down")) %>%
         dplyr::group_by(deg_status) %>%
-        dplyr::slice_min(order_by=abs(p_val ), n=5, with_ties=FALSE)
+        dplyr::slice_min(order_by=abs(p_val), n=n_label, with_ties=FALSE)
     
     # Make plot
     # Note: Font size in theme is measured in pt but font size in geom_text is measured in mm.
@@ -1682,7 +2175,7 @@ DegsVolcanoPlot = function(deg_result, font_size=11) {
     # https://ggplot2.tidyverse.org/articles/ggplot2-specs.html#text
     p = ggplot(deg_table, aes(x=!!sym(fc_col), y=p_val_log10_n, col=deg_status)) + 
         geom_point() +
-        ggrepel::geom_text_repel(data=top10_deg_table, aes(x=!!sym(fc_col), y=p_val_log10_n, col=deg_status, label=gene), size=font_size / .pt, colour="black") +
+        ggrepel::geom_text_repel(data=top_deg_table, aes(x=!!sym(fc_col), y=p_val_log10_n, col=deg_status, label=gene), size=font_size / .pt, colour="black") +
         scale_color_manual("Gene status", values=c(none="grey", up="darkgoldenrod1", down="steelblue"), 
                            labels=c(none='none', up='up', down='down')) +
         AddPlotStyle(xlab=ifelse(fc_col == "avg_log2FC", expression(log[2]~"foldchange"), "condition1 - condition2"),
@@ -1697,13 +2190,49 @@ DegsVolcanoPlot = function(deg_result, font_size=11) {
     return(p)
 }
 
-#' Calculate the average gene expression data for groups of cell barcodes.
-#' 
-#' @param sc Seurat object.
-#' @param group_by How to group the barcodes. Can be a column of the barcode metadata with character or factor data or a list with groups. If NULL, the active identity will be used.
-#' @param assay Assay to be used. If NULL, the default assay will be used.
-#' @param layer Layer to be used. If NULL, the default layer of the assay will be used.
-#' @return A table with average gene expression data per group.
+#' Calculate Average Gene Expression per Group
+#'
+#' Computes the average expression of genes for groups of cell barcodes
+#' in a Seurat object. Grouping can be based on the active identity,
+#' a metadata column, or a user-defined list of barcodes. For the "data"
+#' layer, the mean is calculated on exponentiated values and then log-transformed.
+#'
+#' @param sc A Seurat object containing single-cell data.
+#' @param group_by Column name in the barcode metadata, a list of barcode groups,
+#'   or NULL to use active identities (default: NULL).
+#' @param assay Assay to use. If NULL, the default assay of the Seurat object
+#'   is used (default: NULL).
+#' @param layer Layer to use within the assay. If NULL, the default layer of
+#'   the assay is used (default: NULL).
+#'
+#' @return A data frame with genes as rows and groups as columns containing
+#'   the average expression values per group.
+#'
+#' @details
+#' - If \code{group_by} is NULL, the active identities from the Seurat object
+#'   are used to define groups.
+#' - For "counts" and "scale.data" layers, the mean is calculated directly.
+#' - For the "data" layer, the mean is calculated on the exponentiated values
+#'   minus 1, averaged, then log-transformed.
+#' - \code{group_by} as a list must have named elements corresponding to group names.
+#'
+#' @importFrom SeuratObject DefaultAssay DefaultLayer LayerData Idents
+#' @importFrom purrr map
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Average counts per cluster
+#' avg_counts <- AverageCounts(sc, group_by = "seurat_clusters")
+#'
+#' # Average counts using active identities
+#' avg_counts <- AverageCounts(sc)
+#'
+#' # Average counts using a custom list of barcode groups
+#' groups_list <- list(group1 = c("cell1","cell2"), group2 = c("cell3","cell4"))
+#' avg_counts <- AverageCounts(sc, group_by = groups_list)
+#' }
 AverageCounts = function(sc, group_by=NULL, assay=NULL, layer=NULL) {
   # If assay is NULL, use default assay
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -1758,11 +2287,37 @@ AverageCounts = function(sc, group_by=NULL, assay=NULL, layer=NULL) {
 }
 
 
-#' Compute average gene expression data per identity class for a set of genes.
-#' 
-#' @param sc Seurat object.
-#' @param genes Gene list for which average data are to be extracted.
-#' @return A table with average RNA counts and data per identity class for each gene.
+#' Compute Average Gene Expression per Identity Class
+#'
+#' Calculates the average expression of a specified set of genes for each
+#' identity class in a Seurat object. Both raw counts and normalized data
+#' (log-transformed) are included if available.
+#'
+#' @param sc A Seurat object containing single-cell data.
+#' @param genes A character vector of gene symbols for which to compute
+#'   average expression.
+#' @param assay Assay to use (default: "RNA").
+#'
+#' @return A data frame with genes as rows and columns corresponding to
+#'   average expression per identity class. Columns are named
+#'   \code{avg_<assay>_<layer>_id<identity>}.
+#'
+#' @details
+#' - For the "data" layer, averages are calculated as \code{log2(mean(exp(x)) + 1)}
+#'   to match Seurat's normalized expression calculations.
+#' - For the "counts" layer, averages are calculated as the mean of raw counts.
+#' - If a gene is not present in the Seurat object, the corresponding entries
+#'   are filled with \code{NA}.
+#'
+#' @importFrom SeuratObject DefaultAssay LayerData Idents WhichCells
+#' @importFrom Matrix rowMeans as dgCMatrix
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' genes_of_interest <- c("GeneA", "GeneB", "GeneC")
+#' avg_expression <- DegsAvgDataPerIdentity(sc, genes_of_interest)
+#' }
 DegsAvgDataPerIdentity = function(sc, genes, assay="RNA") { 
   # The standard average log FC is derived from assay and layer="data"
   # Add average scaled data per cluster for default assay
@@ -1797,13 +2352,38 @@ DegsAvgDataPerIdentity = function(sc, genes, assay="RNA") {
   return(avg_data)
 }
 
-#' Compute average gene expression data for a set of cells and a set of genes.
-#' 
-#' @param object Seurat assay object.
-#' @param cells Cells to be used. NULL if all cells should be used.
-#' @param genes Gene list for which average data are to be extracted. Can be NULL where all genes will be calculated.
-#' @param slot Slot to be used (data). Can be 'counts' or 'data' or both (vector).
-#' @return A table with average data for each gene.
+
+#' Compute Average Gene Expression for Selected Cells and Genes
+#'
+#' Calculates the average expression or counts for a set of genes across
+#' specified cells in a Seurat assay object.
+#'
+#' @param object A Seurat assay object.
+#' @param cells A character vector of cell names to include. If \code{NULL},
+#'   all cells in the assay are used (default: \code{NULL}).
+#' @param genes A character vector of genes to include. If \code{NULL}, all
+#'   genes in the assay are used (default: \code{NULL}).
+#' @param slot Character vector specifying which data to use. Options include
+#'   \code{"data"} (normalized/log-transformed) and/or \code{"counts"} (raw counts).
+#'
+#' @return A data frame with genes as rows and columns corresponding to the
+#'   requested slots (\code{avg_counts}, \code{avg_data}). Row names correspond
+#'   to gene symbols.
+#'
+#' @details
+#' - For the "data" slot, averages are computed as \code{log2(mean(exp(x)) + 1)},
+#'   consistent with Seurat's normalized expression calculations.
+#' - For the "counts" slot, averages are computed as the mean of raw counts.
+#' - If \code{genes} or \code{cells} are empty, an empty data frame is returned.
+#'
+#' @importFrom Seurat GetAssayData
+#' @importFrom Matrix rowMeans
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' avg_expr <- DegsAvgData(sc[["RNA"]], cells=c("cell1", "cell2"), genes=c("GeneA", "GeneB"), slot=c("counts","data"))
+#' }
 DegsAvgData = function(object, cells=NULL, genes=NULL, slot="data") {
   if ("data" %in% slot) avg_data = as.numeric() else avg_data = NULL
   if ("counts" %in% slot) avg_counts = as.numeric() else avg_counts = NULL
@@ -1839,13 +2419,38 @@ DegsAvgData = function(object, cells=NULL, genes=NULL, slot="data") {
 }
 
 
-#' Write differentially expressed genes or markers to an Excel file.
-#' 
-#' @param degs Table with DEG analysis results. Can also be a list of tables so that each table is written into an extra Excel tab.
-#' @param file Output file name.
-#' @param annotation Gene annotation to include in the tables. Will be merged using the rownames. Can be NULL.
-#' @param parameter A data.frame for describing test parameter. Can be NULL.
-#' @return Output file name.
+#' Write Differentially Expressed Genes to Excel
+#'
+#' Exports one or more DEG result tables to an Excel file, optionally including
+#' gene annotations and test parameters. Each table is written to a separate
+#' Excel sheet.
+#'
+#' @param degs_lst A data frame or a list of data frames containing DEG results.
+#'   Each list element will be written to a separate Excel tab.
+#' @param file Character. Output Excel file path.
+#' @param annotation A data frame of gene annotations to merge with the DEG tables.
+#'   Merge is performed via row names. Can be \code{NULL} (default: \code{NULL}).
+#' @param parameter A data frame describing test parameters to include as a separate
+#'   sheet. Can be \code{NULL} (default: \code{NULL}).
+#'
+#' @return Returns the output file name (invisible).
+#'
+#' @details
+#' - Adds a \code{README} sheet describing column contents and interpretations.
+#' - Column names longer than 31 characters are truncated to comply with Excel 
+#'   sheet name limits.
+#' - For multiple DEG tables, each is written to a separate sheet.
+#'
+#' @importFrom tibble rownames_to_column
+#' @importFrom dplyr left_join select
+#' @importFrom purrr map
+#' @importFrom openxlsx write.xlsx
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' DegsWriteToFile(degs_lst=my_deg_list, file="DEGs.xlsx", annotation=gene_annot, parameter=test_params)
+#' }
 DegsWriteToFile = function(degs_lst, file, annotation=NULL, parameter=NULL) {
     # Convert to list if not already
     if (is.data.frame(degs_lst)) degs_lst = list(degs_lst)
@@ -1890,12 +2495,32 @@ DegsWriteToFile = function(degs_lst, file, annotation=NULL, parameter=NULL) {
     return(file)
 }
 
-#' Write ORA (over-representation analysis) results to an Excel file.
-#' 
-#' @param degs Table with ORA results. Can also be a list of tables so that each table is written into an extra Excel tab.
-#' @param file Output file name.
-#' @param parameter A data.frame for describing test parameter. Can be NULL.
-#' @return Output file name.
+#' Write ORA (Over-Representation Analysis) Results to Excel
+#'
+#' Exports one or more ORA result tables to an Excel file. Each table is written
+#' to a separate sheet, and a README sheet describing column meanings is included.
+#'
+#' @param ora_lst A data frame or list of data frames containing ORA results. Each
+#'   list element will be written to a separate Excel sheet.
+#' @param file Character. Output Excel file path.
+#' @param parameter A data frame describing test parameters to include as a separate
+#'   sheet. Can be \code{NULL} (default: \code{NULL}).
+#'
+#' @return Returns the output file name (invisible).
+#'
+#' @details
+#' - Adds a \code{README} sheet describing the columns and their interpretation.
+#' - Column names longer than 31 characters are truncated to comply with Excel
+#'   sheet name limits.
+#' - Supports exporting multiple ORA tables to separate sheets.
+#'
+#' @importFrom openxlsx write.xlsx
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' DegsWriteOraToFile(ora_lst=my_ora_list, file="ORA_results.xlsx", parameter=test_params)
+#' }
 DegsWriteOraToFile = function(ora_lst, file, parameter=NULL) {
   # Convert to list if not already
   if (is.data.frame(ora_lst)) ora_lst = list(ora_lst)
@@ -1931,12 +2556,32 @@ DegsWriteOraToFile = function(ora_lst, file, parameter=NULL) {
   return(file)
 }
 
-#' Write geneset enrichment analysis (GSEA) results to an Excel file.
-#' 
-#' @param gsea_lst Table with GSEA results. Can also be a list of tables so that each table is written into an extra Excel tab.
-#' @param file Output file name.
-#' @param parameter A data.frame for describing test parameter. Can be NULL.
-#' @return Output file name.
+#' Write GSEA (Geneset Enrichment Analysis) Results to Excel
+#'
+#' Exports one or more GSEA result tables to an Excel file. Each table is written
+#' to a separate sheet, and a README sheet describing column meanings is included.
+#'
+#' @param gsea_lst A data frame or list of data frames containing GSEA results. Each
+#'   list element will be written to a separate Excel sheet.
+#' @param file Character. Output Excel file path.
+#' @param parameter A data frame describing test parameters to include as a separate
+#'   sheet. Can be \code{NULL} (default: \code{NULL}).
+#'
+#' @return Returns the output file name (invisible).
+#'
+#' @details
+#' - Adds a \code{README} sheet describing the columns and their interpretation.
+#' - Column names longer than 31 characters are truncated to comply with Excel
+#'   sheet name limits.
+#' - Supports exporting multiple GSEA tables to separate sheets.
+#'
+#' @importFrom openxlsx write.xlsx
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' DegsWriteGseaToFile(gsea_lst=my_gsea_list, file="GSEA_results.xlsx", parameter=test_params)
+#' }
 DegsWriteGseaToFile = function(gsea_lst, file, parameter=NULL) {
   # Convert to list if not already
   if (is.data.frame(gsea_lst)) ora_lst = list(gsea_lst)
@@ -1970,12 +2615,37 @@ DegsWriteGseaToFile = function(gsea_lst, file, parameter=NULL) {
 }
 
 
-#' Plot the number of DEGs per test.
-#' 
-#' @param markers Result table of the "Seurat::FindAllMarkers" function.
-#' @param group Group results by column for plotting.
-#' @param title Plot title.
-#' @return A ggplot object.
+#' Plot the Number of DEGs per Test
+#'
+#' Generates a bar plot showing the number of up- and down-regulated DEGs 
+#' for each group or identity. Can optionally group results by a metadata 
+#' column.
+#'
+#' @param degs A data frame of DEGs, typically from \code{Seurat::FindAllMarkers} 
+#'   or similar DEG results. Must include \code{avg_log2FC} and optionally grouping column(s).
+#' @param group Optional. Character. Column name in \code{degs} used to group results 
+#'   for plotting. If \code{NULL}, all DEGs are plotted as a single group.
+#' @param title Optional. Character. Plot title.
+#'
+#' @return A \code{ggplot} object displaying the number of up- and down-regulated genes
+#'   per group.
+#'
+#' @details
+#' - DEGs with \code{avg_log2FC > 0} are counted as "Up", those with 
+#'   \code{avg_log2FC < 0} as "Down".
+#' - If \code{group} is provided, bars are shown per group; otherwise, a single 
+#'   bar per direction is shown.
+#' - Colors are automatically set: "Up" = darkgoldenrod1, "Down" = steelblue.
+#'
+#' @importFrom ggplot2 ggplot aes geom_bar xlab
+#' @importFrom dplyr filter group_by summarise
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' degs <- Seurat::FindAllMarkers(seurat_obj)
+#' DegsPlotNumbers(degs, group="cluster", title="Number of DEGs per Cluster")
+#' }
 DegsPlotNumbers = function(degs, group=NULL, title=NULL) {
   
   degs_up = degs %>% dplyr::filter(avg_log2FC > 0)
@@ -2021,7 +2691,6 @@ DegsEmptyMarkerResultsTable = function(clusters) {
 }
 
 #' Returns an empty Enrichr results table.
-# '
 # '
 #' @param overlap_split: If TRUE, then table will contain the two columns 'In.List' and 'In.Annotation' (which result from splitting 'Overlap') instead of the column 'Overlap'.
 #' @return An empty Enrichr results dataframe.
@@ -2139,10 +2808,25 @@ EnrichrWriteResults = function(enrichr_results, file) {
 }
 
 
-#' Flattens the list of Enrichr results into one data.frame.
-# '
-#' @param enrichr_results: A list with enrichr results.
-#' @return A data.frame with the columns reported by Enrichr as well as the db
+#' Flatten Enrichr Results into a Single Data Frame
+#'
+#' Converts a list of Enrichr results, where each element corresponds to a database,
+#' into a single consolidated data frame with an added \code{Database} column.
+#'
+#' @param enrichr_results A named list of data frames returned by Enrichr. Each
+#'   element should correspond to a separate database.
+#'
+#' @return A single \code{data.frame} combining all Enrichr results, with an
+#'   additional \code{Database} column indicating the source database for each row.
+#'
+#' @importFrom purrr map invoke
+#' @importFrom dplyr bind_rows
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' flat_results <- FlattenEnrichr(enrichr_results)
+#' }
 FlattenEnrichr = function(enrichr_results) {
   enrichr_results_flat = purrr::map(names(enrichr_results), function(n) {
     return(data.frame(Database=rep(n, nrow(enrichr_results[[n]])), enrichr_results[[n]]))
