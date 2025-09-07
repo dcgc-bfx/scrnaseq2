@@ -1016,9 +1016,8 @@ ReadCounts_ScaleBio = function(path, assays, strip_suffix=NULL) {
 #' @param barcode_metadata Table with additional barcode metadata. Can also be a list specifying metadata for each assay. First column must contain the barcode. Missing barcodes will be filled with NA.
 #' @param feature_metadata Table with additional feature metadata. Can also be a list specifying metadata for each assay. First column must contain the feature id. Missing features will be filled with NA.
 #' @param barcode_suffix Suffix to add to the barcodes (default: NULL).
-#' @param visiumhd_bin_sizes For 10x VisiumHD, which bin sizes to read. Default is c(8, 16).
 #' @return  One sparse counts matrix per assay. Format can be dgCMatrix (general) or IterableMatrix (when reading an anndata.h5ad or h5 file). Additional information on barcodes, features, assay and technology and path is attached as attributes. For 10x VisiumHD data, the different bin sizes are returned as individual assays. 
-ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_metadata=NULL, barcode_suffix=NULL, visiumhd_bin_sizes=c(8, 16)) {
+ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_metadata=NULL, barcode_suffix=NULL) {
   library(magrittr)
 
   # Checks
@@ -1300,17 +1299,92 @@ WriteCounts_MatrixMarket = function(counts, path, overwrite=FALSE, barcode_data=
 #' 
 #' @param path Path to the 'spatial' directory produced by 10x Visium or 10x VisiumHD.
 #' @param barcodes If not NULL, named vector with barcodes to keep, order and rename. Names are original barcodes and values are barcodes after renaming. Barcodes will be re-ordered.
+#' @param coordinate_type For Visium HD segmented output, load cell "centroids", cell "segmentation" or both (default).
 #' @return A Seurat VisiumV1/V2 object.
-ReadImage_10xVisium = function(image_dir, barcodes=NULL) {
+ReadImage_10xVisium = function(image_dir, barcodes=NULL, coordinate_type=c("centroids", "segmentation")) {
   # Checks
   assertthat::is.readable(image_dir)
-  for (f in c("tissue_lowres_image.png", "scalefactors_json.json")) {
+  for (f in c("tissue_hires_image.png", "tissue_lowres_image.png", "scalefactors_json.json")) {
     assertthat::assert_that(file.exists(file.path(image_dir, f)),
                             msg=FormatString("10x Visium image directory {image_dir} misses the file {f}."))
   }
   
+  # Decide whether this is a bin/spot-based or a segmented dataset
+  cell_segmentations_file = file.path(dirname(image_dir), "cell_segmentations.geojson")
+  nucleus_segmentations_file = file.path(dirname(image_dir), "nucleus_segmentations.geojson")
+  
+  if (file.exists(file.path(image_dir, "tissue_positions.parquet"))) {
+      tissue_positions_file = file.path(image_dir, "tissue_positions.parquet")
+  } else if (file.exists(file.path(image_dir, "tissue_positions_list.csv"))) {
+      tissue_positions_file = file.path(image_dir, "tissue_positions_list.csv")
+  } else {
+      tissue_positions_file = file.path(image_dir, "tissue_positions.csv")
+  }
+  
+  is_segmented = !file.exists(tissue_positions_file)
+  
+  if (is_segmented) {
+      assertthat::assert_that(file.exists(cell_segmentations_file) & file.exists(nucleus_segmentations_file),
+                              msg=FormatString("10x Visium image directory {image_dir} seems to contain segmented data but is missing either the cell segmentations file {cell_segmentations_file} or the nucleus segmentations file {nucleus_segmentations_file}."))
+  } else {
+      assertthat::assert_that(file.exists(tissue_positions_file),
+                              msg=FormatString("10x Visium image directory {image_dir} seems to contain bin/spot-based data but is missing the tissue positions file {tissue_positions_file}."))
+  }
+  
   # Read image
-  image = Seurat::Read10X_Image(image_dir, filter.matrix=TRUE)
+  if (!is_segmented) {
+      # Bin/spot-based dataset
+      image = Seurat::Read10X_Image(image_dir, 
+                                    filter.matrix=TRUE,
+                                    image.name="tissue_lowres_image.png")
+  } else {
+      # Segmentation-based dataset
+      
+      # Read the Visium (V2) object with cell segmentations loaded
+      image = Read10X_Segmentations(
+          image.dir=image_dir,
+          data.dir=dirname(dirname(image_dir)),
+          image.name="tissue_lowres_image.png",
+          segmentation.type="cell",
+          cell.names=names(barcodes)
+      )
+      
+      # Holds the segmentation object
+      segmentations_obj = image@boundaries$segmentation
+      
+      # Get sf data (these are the polygons)
+      segmentations_sf_data = segmentations_obj@sf.data
+      
+      # Set the attribute-geometry relationship to constant
+      # See https://r-spatial.github.io/sf/reference/sf.html#details
+      sf::st_agr(segmentations_sf_data) = "constant"
+      
+      # Create a dataframe from sf data to hold centroids
+      centroid_coords = sf::st_coordinates(sf::st_centroid(segmentations_sf_data))
+      centroids_df = data.frame(
+          x = centroid_coords[, "X"],
+          y = centroid_coords[, "Y"],
+          row.names = segmentations_sf_data$barcodes
+      )
+      
+      # Create centroids object
+      centroids_obj = SeuratObject::CreateCentroids(centroids_df,
+                                   nsides = Inf,
+                                   radius = NULL,
+                                   theta = 0)
+      
+      # Add centroids to the Visium object
+      image@boundaries$centroids = centroids_obj
+      
+      # Now decide whether to keep centroids, segmentations or both and set default for plotting
+      if (!"centroids" %in% coordinate_type) {
+          image@boundaries$centroids = NULL
+      }
+      if (!"segmentation" %in% coordinate_type) {
+          image@boundaries$segmentation = NULL
+      }
+      SeuratObject::DefaultBoundary(image) = coordinate_type[1]
+  }
   
   if (!is.null(barcodes)) {
     image_bcs = SeuratObject::Cells(image)
@@ -1500,7 +1574,7 @@ ReadImage = function(image_dir, technology, assay, barcodes, coordinate_type=c("
   # Read image
   if(technology %in% c("10x_visium", "10x_visiumhd")) {
     # Visium
-    image = ReadImage_10xVisium(image_dir=image_dir, barcodes=barcodes)
+    image = ReadImage_10xVisium(image_dir=image_dir, barcodes=barcodes, coordinate_type=coordinate_type)
   } else if(technology == "10x_xenium") {
     # Xenium
     image = ReadImage_10xXenium(image_dir=image_dir, barcodes=barcodes, coordinate_type=coordinate_type)
@@ -2190,3 +2264,78 @@ ExportXeniumExplorer = function(sc, assay=NULL, categories=NULL, barcodes=NULL, 
     zarr_store$close()
   }
 }
+
+################################################################################
+# IMPORTANT: The following functions are part of the pull request that implements
+# reading of spaceranger segmentations for Seurat: https://github.com/satijalab/seurat/pull/10028
+################################################################################
+
+# Once they are part of an official Seurat release, this code needs to be removed.
+assertthat::assert_that(!exists("Read10X_Segmentations", where="package:Seurat", mode="function"),
+                        msg="Read10X_Segmentations has already been defined in the Seurat package. Please remove the function definition in R/functions_io.R!")
+Read10X_Segmentations <- function (image.dir,
+                                   data.dir,
+                                   image.name = "tissue_lowres_image.png",
+                                   assay = "Spatial.Polygons",
+                                   slice = "slice1.polygons",
+                                   segmentation.type = "cell",
+                                   cell.names
+)
+{
+    
+    image <- png::readPNG(source = file.path(image.dir, image.name))
+    scale.factors <- Read10X_ScaleFactors(filename = file.path(image.dir,
+                                                               "scalefactors_json.json"))
+    key <- Key(slice, quiet = TRUE)
+    
+    sf.data <- Read10X_HD_GeoJson(data.dir = data.dir, image.dir = image.dir, scale.factor = "lowres")
+    
+    # Create a Segmentation object based on sf, populate sf.data and polygons
+    segmentation <- CreateSegmentation(sf.data)
+    
+    # Named list with segmentation
+    boundaries <- list(segmentation = segmentation)
+    
+    # Build VisiumV2 object
+    visium.v2 <- new(
+        Class = "VisiumV2",
+        boundaries = boundaries,
+        assay = assay,
+        key = key,
+        image = image,
+        scale.factors = scale.factors
+    )
+    
+    return(visium.v2)
+}
+
+assertthat::assert_that(!exists("Read10X_HD_GeoJson", where="package:Seurat", mode="function"),
+                        msg="Read10X_HD_GeoJson has already been defined in the Seurat package. Please remove the function definition in R/functions_io.R!")
+Read10X_HD_GeoJson <- function(data.dir, image.dir, segmentation.type = "cell", scale.factor = NULL) {
+    segmentation_polygons <- sf::read_sf(file.path(data.dir,"segmented_outputs", paste0(segmentation.type, "_segmentations.geojson")))
+    if (!is.null(scale.factor)) {
+        scale.factors <- Read10X_ScaleFactors(
+            filename = file.path(image.dir, "scalefactors_json.json")
+        )
+        segmentation_polygons$geometry <- segmentation_polygons$geometry*scale.factors[[scale.factor]]
+    }
+    
+    segmentation_polygons$barcodes <- Format10X_GeoJson_CellID(segmentation_polygons$cell_id)
+    segmentation_polygons
+}
+
+assertthat::assert_that(!exists("Format10X_GeoJson_CellID", where="package:Seurat", mode="function"),
+                        msg="Format10X_GeoJson_CellID has already been defined in the Seurat package. Please remove the function definition in R/functions_io.R!")
+Format10X_GeoJson_CellID <- function(ids, prefix = "cellid_", suffix = "-1", digits = 9) {
+    format_string <- paste0("%0", as.integer(digits), "d")
+    
+    formatted_ids <- sapply(ids, function(id) {
+        numeric_part <- sprintf(format_string, as.integer(id))
+        paste0(prefix, numeric_part, suffix)
+    })
+    
+    return(formatted_ids)
+}
+
+################################################################################
+

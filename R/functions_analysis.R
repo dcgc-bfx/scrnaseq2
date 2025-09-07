@@ -86,7 +86,7 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
                 })
             }
             return(top_n_cts)
-        }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("margin", "top_n")))
+        }, .options = furrr::furrr_options(seed=getOption("random_seed")))
         progr(type='finish')
         
         # Now combine chunk results: each chunk has values for the top n sum where n can have multiple values
@@ -222,7 +222,7 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
         mds = sparseMatrixStats::colMedians(counts)
       }
       return(mds)
-    }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("margin", "fun"))) %>% 
+    }, .options = furrr::furrr_options(seed=getOption("random_seed"))) %>% 
       purrr::flatten_dbl()
     progr(type='finish')
   } else {
@@ -290,7 +290,7 @@ CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
         mds = sparseMatrixStats::colQuantiles(mt)
       }
       return(as.data.frame(mds))
-    }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("margin")))
+    }, .options = furrr::furrr_options(seed=getOption("random_seed")))
     progr(type='finish')
   } else {
     # Convert to sparse matrix
@@ -387,7 +387,7 @@ CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
             ucell = as.data.frame(ucell[[1]])
             rownames(ucell) = colnames(counts)
             return(ucell)
-        }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("features")))
+        }, .options = furrr::furrr_options(seed=getOption("random_seed")))
         progr(type='finish')
     } else {
         # Convert to sparse matrix
@@ -586,7 +586,7 @@ NormalizeDataScran = function(sc, assay=NULL, layer="counts", save="data", chunk
         sf = scuttle::pooledSizeFactors(counts, clusters=clusters)
         sf = setNames(sf, colnames(counts))
         return(sf)
-      }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c()))
+      }, .options = furrr::furrr_options(seed=getOption("random_seed")))
       size_factors = purrr::flatten(size_factors) %>% unlist()
       progr(type='finish')
     } else {
