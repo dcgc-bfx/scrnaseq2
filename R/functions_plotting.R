@@ -637,8 +637,113 @@ DfAllColumnCombinations = function(x, cell_classification) {
 ################################################################################
 
 # Once they are part of an official Seurat release, this code needs to be removed.
-assertthat::assert_that(exists("SpatialPlot1") | !"plot_segmentations" %in% names(formals(Seurat::SpatialPlot)),
-                        msg="Seurat::SpatialPlot now supports plotting segmentations. Please remove the function definition in R/functions_plotting.R!")
+assertthat::assert_that(exists("SpatialFeaturePlot1") | !"plot_segmentations" %in% names(formals(Seurat::SpatialPlot)),
+                        msg="Seurat::SpatialFeaturePlot now supports plotting segmentations. Please remove all function definitions below in R/functions_plotting.R!")
+assertthat::assert_that(exists("SpatialDimPlot1") | !"plot_segmentations" %in% names(formals(Seurat::SpatialPlot)),
+                        msg="Seurat::SpatialDimPlot now supports plotting segmentations. Please remove remove all function definitions below in R/functions_plotting.R!")
+
+SpatialFeaturePlot1 <- function(
+        object,
+        features,
+        images = NULL,
+        crop = TRUE,
+        slot = 'data',
+        keep.scale = "feature",
+        min.cutoff = NA,
+        max.cutoff = NA,
+        ncol = NULL,
+        combine = TRUE,
+        pt.size.factor = 1.6,
+        alpha = c(1, 1),
+        image.alpha = 1,
+        image.scale = "lowres",
+        shape = 21,
+        stroke = NA,
+        interactive = FALSE,
+        information = NULL,
+        plot_segmentations = FALSE
+) {
+    return(SpatialPlot(
+        object = object,
+        features = features,
+        images = images,
+        crop = crop,
+        slot = slot,
+        keep.scale = keep.scale,
+        min.cutoff = min.cutoff,
+        max.cutoff = max.cutoff,
+        ncol = ncol,
+        combine = combine,
+        pt.size.factor = pt.size.factor,
+        alpha = alpha,
+        image.alpha = image.alpha,
+        image.scale = image.scale,
+        shape = shape,
+        stroke = stroke,
+        interactive = interactive,
+        information = information,
+        plot_segmentations = plot_segmentations
+    ))
+}
+assignInNamespace("SpatialFeaturePlot",SpatialFeaturePlot1,ns="Seurat")
+SpatialFeaturePlot = SpatialFeaturePlot1
+
+SpatialDimPlot1 <- function(
+        object,
+        group.by = NULL,
+        images = NULL,
+        cols = NULL,
+        crop = TRUE,
+        cells.highlight = NULL,
+        cols.highlight = c('#DE2D26', 'grey50'),
+        facet.highlight = FALSE,
+        label = FALSE,
+        label.size = 7,
+        label.color = 'white',
+        repel = FALSE,
+        ncol = NULL,
+        combine = TRUE,
+        pt.size.factor = 1.6,
+        alpha = c(1, 1),
+        image.alpha = 1,
+        image.scale = "lowres",
+        shape = 21,
+        stroke = NA,
+        label.box = TRUE,
+        interactive = FALSE,
+        information = NULL,
+        plot_segmentations = FALSE
+) {
+    return(SpatialPlot(
+        object = object,
+        group.by = group.by,
+        images = images,
+        cols = cols,
+        crop = crop,
+        cells.highlight = cells.highlight,
+        cols.highlight = cols.highlight,
+        facet.highlight = facet.highlight,
+        label = label,
+        label.size = label.size,
+        label.color = label.color,
+        repel = repel,
+        ncol = ncol,
+        combine = combine,
+        pt.size.factor = pt.size.factor,
+        alpha = alpha,
+        image.alpha = image.alpha,
+        image.scale = image.scale,
+        shape = shape,
+        stroke = stroke,
+        label.box = label.box,
+        interactive = interactive,
+        information = information,
+        plot_segmentations = plot_segmentations
+    ))
+}
+assignInNamespace("SpatialDimPlot",SpatialDimPlot1,ns="Seurat")
+SpatialDimPlot = SpatialDimPlot1
+
 SpatialPlot1 <- function(
         object,
         group.by = NULL,
@@ -1000,8 +1105,6 @@ SpatialPlot1 <- function(
 assignInNamespace("SpatialPlot",SpatialPlot1,ns="Seurat")
 SpatialPlot = SpatialPlot1
 
-assertthat::assert_that(exists("SingleSpatialPlot1") | !"plot_segmentations" %in% names(formals(Seurat::SingleSpatialPlot)),
-                        msg="Seurat::SingleSpatialPlot now supports plotting segmentations. Please remove the function definition in R/functions_plotting.R!")
 SingleSpatialPlot1 <- function(
         data,
         image,
@@ -1085,7 +1188,7 @@ SingleSpatialPlot1 <- function(
         },
         'interactive' = {
             plot + Seurat:::geom_spatial_interactive(
-                data = tibble(
+                data = tibble::tibble(
                     grob = list(
                         GetImage(
                             object = image,
@@ -1105,7 +1208,7 @@ SingleSpatialPlot1 <- function(
         'sf' = {
             
             # Validate image
-            image.grob <- rasterGrob(
+            image.grob <- grid::rasterGrob(
                 image@image,
                 width = unit(1, "npc"),
                 height = unit(1, "npc"),
@@ -1120,20 +1223,20 @@ SingleSpatialPlot1 <- function(
             sf.data = image@boundaries$segmentation@sf.data
             #Create sf object from data (POINTS), and extract xy
             data$cell <- rownames(data)
-            data.sf <- st_as_sf(data, coords = c("x", "y"), crs = NA)
+            data.sf <- sf::st_as_sf(data, coords = c("x", "y"), crs = NA)
             
             # Import pipe operator locally
             `%>%` <- magrittr::`%>%`
             
             data.coords <- data.sf %>%
-                mutate(x = sf::st_coordinates(.)[, 1],
+                dplyr::mutate(x = sf::st_coordinates(.)[, 1],
                        y = sf::st_coordinates(.)[, 2]) %>%
-                st_drop_geometry()
+                sf::st_drop_geometry()
             
             #Merge with sf.data
             sf.merged <- sf.data %>%
-                left_join(data.coords, by = c("barcodes" = "cell"))
-            sf.cleaned <- sf.merged %>% filter(!is.na(x))
+                dplyr::left_join(data.coords, by = c("barcodes" = "cell"))
+            sf.cleaned <- sf.merged %>% dplyr::filter(!is.na(x))
             
             #Extract centroids from VisiumV2, update sf.cleaned to match centroids
             if (!requireNamespace("sp", quietly = TRUE)) {
@@ -1156,15 +1259,15 @@ SingleSpatialPlot1 <- function(
             sf.cleaned$y[match_idx] <- image.height - coords[coord_idx, 2]
             
             #Flip the Y coords of polygon geometries
-            geom_flipped <- lapply(st_geometry(sf.cleaned), function(poly) {
+            geom_flipped <- lapply(sf::st_geometry(sf.cleaned), function(poly) {
                 if (inherits(poly, "POLYGON")) {
-                    st_polygon(list(cbind(poly[[1]][, 1], image.height - poly[[1]][, 2])))
+                    sf::st_polygon(list(cbind(poly[[1]][, 1], image.height - poly[[1]][, 2])))
                 } else {
                     poly 
                 }
             })
             
-            sf.cleaned <- st_sf(sf.cleaned %>% st_drop_geometry(), geometry = st_sfc(geom_flipped, crs = st_crs(NA)))
+            sf.cleaned <- sf::st_sf(sf.cleaned %>% sf::st_drop_geometry(), geometry = sf::st_sfc(geom_flipped, crs = sf::st_crs(NA)))
             #Plot (currently independently of switch/case)
             if(!plot_segmentations){
                 #Plot just the centroids as points
@@ -1245,8 +1348,6 @@ SingleSpatialPlot1 <- function(
 assignInNamespace("SingleSpatialPlot", SingleSpatialPlot1, ns="Seurat")
 SingleSpatialPlot = SingleSpatialPlot1
 
-assertthat::assert_that(!exists("CellsByImage", where="package:Seurat", mode="function"),
-                        msg="CellsByImage has already been defined in the Seurat package. Please remove the function definition in R/functions_io.R!")
 CellsByImage <- function(object, images = NULL, unlist = FALSE) {
     images <- images %||% Images(object = object)
     cells <- sapply(
@@ -1262,5 +1363,197 @@ CellsByImage <- function(object, images = NULL, unlist = FALSE) {
     }
     return(cells)
 }
+
+LabelClusters1 <- function(
+        plot,
+        id,
+        clusters = NULL,
+        labels = NULL,
+        split.by = NULL,
+        repel = TRUE,
+        box = FALSE,
+        geom = 'GeomPoint',
+        position = "median",
+        ...
+) {
+    xynames <- unlist(x = GetXYAesthetics(plot = plot, geom = geom), use.names = TRUE)
+    plot_data <- plot$data
+    if (geom == "GeomSf") {
+        # For sf, data is within the layers slot, not the data slot
+        geom_layers <- which(sapply(plot$layers, function(layer) class(layer$geom)[1] == "GeomSf"))
+        if (length(geom_layers) > 0 && !is.null(plot$layers[[geom_layers[1]]]$data)) {
+            plot_data <- plot$layers[[geom_layers[1]]]$data
+        }
+    }
+    if (!id %in% colnames(x = plot_data)) {
+        stop("Cannot find variable ", id, " in plotting data")
+    }
+    if (!is.null(x = split.by) && !split.by %in% colnames(x = plot_data)) {
+        warning("Cannot find splitting variable ", split.by, " in plotting data")
+        split.by <- NULL
+    }
+    data <- plot_data[, c(xynames, id, split.by)]
+    id_values <- if (inherits(data, "sf")) data[[id]] else data[, id]
+    possible.clusters <- as.character(x = na.omit(object = unique(x = id_values)))
+    groups <- clusters %||% possible.clusters
+    if (any(!groups %in% possible.clusters)) {
+        stop("The following clusters were not found: ", paste(groups[!groups %in% possible.clusters], collapse = ","))
+    }
+    pb <- ggplot_build(plot = plot)
+    if (geom == 'GeomSpatial') {
+        xrange.save <- layer_scales(plot = plot)$x$range$range
+        yrange.save <- layer_scales(plot = plot)$y$range$range
+        data[, xynames["y"]] = max(data[, xynames["y"]]) - data[, xynames["y"]] + min(data[, xynames["y"]])
+        if (!pb$plot$plot_env$crop) {
+            y.transform <- c(0, nrow(x = pb$plot$plot_env$image)) - pb$layout$panel_params[[1]]$y.range
+            data[, xynames["y"]] <- data[, xynames["y"]] + sum(y.transform)
+        }
+    }
+    data <- cbind(data, color = pb$data[[1]][[1]])
+    labels.loc <- lapply(
+        X = groups,
+        FUN = function(group) {
+            data.use <- if (inherits(data, "sf")) data[data[[id]] == group, , drop = FALSE] else data[data[, id] == group, , drop = FALSE]
+            data.medians <- if (!is.null(x = split.by)) {
+                do.call(
+                    what = 'rbind',
+                    args = lapply(
+                        X = unique(x = data.use[, split.by]),
+                        FUN = function(split) {
+                            split_by_values <- if (inherits(data.use, "sf")) data.use[[split.by]] == split else data.use[, split.by] == split
+                            split_data <- data.use[split_by_values == split, , drop = FALSE]
+                            # Extract coordinates
+                            if (inherits(split_data, "sf")) {
+                                sf::st_agr(split_data) <- "constant" # Set attr-geom relationship to avoid warnings
+                                coord_data <- data.frame(sf::st_coordinates(sf::st_centroid(split_data)))
+                                names(coord_data) <- xynames[1:2]
+                            } else {
+                                coord_data <- data.use[data.use[, split.by] == split, xynames, drop = FALSE]
+                            }
+                            medians <- apply(
+                                X = coord_data,
+                                MARGIN = 2,
+                                FUN = median,
+                                na.rm = TRUE
+                            )
+                            medians <- as.data.frame(x = t(x = medians))
+                            medians[, split.by] <- split
+                            return(medians)
+                        }
+                    )
+                )
+            } else {
+                # Extract coordinates
+                if (inherits(data.use, "sf")) {
+                    sf::st_agr(data.use) <- "constant"  # Set attr-geom relationship to avoid warnings
+                    coord_data <- data.frame(sf::st_coordinates(sf::st_centroid(data.use)))
+                    names(coord_data) <- xynames[1:2]
+                } else {
+                    coord_data <- data.use[, xynames, drop = FALSE]
+                }
+                as.data.frame(x = t(x = apply(
+                    X = coord_data,
+                    MARGIN = 2,
+                    FUN = median,
+                    na.rm = TRUE
+                )))
+            }
+            data.medians[, id] <- group
+            data.medians$color <- data.use$color[1]
+            return(data.medians)
+        }
+    )
+    if (position == "nearest") {
+        labels.loc <- lapply(X = labels.loc, FUN = function(x) {
+            # Handle sf data subsetting for nearest point calculation
+            if (inherits(data, "sf")) {
+                group.data <- data[as.character(data[[id]]) == as.character(x[3]), ]
+                sf::st_agr(group.data) <- "constant"  # Set attr-geom relationship to avoid warnings
+                group.data <- data.frame(sf::st_coordinates(sf::st_centroid(group.data)))
+                names(group.data) <- xynames[1:2]
+            } else {
+                group.data <- data[as.character(x = data[, id]) == as.character(x[3]), ]
+            }
+            coord_matrix <- as.matrix(group.data[, 1:2])
+            nearest.point <- RANN::nn2(data = coord_matrix, query = as.matrix(x = x[c(1,2)]), k = 1)$nn.idx
+            x[1:2] <- coord_matrix[nearest.point, ]
+            return(x)
+        })
+    }
+    labels.loc <- do.call(what = 'rbind', args = labels.loc)
+    # Safe handling of factor levels for sf data
+    data_levels <- if (inherits(data, "sf")) levels(data[[id]]) else levels(data[, id])
+    labels.loc[, id] <- factor(x = labels.loc[, id], levels = data_levels)
+    labels <- labels %||% groups
+    if (length(x = unique(x = labels.loc[, id])) != length(x = labels)) {
+        stop("Length of labels (", length(x = labels),  ") must be equal to the number of clusters being labeled (", length(x = unique(x = labels.loc[, id])), ").")
+    }
+    names(x = labels) <- groups
+    for (group in groups) {
+        labels.loc[labels.loc[, id] == group, id] <- labels[group]
+    }
+    if (box) {
+        geom.use <- ifelse(test = repel, yes = ggrepel::geom_label_repel, no = geom_label)
+        plot <- plot + geom.use(
+            data = labels.loc,
+            mapping = aes_string(x = xynames['x'], y = xynames['y'], label = id, fill = id),
+            show.legend = FALSE,
+            ...
+        )
+    } else {
+        geom.use <- ifelse(test = repel, yes = ggrepel::geom_text_repel, no = geom_text)
+        plot <- plot + geom.use(
+            data = labels.loc,
+            mapping = aes_string(x = xynames['x'], y = xynames['y'], label = id),
+            show.legend = FALSE,
+            ...
+        )
+    }
+    # restore old axis ranges
+    if (geom == 'GeomSpatial') {
+        plot <- suppressMessages(expr = plot + coord_fixed(xlim = xrange.save, ylim = yrange.save))
+    }
+    return(plot)
+}
+assignInNamespace("LabelClusters", LabelClusters1, ns="Seurat")
+LabelClusters = LabelClusters1
+
+GetXYAesthetics1 <- function(plot, geom = 'GeomPoint', plot.first = TRUE) {
+    geoms <- sapply(
+        X = plot$layers,
+        FUN = function(layer) {
+            return(class(x = layer$geom)[1])
+        }
+    )
+    # handle case where raster is set to True
+    if (geom == "GeomPoint" && "GeomScattermore" %in% geoms){
+        geom <- "GeomScattermore"
+    }
+    geoms <- which(x = geoms == geom)
+    if (length(x = geoms) == 0) {
+        stop("Cannot find a geom of class ", geom)
+    }
+    geoms <- min(geoms)
+    if (plot.first) {
+        # x <- as.character(x = plot$mapping$x %||% plot$layers[[geoms]]$mapping$x)[2]
+        x <- rlang::as_label(x = plot$mapping$x %||% plot$layers[[geoms]]$mapping$x)
+        # y <- as.character(x = plot$mapping$y %||% plot$layers[[geoms]]$mapping$y)[2]
+        y <- rlang::as_label(x = plot$mapping$y %||% plot$layers[[geoms]]$mapping$y)
+    } else {
+        x <- rlang::as_label(x = plot$layers[[geoms]]$mapping$x %||% plot$mapping$x)
+        y <- rlang::as_label(x = plot$layers[[geoms]]$mapping$y %||% plot$mapping$y)
+    }
+    # Handle GeomSf case where x/y are NULL because coordinates are in geometry
+    if (geom == "GeomSf") {
+        x <- "x"  # Default coordinate names for sf objects
+        y <- "y"
+    }
+    return(list('x' = x, 'y' = y))
+}
+assignInNamespace("GetXYAesthetics", GetXYAesthetics1, ns="Seurat")
+GetXYAesthetics = GetXYAesthetics1
+
+SpatialColors <- colorRampPalette(colors = rev(x = RColorBrewer::brewer.pal(n = 11, name = "Spectral")))
+
 
 ################################################################################
