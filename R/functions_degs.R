@@ -1024,6 +1024,52 @@ PrepareCompositionalContrast = function(sc, contrast) {
   return(contrast)
 }
 
+#' Given a contrast configuration, prepares a table with the configuration values.
+#' 
+#' @param contrast A contrast configuration. Must have been set up with NewContrastsList.
+#' @param config_names The configuration entries to include
+#' @return A table with the configuration values
+ContrastConfigurationTable = function(contrast, config_names) {
+  
+  # Lists all possible contrast config entries and their descriptions
+  config_descriptions = c("condition_column" = "condition column",
+                          "condition1" = "condition group 1",
+                          "condition2" = "condition group 2",
+                          "subset_column" = "subset column",
+                          "subset_groups" = "subset groups",
+                          "bulk_by" = "bulk cells by",
+                          "pseudobulk_samples" = "create this number of pseudobulk samples",
+                          "assay" = "assay",
+                          "layer" = "data type",
+                          "test" = "test",
+                          "padj" = "adjusted p-value",
+                          "log2FC" = "minimum absolute log2 foldchange",
+                          "min_pct" = "minimum percentage of expressing cells",
+                          "downsample_n" = "downsample cells",
+                          "covariate" = "confounding factor",
+                          "design" = "design formula for test",
+                          "deseq2_results_args" = "DESeq2 results arguments",
+                          "ora_genesets" = "gene sets used for overrepresentation analysis",
+                          "gsea_genesets" = "gene sets used for gene set enrichment analysis")
+  
+  # Test that all config names have descriptions
+  assertthat::assert_that(all(config_names %in% names(config_descriptions)),
+                          msg=FormatString("Config names not found in ContrastConfigurationTable function!"))
+  
+  # Collect the values
+  config_values = purrr::map_chr(config_names, function(n) {
+    v = as.character(contrast[[n]] %||% "-")
+    if (n %in% c("condition1", "condition2")) v = paste(v, collapse="+")
+    return(paste(v, collapse=","))
+  })
+  
+  # Create a table
+  configuration_table = data.frame(Config=config_names, Desc=unname(config_descriptions[config_names]), Value=config_values)
+  rownames(configuration_table) = NULL
+  
+  return(configuration_table)
+}
+
 #' Given a contrast configuration, runs a DEG test.
 #' Note that if a contrast has multiple comparisons (for each subset), this function needs to be run on each of them separately.
 #' 
@@ -1262,9 +1308,9 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
     })
     
     # Add some additional information
-    ora_result = list(results=ora_result, name=deg_result[["name"]])
-    if ("subset_column" %in% names(deg_result)) ora_result[["subset_column"]] = deg_result[["subset_column"]]
-    if ("subset_group" %in% names(deg_result)) ora_result[["subset_group"]] = deg_result[["subset_group"]]
+    deg_result$results = NULL
+    ora_result = c(deg_result, list(results=ora_result))
+    ora_result[["ora_genesets"]] = genesets
     
     return(ora_result)
 }
@@ -1278,7 +1324,7 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
 #' @return A list with one or more GSEA results.
 DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
   # Calculate fold changes
-  if (FALSE) {
+  if (contrast[["gsea_deseq2"]]) {
     # Calculate fold change by running DESeq2
     
     # Arguments design and reduced formula
@@ -1317,6 +1363,11 @@ DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
   }
   fold_changes = fold_changes[order(fold_changes, decreasing=TRUE)]
   
+  # Dump entries that are not used anymore
+  contrast[["log2FC"]] = NULL
+  contrast[["min_pct"]] = NULL
+  contrast[["sc_subset"]] = NULL
+  
   # Search the genesets specified by the genesets argument
   search_vector = paste(term2gene_db$gs_cat, term2gene_db$gs_subcat, term2gene_db$gs_name, sep=":")
   term2gene = purrr::map(genesets, function(term) {
@@ -1337,9 +1388,12 @@ DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
   })
   
   # Add some additional information
-  gsea_result = list(results=gsea_result, name=contrast[["name"]])
-  if ("subset_column" %in% names(contrast)) gsea_result[["subset_column"]] = contrast[["subset_column"]]
-  if ("subset_group" %in% names(contrast)) gsea_result[["subset_group"]] = contrast[["subset_group"]]
+  gsea_result = c(contrast, results=list(gsea_result))
+  
+  # Set test-related entries
+  gsea_result[["test"]] = "fgsea"
+  gsea_result[["padj"]] = 0.05
+  gsea_result[["gsea_genesets"]] = genesets
   
   return(gsea_result)
 }

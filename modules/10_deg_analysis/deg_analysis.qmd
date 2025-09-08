@@ -140,7 +140,7 @@ params:
                 condition_column: "orig.ident"
                 condition1: "pbmc_1k"
                 condition2: "pbmc_5k"
-                assay: "pca"
+                assay: "rna_pca"
 
         
   # Excel or csv file with contrasts
@@ -217,6 +217,7 @@ library(gt)
 library(Seurat)
 library(ggplot2)
 library(future)
+library(BiocParallel)
 library(patchwork)
 
 # Get module name and directory (needed to access files within the module directory)
@@ -242,8 +243,15 @@ source("R/functions_degs.R")
 # Be verbose or not
 verbose = param("verbose")
 
-# Parallelisation plan for all functions that support future
+# Parallelisation config for all functions that use the future framework
 plan(multisession, workers=param("cores"))
+
+# Parallelisation config for all functions that use the BiocParallel framework
+register(SnowParam(workers=param("cores"), type="SOCK", RNGseed=getOption("random_seed"))) 
+
+# Parallelisation config for BLAS threading. Currently set to 1 because there does not seem to be a performance gain
+# but may be relevant for very large projects.
+RhpcBLASctl::blas_set_num_threads(1)
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
@@ -327,7 +335,7 @@ contrasts_list = NewContrastsList(sc, contrasts_content, type="deg")
 
 # For each contrast, prepare an individual Seurat object for the comparison. If multiple subsets are analysed, prepare multiple objects. Bulk-aggregate if requested. Downsample if requested.
 # Note: This is a list of contrasts with of lists of comparisons, so we use map_depth need to specify the depth of the list.
-contrasts_list = purrr::map_depth(contrasts_list, .depth=2, function(contrast) return(PrepareDegContrast(sc, contrast, cast_to_sparse=TRUE)))
+contrasts_list = purrr::map_depth(contrasts_list, .depth=2, function(contrast) return(PrepareDegContrast(sc, contrast, cast_to_sparse=FALSE)))
 
 # Which contrasts should be DEG tested?
 run_deg = param("run_deg")
@@ -389,7 +397,7 @@ if (is.logical(run_gsea)) {
     }
 }
 # GSEA is only supported for counts data and cannot be used when testing barcode metadata or reductions
-for(name in run_gsea){
+for (name in run_gsea){
   data_type = contrasts_list[[name]][[1]][["data_type"]]
   if (data_type != "feature_data") stop(FormatString("Comparison {name} cannot be used for geneset-enrichment analysis. Please remove for parameter 'run_gsea'."))
 
@@ -414,9 +422,9 @@ if (is.logical(export_contrasts)) {
 have_export_contrasts = length(export_contrasts) > 0
 ```
 
-## DEG
+## Differentially expressed genes
 
-If requested, we identify genes that are differentially expressed between two groups of cells. Groups can be defined by columns in the cell metadata. Different types of tests can be used and input data for testing can be the different assays as well as the computed dimensionality reductions. Resulting _p_-values are adjusted using the Bonferroni method. The names of differentially expressed genes per cluster, alongside statistical measures and additional gene annotation are written to file.
+If requested, we identify genes that are differentially expressed (DEGs) between two groups of cells. Groups can be defined by columns in the cell metadata. Different types of tests can be used and input data for testing can be the different assays as well as the computed dimensionality reductions. Resulting _p_-values are adjusted using the Bonferroni method. The names of differentially expressed genes per cluster, alongside statistical measures and additional gene annotation are written to file.
 
 ```{r}
 #| label: deg_analysis_compute_degs
@@ -428,14 +436,9 @@ if (have_deg_comparisons) {
         return(DegsRunTest(contrast))
     })
     
-    # Generate scatter plots
+    # Generate plots
     deg_results_list = purrr::map_depth(deg_results_list, .depth=2, function(deg_result) {
         deg_result[["scatter_plot"]] = DegsScatterPlot(deg_result)
-        return(deg_result)
-    })
-    
-    # Generate volcano plots
-    deg_results_list = purrr::map_depth(deg_results_list, .depth=2, function(deg_result) {
         deg_result[["volcano_plot"]] = DegsVolcanoPlot(deg_result)
         return(deg_result)
     })
@@ -459,22 +462,13 @@ if (have_deg_comparisons) {
       }
       
       # Collect configuration
-      config_names = c("condition_column", "condition1", "condition2", "subset_column", "subset_groups", "bulk_by", "pseudobulk_samples", "assay", "layer", "test", "padj", "log2FC", "min_pct", "downsample_n", "covariate", "design", "deseq2_results_args")
-      config_values = purrr::map_chr(config_names, function(n) {
-        v = as.character(deg_results[[1]][[n]] %||% "-")
-        if (n %in% c("condition1", "condition2")) v = paste(v, collapse="+")
-        if (n %in% "subset_groups") {
-            v = purrr::map_chr(deg_results, function(deg_result) return(paste(deg_result$subset_group, collapse="+"))) %>% 
-                paste(collapse=", ")
-        }
-        return(paste(v, collapse=","))
-      })
-      config_desc = c("condition column", "condition group 1", "condition group 2", "subset column", "subset groups",
-                     "bulk by", "pseudobulk samples", "assay", "data", "test", "maximum adjusted p-value",
-                     "minimum absolute log2 foldchange", "minimum percentage of expressing cells", "downsample n", "covariate", "design formula", "DESeq2 results arguments")
-
-      deg_configuration_table = data.frame(Config=config_names, Desc=config_desc, Value=config_values)
-      rownames(deg_configuration_table) = NULL
+      deg_configuration_table = ContrastConfigurationTable(deg_results[[1]], 
+                                                           config_names = c("condition_column", "condition1", "condition2", "subset_column", "subset_groups", "bulk_by", "pseudobulk_samples", "assay", "layer", "test", "padj", "log2FC", "min_pct", "downsample_n", "covariate", "design", "deseq2_results_args"))
+      if ("subset_column" %in% names(deg_results[[1]])) {
+          subset_group = purrr::map_chr(deg_results, function(deg_result) return(paste(deg_result$subset_group, collapse="+"))) %>%
+           paste(collapse=",")
+          deg_configuration_table[deg_configuration_table$Config == "subset_groups", "Value"] = subset_group
+      }
       
       # Write to file
       outfile = paste0("degs_", deg_results[[1]]$name, ".xlsx")
@@ -520,7 +514,6 @@ deg_summary_table = purrr::map_depth(deg_results_list, .depth=2, function(deg_re
       deg_table = deg_table %>% dplyr::filter(abs(avg_log2FC) >= log2FC)
     }
     
-    
     # Find sign, sign upregulated and sign downregulated
     fc_col = dplyr::case_match(deg_result[["data_type"]], "feature_data" ~ "avg_log2FC", "reduction" ~ "avg_diff", "barcode_metadata" ~ "avg_diff")
     summary_table$Sign = nrow(deg_table)
@@ -556,23 +549,14 @@ if (have_deg_comparisons) {
     cat(FormatString("### {name}\n\n", quote=FALSE))
     
     # Collect configuration
-    config_names = c("condition_column", "condition1", "condition2", "subset_column", "subset_groups", "bulk_by", "pseudobulk_samples", "assay", "layer", "test", "padj", "log2FC", "min_pct", "downsample_n", "covariate", "design", "deseq2_results_args")
-    config_values = purrr::map_chr(config_names, function(n) {
-        v = as.character(deg_results[[1]][[n]] %||% "-")
-        if (n %in% c("condition1", "condition2")) v = paste(v, collapse="+")
-        if (n %in% "subset_groups") {
-            v = purrr::map_chr(deg_results, function(deg_result) return(paste(deg_result$subset_group, collapse="+"))) %>% 
-                paste(collapse=", ")
-        }
-        return(paste(v, collapse=","))
-    })
-    config_desc = c("condition column", "condition group 1", "condition group 2", "subset column", "subset groups",
-                     "bulk by", "pseudobulk samples", "assay", "data", "test", "maximum adjusted p-value",
-                     "minimum absolute log2 foldchange", "minimum percentage of expressing cells", "downsample n", "covariate", "design formula", "DESeq2 results arguments")
-    
-    deg_configuration_table = data.frame(Config=config_names, Desc=config_desc, Value=config_values)
-    rownames(deg_configuration_table) = NULL
-    deg_configuration_table = dplyr::filter(deg_configuration_table, Value != "-")
+    deg_configuration_table = ContrastConfigurationTable(deg_results[[1]], 
+                                                         config_names = c("condition_column", "condition1", "condition2", "subset_column", "subset_groups", "bulk_by", "pseudobulk_samples", "assay", "layer", "test", "padj", "log2FC", "min_pct", "downsample_n", "covariate", "design", "deseq2_results_args"))
+    if ("subset_column" %in% names(deg_results[[1]])) {
+      subset_group = purrr::map_chr(deg_results, function(deg_result) return(paste(deg_result$subset_group, collapse="+"))) %>%
+        paste(collapse=",")
+      deg_configuration_table[deg_configuration_table$Config == "subset_groups", "Value"] = subset_group
+    }
+    deg_configuration_table = dplyr::filter(deg_configuration_table, Value!="-")
     
     # Configuration chunk template
     chunk_template_deg_configuration = "
@@ -595,7 +579,7 @@ gt(deg_configuration_table)
     
     # Now show the result(s) for this comparison. If multiple subsets were analysed, there will be multiple results.
     # Note: Since there can be multiple results, we include i as a counter to make them unique.
-    cat("Here are the test results:\n\n")
+    cat("Here are the results:\n\n")
     for (i in seq_along(deg_results)) {
       # deg_result: DEGs for this comparison
       deg_result = deg_results[[i]]
@@ -670,7 +654,9 @@ patchwork::wrap_plots(deg_result$scatter_plot, deg_result$volcano_plot)
 }
 ```
 
-## ORA
+## Over-representation analysis
+
+Over-representation analysis (ORA) tests if functional categories are enriched in the DEGs.
 
 ```{r}
 #| label: deg_analysis_run_ora
@@ -693,6 +679,10 @@ if (have_ora) {
     ora_result = DegsRunOraTest(deg_result=deg_result,
                              term2gene_db=ora_term2gene_db,
                              genesets=deg_result[["ora_genesets"]] %||% param("genesets"))
+    
+    # Remove scatter and volcano plot
+    ora_result[["volcano_plot"]] = NULL
+    ora_result[["scatter_plot"]] = NULL
     
     # Also add bar plots with the top 15 terms
     ora_result[["plots"]] = purrr::map(ora_result[["results"]], function(ora) {
@@ -738,10 +728,20 @@ if (have_ora) {
     if (length(ora_tables) == 0) next
     if (is.null(names(ora_tables)) & length(ora_tables) == 1) names(ora_tables) = "Results"
     
+    # Collect configuration
+    ora_configuration_table = ContrastConfigurationTable(ora_results[[1]], 
+                                                         config_names = c("condition_column", "condition1", "condition2", "subset_column", "subset_groups", "bulk_by", "pseudobulk_samples", "assay", "layer", "test", "padj", "log2FC", "min_pct", "downsample_n", "covariate", "design", "deseq2_results_args", "ora_genesets"))
+    if ("subset_column" %in% names(ora_results[[1]])) {
+        subset_group = purrr::map_chr(ora_results, function(ora_result) return(paste(ora_result$subset_group, collapse="+"))) %>%
+         paste(collapse=",")
+        ora_configuration_table[ora_configuration_table$Config == "subset_groups", "Value"] = subset_group
+    }
+    
     # Write to file
     outfile = paste0("ora_", names(ora_results_list)[i], ".xlsx")
     DegsWriteOraToFile(ora_tables,
-                       file=file.path(module_dir, "results", outfile))
+                       file=file.path(module_dir, "results", outfile),
+                       parameter=ora_configuration_table)
   }
 }
 ```
@@ -757,14 +757,43 @@ if (have_ora) {
   # Iterate over the comparisons
   for (ora_results in ora_results_list) {
     # ora_results: Result list for this comparison
-    name = ora_results[[1]]$name
     
-    # Print header
+    # Print name in header
+    name = ora_results[[1]]$name
     cat(FormatString("### {name}\n\n", quote=FALSE))
+    
+    # Collect configuration
+    ora_configuration_table = ContrastConfigurationTable(ora_results[[1]], 
+                                                         config_names = c("condition_column", "condition1", "condition2", "subset_column", "subset_groups", "bulk_by", "pseudobulk_samples", "assay", "layer", "test", "padj", "log2FC", "min_pct", "downsample_n", "covariate", "design", "deseq2_results_args", "ora_genesets"))
+    if ("subset_column" %in% names(ora_results[[1]])) {
+        subset_group = purrr::map_chr(ora_results, function(ora_result) return(paste(ora_result$subset_group, collapse="+"))) %>%
+         paste(collapse=",")
+        ora_configuration_table[ora_configuration_table$Config == "subset_groups", "Value"] = subset_group
+    }
+    ora_configuration_table = dplyr::filter(ora_configuration_table, Value!="-")
+    
+    # Configuration chunk template
+    chunk_template_ora_configuration = "
+\`\`\`{r}
+#| label: tbl-deg_analysis_ora_configuration_{{name}}
+#| tbl-cap: 'Configuration for ORA comparison {{name}}'
+
+gt(ora_configuration_table)
+\`\`\`
+"
+    # Then fill out the configuration chunk template and render/knit
+    chunk_filled =  knitr::knit_expand(text=chunk_template_ora_configuration, 
+                                         name=name)
+    if(interactive()) {
+      print(EvalKnitrChunk(chunk_filled))
+    } else {
+      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+      cat(chunk_filled, '\n', sep='\n')
+    }
     
     # Now show the result(s) for this comparison. If multiple subsets were analysed, there will be multiple results.
     # Note: Since there can be multiple results, we include i as a counter to make them unique.
-    cat("Here are the test results:\n\n")
+    cat("Here are the results:\n\n")
     for (i in seq_along(ora_results)) {
       # ora_result: ORA analysis for this subset comparison (includes tables and plots)
       ora_result = ora_results[[i]]
@@ -779,7 +808,6 @@ if (have_ora) {
         subset_group = ""
       }
 
-      
       # Now split into tables and plots
       ora_plots = ora_result[["plots"]]
       ora_result = ora_result[["results"]]
@@ -841,7 +869,7 @@ ora_plot
 }
 ```
 
-## GSEA
+## Gene Set Enrichment Analysis
 
 Gene Set Enrichment Analysis (GSEA) is a computational method used to determine whether a predefined set of genes shows statistically significant differences in expression between two biological states (e.g., disease vs. control). GSEA evaluates gene sets, which are groups of genes that share common biological functions, chromosomal locations, or regulation.
 
@@ -860,22 +888,11 @@ if (have_gsea) {
   # Run geneset enrichment analysis
   gsea_results_list = purrr::map_depth(contrasts_list[run_gsea], .depth=2, function(contrast) {
     # Run GSEA and add to list
-    gsea_result = contrast
-    gsea_result[["results"]] = DegsRunGseaTest(
+    gsea_result = DegsRunGseaTest(
       contrast=contrast,
       term2gene_db=gsea_term2gene_db, 
       genesets=contrast[["gsea_genesets"]] %||% param("genesets")
     )
-    
-    # Dump entries that are not used anymore
-    gsea_result[["sc_subset"]] = NULL
-    gsea_result[["log2FC"]] = NULL
-    gsea_result[["min_pct"]] = NULL
-    
-    # Set entries
-    gsea_result[["test"]] = "GSEA"
-    gsea_result[["padj"]] = 0.05
-    
     return(gsea_result)
   })
   
@@ -883,7 +900,7 @@ if (have_gsea) {
   for (gsea_results in gsea_results_list) {
     name = gsea_results[[1]][["name"]]
     
-    # Get ORA results for each comparison
+    # Get GSEA results for each comparison
     gsea_tables = purrr::map(gsea_results, function(gsea_result) {
       # if multiple gene sets were analysed, join the result tables
       gsea_table = purrr::map_dfr(names(gsea_result[["results"]]), function(set_name) {
@@ -896,10 +913,20 @@ if (have_gsea) {
       return(gsea_table)
     })
     
+    # Collect configuration
+    gsea_configuration_table = ContrastConfigurationTable(gsea_results[[1]], 
+                                                         config_names = c("condition_column", "condition1", "condition2", "subset_column", "subset_groups", "bulk_by", "pseudobulk_samples", "assay", "layer", "test", "padj", "downsample_n", "covariate", "design", "gsea_genesets"))
+    if ("subset_column" %in% names(gsea_results[[1]])) {
+        subset_group = purrr::map_chr(gsea_results, function(gsea_result) return(paste(gsea_result$subset_group, collapse="+"))) %>%
+         paste(collapse=",")
+        gsea_configuration_table[gsea_configuration_table$Config == "subset_groups", "Value"] = subset_group
+    }
+    
     # Write to Excel file
     outfile = paste0("gsea_", name, ".xlsx")
     DegsWriteGseaToFile(gsea_tables,
-                       file=file.path(module_dir, "results", outfile))
+                       file=file.path(module_dir, "results", outfile),
+                       parameter=gsea_configuration_table)
     
     # Make top n GSEA plots
     outfile = paste0("gsea_", name, "_plots.pdf")
@@ -907,12 +934,12 @@ if (have_gsea) {
     for (i in seq_along(gsea_results)) {
       gsea_result = gsea_results[[i]]
       
-      # Add a small dummy plot that contains the name of the subset (if there is one)
+      # Add a small dummy message with the name of the subset as plot (if there is one)
       if ("subset_column" %in% names(gsea_result)) {
         subset_column = gsea_result$subset_column
         subset_group = paste(gsea_result$subset_group, collapse="+")
         p = ggplot() + 
-          annotate("text", x = 4, y = 25, size=8, label = FormatString("{subset_column}: {subset_group}", quote=FALSE)) + 
+          annotate("text", x = 4, y = 25, size=12, fontface="bold", label = FormatString("Subset {subset_column}: {subset_group}", quote=FALSE)) + 
           theme_void()
         print(p)
       }
@@ -921,18 +948,25 @@ if (have_gsea) {
       for (j in seq_along(gsea_result[["results"]])) {
         gsea_res = gsea_result[["results"]][[j]]
         gsea_res_name = names(gsea_result[["results"]])[[j]]
-        
-        # Add a small dummy plot that contains the name of the GSEA analysis
-        p = ggplot() + 
-          annotate("text", x = 4, y = 25, size=8, label = FormatString("Geneset: {gsea_res_name}", quote=FALSE)) + 
-          theme_void()
-        print(p)
+        top_n = param("gsea_num_plots") %||% 5
         
         # Now get top n terms
         topn_terms = gsea_res %>% 
           as.data.frame() %>% 
           dplyr::slice_max(order_by=abs(NES), n=param("gsea_num_plots") %||% 5) %>%
           dplyr::pull(ID)
+        
+        # Add a small dummy message with the name of the GSEA analysis and whether significant terms were found
+        if (length(topn_terms) > 0) {
+          p = ggplot() + 
+            annotate("text", x = 4, y = 25, size=8, label = FormatString("Top {top_n} significant terms for geneset {gsea_res_name}", quote=FALSE)) + 
+            theme_void()
+        } else {
+          p = ggplot() + 
+            annotate("text", x = 4, y = 25, size=8, label = FormatString("No terms significant for geneset {gsea_res_name}", quote=FALSE)) + 
+            theme_void()
+        }
+        print(p)
         
         # Do GSEA plots (save in one combined pdf file)
         for(id in topn_terms) {
@@ -998,93 +1032,43 @@ gt(gsea_summary_table) %>%
 #| eval: !expr have_gsea
 #| include: !expr have_gsea
 
-# Chunk template for the GSEA configuration (per comparison)
-chunk_template_gsea_configuration = "
-### {{name}}
-
-This is the general configuration for the GSEA analysis for this comparison:
-    
-* condition column: {{condition_column}}
-* condition group 1: {{condition1}}
-* condition group 2: {{condition2}}
-* subset column: {{subset_column}}
-* subset groups: {{subset_group}}
-* bulk by: {{bulk_by}}
-* pseudobulk samples: {{pseudobulk_samples}}
-* assay: {{assay}}
-* data: {{data}}
-* test: {{test}}
-* maximum adjusted p-value: {{padj}}
-* downsample n: {{downsample_n}}
-* output file(s):
-  * Results of GSEA analyses: gsea_{{name}}.xlsx
-  * Plots for the top n terms in each GSEA analysis:gsea_{{name}}_plots.pdf
-  * Figures: fig-deg_analysis_gsea_plots_{{name}}_SUBSET_ANALYSIS-1.png/pdf
-"
-
-# Chunk template for the GSEA summary (per comparison and subset)
-chunk_template_gsea_summary = "
-\`\`\`{r}
-#| label: tbl-deg_analysis_gsea_summary_{{name}}_{{i}}
-#| tbl-cap: 'GSEA results for {{name_subset}}'
-
-# Plot summary of tested and significant terms for all GSEA analyses
-gsea_results_table = gsea_summary_table %>% 
-    dplyr::filter(Comparison == '{{name}}', SubsetGroup=='{{subset_group}}')
-    
-gt(gsea_results_table) %>%
-    sub_missing(columns=1:ncol(gsea_results_table), missing_text='')
-\`\`\`
-"
-
-# Chunk template for the GSEA plot (per comparison, subset and geneset)
-# - top 10 terms as table
-# - top 10 terms as plot
-chunk_template_gsea_results = "
-\`\`\`{r}
-#| label: fig-deg_analysis_gsea_plots_{{name}}_{{i}}_{{j}}
-#| fig-cap: 'Top 10 terms of {{gsea_res_name}} for {{name_subset}}'
-
-# Plot the top 10 terms
-enrichplot::ridgeplot(gsea_res, showCategory=10, orderBy='NES', label_format=40) +
-                  AddPlotStyle(legend_position='bottom', legend_title='Adj. p-value') +
-                  viridis::scale_fill_viridis(direction = -1, 
-                                              breaks = function(x) return(c(min(x), max(x))), 
-                                              labels=scales::scientific)
-\`\`\`
-"
-
-# Generate report sections for each DEG comparison
+# Generate report sections for each GSEA comparison
 if (have_gsea) {
   # Iterate over the comparisons
   for (gsea_results in gsea_results_list) {
     # gsea_results: Result list for this comparison
     
-    # Name
+    # Print name in header
     name = gsea_results[[1]]$name
+    cat(FormatString("### {name}\n\n", quote=FALSE))
     
+    # Collect configuration
+    gsea_configuration_table = ContrastConfigurationTable(gsea_results[[1]], 
+                                                         config_names = c("condition_column", "condition1", "condition2", "subset_column", "subset_groups", "bulk_by", "pseudobulk_samples", "assay", "layer", "test", "padj", "downsample_n", "covariate", "design", "gsea_genesets"))
+    if ("subset_column" %in% names(gsea_results[[1]])) {
+        subset_group = purrr::map_chr(gsea_results, function(gsea_result) return(paste(gsea_result$subset_group, collapse="+"))) %>%
+         paste(collapse=",")
+        gsea_configuration_table[gsea_configuration_table$Config == "subset_groups", "Value"] = subset_group
+    }
+    gsea_configuration_table = dplyr::filter(gsea_configuration_table, Value != "-")
+    
+    # Configuration chunk template
+    chunk_template_gsea_configuration = "
+\`\`\`{r}
+#| label: tbl-deg_analysis_gsea_configuration_{{name}}
+#| tbl-cap: 'Configuration for GSEA comparison {{name}}'
 
-    # Fill in the overview chunk template and render/knit
-    # This will include an overview table
-    chunk_filled = knitr::knit_expand(text=chunk_template_gsea_configuration,
-                                      condition_column=gsea_results[[1]]$condition_column,
-                                      condition1=gsea_results[[1]]$condition1,
-                                      condition2=gsea_results[[1]]$condition2,
-                                      subset_column=gsea_results[[1]]$subset_column %||% "-",
-                                      subset_group=names(gsea_results) %>% paste(collapse=", "),
-                                      bulk_by=gsea_results[[1]]$bulk_by %||% "-",
-                                      pseudobulk_samples=gsea_results[[1]]$pseudobulk_samples %||% "-",
-                                      assay=gsea_results[[1]]$assay,
-                                      data=gsea_results[[1]]$layer,
-                                      test=gsea_results[[1]]$test,
-                                      padj=gsea_results[[1]]$padj,
-                                      downsample_n=gsea_results[[1]]$downsample_n %||% "-",
-                                      name=gsea_results[[1]]$name)
+gt(gsea_configuration_table)
+\`\`\`
+"
+    # Then fill out the configuration chunk template and render/knit
+    chunk_filled =  knitr::knit_expand(text=chunk_template_gsea_configuration, 
+                                         name=name)
     if(interactive()) {
-        print(EvalKnitrChunk(chunk_filled))
+      print(EvalKnitrChunk(chunk_filled))
     } else {
-        chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
-        cat('\n', chunk_filled, '\n', sep='\n')
+      chunk_filled = knitr::knit_child(text=chunk_filled, envir=environment(), quiet=TRUE)
+      cat(chunk_filled, '\n', sep='\n')
     }
       
     # Now show the result(s) for this comparison. If multiple subsets were analysed, there will be multiple results.
@@ -1103,6 +1087,21 @@ if (have_gsea) {
         subset_column = ""
         subset_group = ""
       }
+      
+      # Chunk template for the GSEA summary (per comparison and subset)
+      chunk_template_gsea_summary = "
+\`\`\`{r}
+#| label: tbl-deg_analysis_gsea_summary_{{name}}_{{i}}
+#| tbl-cap: 'GSEA results for {{name_subset}}'
+
+# Plot summary of tested and significant terms for all GSEA analyses
+gsea_results_table = gsea_summary_table %>% 
+    dplyr::filter(Comparison == '{{name}}', SubsetGroup=='{{subset_group}}')
+    
+gt(gsea_results_table) %>%
+    sub_missing(columns=1:ncol(gsea_results_table), missing_text='')
+\`\`\`
+"
       
       # Print a summary of all GSEA analyses
       chunk_filled = knitr::knit_expand(text=chunk_template_gsea_summary,
@@ -1127,6 +1126,23 @@ if (have_gsea) {
         
         # Header
         cat("#####", j, "\n\n")
+        
+        # Chunk template for the GSEA plot (per comparison, subset and geneset)
+        # - top 10 terms as table
+        # - top 10 terms as plot
+chunk_template_gsea_results = "
+\`\`\`{r}
+#| label: fig-deg_analysis_gsea_plots_{{name}}_{{i}}_{{j}}
+#| fig-cap: 'Top 10 terms of {{gsea_res_name}} for {{name_subset}}'
+
+# Plot the top 10 terms
+enrichplot::ridgeplot(gsea_res, showCategory=10, orderBy='NES', label_format=40) +
+                  AddPlotStyle(legend_position='bottom', legend_title='Adj. p-value') +
+                  viridis::scale_fill_viridis(direction = -1, 
+                                              breaks = function(x) return(c(min(x), max(x))), 
+                                              labels=scales::scientific)
+\`\`\`
+"
         
         # Fill in chunk for GSEA analysis and render
         chunk_filled = knitr::knit_expand(text=chunk_template_gsea_results,
@@ -1244,14 +1260,15 @@ gt(paraminfo)
 ```{r}
 #| label: deg_analysis_save_seurat
 
-# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
-
 # Save Seurat object and layer data
+outdir = file.path(module_dir, "sc")
 with_progress({
   SaveSeuratRdsWrapper(sc,
-                       on_disk_layers=on_disk_counts,
-                       outdir=file.path(module_dir, "sc"))
+                       outdir=outdir,
+                       write_disk_data=FALSE,
+                       relative_paths=FALSE,
+                       compress=FALSE
+                       )
 }, enable=verbose)
 ```
 
