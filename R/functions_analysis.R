@@ -1,10 +1,48 @@
-#' Sums up the top n barcodes (per feature) or features (per barcode) of a sparse (dgCMatrix) or iterable (IterableMatrix) matrix. 
+#' Sum of Top-N Entries per Row or Column in a Sparse Matrix
 #'
-#' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
-#' @param top_n Top n barcodes or features. Can be multiple values. Default is 50.
-#' @param margin Margin. Can be: 1 - rows (top n barcodes per feature), 2 - columns (top n features per barcode). Default is 1.
-#' @param chunk_size Iterable matrices will be converted into sparse matrics. To avoid storing the entire matrix in memory, only process this number of rows/columns at once. Default is no chunks.
-#' @return A list of vectors with sums for each top n.
+#' This function computes the sum of the top `n` entries for each row (features)
+#' or column (barcodes) of a sparse [`dgCMatrix`][Matrix::dgCMatrix-class] or
+#' iterable (`IterableMatrix`) object. If an iterable is provided, it is processed
+#' in chunks to avoid storing the entire matrix in memory.
+#'
+#' @param matrix A sparse [`dgCMatrix`][Matrix::dgCMatrix-class] or
+#'   iterable (`IterableMatrix`) matrix.
+#' @param top_n Integer vector. The number(s) of top entries to sum. Default is `50`.
+#' @param margin Integer. The margin to operate over:
+#'   * `1` = rows (top-N barcodes per feature)
+#'   * `2` = columns (top-N features per barcode).  
+#'   Default is `1`.
+#' @param chunk_size Integer or `NULL`. If not `NULL`, the matrix will be processed
+#'   in chunks of this size to reduce memory usage. Default is `NULL` (no chunking).
+#'
+#' @return A list of numeric vectors, one for each value of `top_n`. Each vector
+#'   contains the top-N sums for all rows (`margin=1`) or columns (`margin=2`).
+#'
+#' @import Matrix
+#' @import assertthat
+#' @importFrom purrr map flatten_int
+#' @importFrom furrr future_map furrr_options
+#' @importFrom progressr progressor
+#' @export
+#' 
+#' @examples
+#' library(Matrix)
+#'
+#' # Create a random sparse matrix with 100 rows (features) and 50 columns (barcodes)
+#' set.seed(123)
+#' mat <- rsparsematrix(nrow = 100, ncol = 50, density = 0.1, rand.x = function(n) rpois(n, 5))
+#'
+#' # Sum top-5 entries per row (features)
+#' result_rows <- SumTopN(mat, top_n = 5, margin = 1)
+#' head(result_rows[[1]])
+#'
+#' # Sum top-3 entries per column (barcodes)
+#' result_cols <- SumTopN(mat, top_n = 3, margin = 2)
+#' head(result_cols[[1]])
+#'
+#' # Multiple top_n values
+#' result_multi <- SumTopN(mat, top_n = c(3, 10), margin = 1)
+#' str(result_multi)
 SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
     # Checks
     assertthat::assert_that(margin %in% c("1", "2"),
@@ -147,23 +185,83 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
     return(top_n_counts)
 }
 
-#' Calculate percentage per column in a matrix.
+#' Column-wise Percentages of a Sparse Matrix
 #'
-#' @param matrix Sparse (dgCMatrix)
-#' @return A matrix with percentages
+#' This function calculates the percentage contribution of each entry
+#' relative to the column sum in a sparse [`dgCMatrix`][Matrix::dgCMatrix-class].
+#' Columns with zero total counts are set to denominator `1` to avoid division by zero.
+#'
+#' @param mat A sparse [`dgCMatrix`][Matrix::dgCMatrix-class].
+#'
+#' @return A sparse matrix of the same dimension as `mat`, where each entry
+#'   represents the percentage (0–100) of the column total.
+#'
+#' @import Matrix
+#' @export
+#' 
+#' @examples
+#' library(Matrix)
+#'
+#' # Create a random sparse matrix with 10 rows (features) and 5 columns (barcodes)
+#' set.seed(123)
+#' mat <- rsparsematrix(nrow = 10, ncol = 5, density = 0.3, rand.x = function(n) rpois(n, 5))
+#'
+#' # Calculate column percentages
+#' perc_mat <- CalculateColumnPerc(mat)
+#'
+#' # Inspect the first few rows
+#' perc_mat[1:5, ]
 CalculateColumnPerc = function(mat) {
   totals = colSums(mat)
   totals = ifelse(totals>0, totals, 1)
   return(t(t(mat) / totals) * 100)
 }
 
-#' Calculates the median of rows or columns of a sparse (dgCMatrix) or iterable (IterableMatrix) matrix. 
+#' Calculate Row or Column Medians of a Sparse Matrix
 #'
-#' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
-#' @param margin Margin for which to calculate median. Can be: 1 - rows, 2 - columns. Default is 1.
-#' @param chunk_size Iterable matrices will be converted into sparse matrics. To avoid storing the entire matrix in memory, only process this number of rows/columns at once. Default is no chunks.
-#' @param fun Function to apply to the matrix (chunk) before calculating the median. The function's only argument is the matrix itself. Can be NULL.
-#' @return A named vector with medians.
+#' This function computes the median of each row (features) or column (barcodes)
+#' of a sparse [`dgCMatrix`][Matrix::dgCMatrix-class] or iterable (`IterableMatrix`) matrix.
+#' For large iterable matrices, the computation can be done in chunks to reduce memory usage.
+#' A user-defined function can optionally be applied to each chunk before calculating the median.
+#'
+#' @param matrix A sparse [`dgCMatrix`][Matrix::dgCMatrix-class] or iterable (`IterableMatrix`) matrix.
+#' @param margin Integer. The margin to calculate the median over:
+#'   * `1` = rows (median per feature)
+#'   * `2` = columns (median per barcode).  
+#'   Default is `1`.
+#' @param chunk_size Integer or `NULL`. If not `NULL`, the matrix will be 
+#'    processed in chunks of this size to reduce memory usage. Default is `NULL`.
+#' @param fun Optional function to apply to each chunk before calculating the 
+#'    median. The function should take a single matrix argument. Default is `NULL`.
+#'
+#' @return A numeric vector of medians, named by row or column names depending on `margin`.
+#'
+#' @import Matrix
+#' @import assertthat
+#' @importFrom purrr map flatten_dbl
+#' @importFrom furrr future_map furrr_options
+#' @importFrom progressr progressor
+#' @importFrom sparseMatrixStats rowMedians colMedians
+#' @export
+#' 
+#' @examples
+#' library(Matrix)
+#'
+#' # Create a random sparse matrix with 20 rows (features) and 10 columns (barcodes)
+#' set.seed(123)
+#' mat <- rsparsematrix(nrow = 20, ncol = 10, density = 0.2, rand.x = function(n) rpois(n, 5))
+#'
+#' # Calculate medians per row (features)
+#' medians_row <- CalculateMedians(mat, margin = 1)
+#' head(medians_row)
+#'
+#' # Calculate medians per column (barcodes)
+#' medians_col <- CalculateMedians(mat, margin = 2)
+#' head(medians_col)
+#'
+#' # Apply a log transformation before calculating medians
+#' medians_log <- CalculateMedians(mat, margin = 1, fun = function(x) log1p(x))
+#' head(medians_log)
 CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
@@ -242,13 +340,49 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
   return(medians)
 }
 
-#' Calculates the boxplot statistics for rows or columns of a sparse (dgCMatrix) or iterable (IterableMatrix) matrix. 
-#' These are: min, q25, q50, q75, max, IQR (q75-q25), uppper whisker (q50 + 1.5 IQR), lower whisker (q50 - 1.5 IQR)
+#' Calculate Boxplot Statistics for Rows or Columns of a Sparse Matrix
 #'
-#' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
-#' @param margin Margin for which to calculate median. Can be: 1 - rows, 2 - columns. Default is 1.
-#' @param chunk_size Iterable matrices will be converted into sparse matrics. To avoid storing the entire matrix in memory, only process this number of rows/columns at once. Default is no chunks.
-#' @return A named vector with medians.
+#' This function computes the boxplot statistics for each row (features) or column (barcodes)
+#' of a sparse [`dgCMatrix`][Matrix::dgCMatrix-class] or iterable (`IterableMatrix`) matrix. 
+#' Statistics include minimum, 25th percentile (q25), median (q50), 75th percentile (q75),
+#' maximum, interquartile range (IQR), and lower/upper whiskers (q50 ± 1.5*IQR, bounded by min/max).
+#'
+#' @param matrix A sparse [`dgCMatrix`][Matrix::dgCMatrix-class] or iterable (`IterableMatrix`) matrix.
+#' @param margin Integer. The margin to calculate statistics over:
+#'   * `1` = rows (statistics per feature)
+#'   * `2` = columns (statistics per barcode).  
+#'   Default is `1`.
+#' @param chunk_size Integer or `NULL`. If not `NULL`, the matrix will be processed 
+#'    in chunks of this size to reduce memory usage. Default is `NULL`.
+#'
+#' @return A data frame with columns:
+#'   * `min`, `q25`, `q50`, `q75`, `max` – standard boxplot statistics
+#'   * `IQR` – interquartile range (`q75 - q25`)
+#'   * `lower_whisker` – `q50 - 1.5*IQR` bounded by `min`
+#'   * `upper_whisker` – `q50 + 1.5*IQR` bounded by `max`
+#'
+#' @import Matrix
+#' @import assertthat
+#' @importFrom purrr map pmap_dbl
+#' @importFrom furrr future_map_dfr furrr_options
+#' @importFrom progressr progressor
+#' @importFrom sparseMatrixStats rowQuantiles colQuantiles
+#' @export
+#'
+#' @examples
+#' library(Matrix)
+#'
+#' # Create a random sparse matrix with 20 rows (features) and 10 columns (barcodes)
+#' set.seed(123)
+#' mat <- rsparsematrix(nrow = 20, ncol = 10, density = 0.3, rand.x = function(n) rpois(n, 5))
+#'
+#' # Calculate boxplot statistics per row (features)
+#' stats_row <- CalculateBoxplotStats(mat, margin = 1)
+#' head(stats_row)
+#'
+#' # Calculate boxplot statistics per column (barcodes)
+#' stats_col <- CalculateBoxplotStats(mat, margin = 2)
+#' head(stats_col)
 CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
@@ -332,12 +466,47 @@ CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
   return(boxplot_stats)
 }
 
-#' Calculates scores for feature sets per cell using UCell.
+#' Calculate Module Scores per Cell Using UCell
 #'
-#' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
-#' @param features Named list of feature vectors to use for scoring.
-#' @param chunk_size Iterable matrices will be converted into sparse matrics. To avoid storing the entire matrix in memory, only process this number of rows/columns at once. Default is no chunks.
-#' @return A named vector with medians.
+#' This function computes module scores for sets of features (gene sets) per cell
+#' using the [UCell](https://github.com/carmonalab/UCell) scoring method.
+#' Supports sparse [`dgCMatrix`][Matrix::dgCMatrix-class] or iterable (`IterableMatrix`) matrices.
+#' Large matrices can be processed in chunks to reduce memory usage.
+#'
+#' @param matrix A sparse [`dgCMatrix`][Matrix::dgCMatrix-class] or iterable (`IterableMatrix`) matrix.
+#' @param features A named list of feature vectors (gene sets) to score.
+#' @param chunk_size Integer or `NULL`. If not `NULL`, the matrix will be processed 
+#'    in chunks of this size. Default is `NULL`.
+#'
+#' @return A data frame of module scores, with rows corresponding to cells (columns of `matrix`)
+#'   and columns corresponding to the named feature sets.
+#'
+#' @import Matrix
+#' @import assertthat
+#' @importFrom purrr map flatten
+#' @importFrom furrr future_map_dfr furrr_options
+#' @importFrom progressr progressor
+#' @import BiocParallel
+#' @import UCell
+#' @export
+#' 
+#' @examples
+#' library(Matrix)
+#' library(UCell)
+#'
+#' # Create a random sparse matrix with 20 features and 10 cells
+#' set.seed(123)
+#' mat <- rsparsematrix(nrow = 20, ncol = 10, density = 0.3, rand.x = function(n) rpois(n, 5))
+#'
+#' # Define feature sets
+#' features_list <- list(
+#'   set1 = rownames(mat)[1:5],
+#'   set2 = rownames(mat)[6:10]
+#' )
+#'
+#' # Calculate UCell scores
+#' scores <- CalculateModuleScoreUCell(mat, features_list)
+#' head(scores)
 CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
     #matrix = Seurat::GetAssayData(sc, layer="counts", assay=assay)
     #features = known_markers_list
@@ -422,14 +591,47 @@ CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
 
 
 
-#' Calculate cell cycle scores.
+#' Calculate Cell Cycle Scores for Seurat v5 Objects
+#'
+#' This function computes cell cycle scores for each cell in a Seurat v5 object
+#' based on provided S-phase and G2M-phase gene sets. The results include
+#' the cell cycle phase as well as S.Score, G2M.Score, and CC.Difference 
+#' (S.Score - G2M.Score) and are added to the cell metadata of the Seurat object.
+#'
+#' @param sc A [Seurat](https://satijalab.org/seurat/) v5 object.
+#' @param genes_s Character vector of gene names characteristic for S-phase.
+#' @param genes_g2m Character vector of gene names characteristic for G2M-phase.
+#' @param assay Character string specifying the assay to use. Default is the default 
+#'    assay of the Seurat object.
+#' @param verbose Logical. Whether to print messages during scoring. Default is `TRUE`.
+#'
+#' @return Updated Seurat object with cell cycle scores added to the metadata. 
+#'    The following columns are added:
+#'   * `Phase` – factor with levels `G1`, `G2M`, `S`
+#'   * `S.Score` – numeric S-phase score
+#'   * `G2M.Score` – numeric G2M-phase score
+#'   * `CC.Difference` – numeric difference `S.Score - G2M.Score`
+#'
+#' @import Seurat
+#' @import SeuratObject
+#' @importFrom purrr map
+#' @importFrom furrr future_map_dfr furrr_options
+#' @export
 #' 
-#' @param sc Seurat v5 object
-#' @param genes_s Vector of gene names characteristic for S-phase
-#' @param genes_g2m Vector of gene names characteristic for G2M-phase
-#' @param assay Assay to use
-#' @param verbose Be verbose
-#' @return Updated Seurat object with cell cycle phase as well as scores.
+#' @examples
+#' \dontrun{
+#' library(Seurat)
+#' library(furrr)
+#'
+#' # Example Seurat object with RNA assay
+#' sc <- CreateSeuratObject(matrix(rpois(200, lambda=5), nrow=20, ncol=10))
+#' genes_s <- rownames(sc)[1:10]
+#' genes_g2m <- rownames(sc)[11:20]
+#'
+#' # Calculate cell cycle scores
+#' sc <- CCScoring(sc, genes_s, genes_g2m)
+#' head(sc[[]])
+#' }
 CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -495,14 +697,37 @@ CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
   return(sc)
 }
 
-#' Apply identity or log transformation to the data and save it as data layers ("normalised data").
+#' Transform Data and Save as New Layers in a Seurat v5 Object
+#'
+#' This function applies either an identity or log transformation to the data
+#' in one or more layers of a Seurat v5 object and saves the result as new layers.
+#' By default, raw counts layers are transformed and stored as `data.X`, `data.Y`, etc.
+#'
+#' @param sc A [Seurat](https://satijalab.org/seurat/) v5 object.
+#' @param assay Character string specifying the assay to transform. Default is 
+#'    the default assay of the Seurat object.
+#' @param layer Character vector specifying which layers to transform. Default is `"counts"`.
+#' @param save Character vector specifying the names of the new layers. Default 
+#'    is `"data"`. If multiple layers are transformed, names are made unique automatically.
+#' @param log Logical. If `TRUE`, apply `log1p` transformation. If `FALSE`, the 
+#'    identity transformation is applied. Default is `FALSE`.
+#'
+#' @return Updated Seurat v5 object with new layers added containing the transformed data.
 #' 
-#' @param sc Seurat v5 object.
-#' @param assay Assay to apply transformation to. If NULL, will be default assay of the Seurat object.
-#' @param layer Layer to apply transformation to. Default is "counts" meaning all raw counts layers.
-#' @param save Name of the new layers. Default is "data" meaning new layers will be named data.X, data.Y, ...
-#' @param log Apply log transformation instead of just identity transformation.
-#' @return Seurat v5 object with new layers data.X, data.Y, ...
+#' @import Seurat
+#' @import SeuratObject
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' library(Seurat)
+#'
+#' # Create a small Seurat object
+#' sc <- CreateSeuratObject(matrix(rpois(100, lambda=5), nrow=10, ncol=10))
+#'
+#' # Apply log transformation to counts and save as new layers
+#' sc <- TransformData(sc, layer="counts", save="data", log=TRUE)
+#' }
 TransformData = function(sc, assay=NULL, layer="counts", save="data", log=FALSE) {
     if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
     
@@ -535,14 +760,47 @@ TransformData = function(sc, assay=NULL, layer="counts", save="data", log=FALSE)
     return(sc)
 }
 
-#' Apply scran normalization (using pooled size factors) to counts data.
+#' Apply Scran Normalization to Counts Data in a Seurat v5 Object
+#'
+#' This function normalizes counts data using pooled size factors computed by
+#' the [scran](https://bioconductor.org/packages/release/bioc/html/scran.html) package.
+#' Large counts matrices are automatically split into chunks to reduce memory usage.
+#' Normalized data are log-transformed and stored as new layers.
+#'
+#' @param sc A [Seurat](https://satijalab.org/seurat/) v5 object.
+#' @param assay Character string specifying the assay to normalize. Default is 
+#'    the default assay of the Seurat object.
+#' @param layer Character vector specifying which layers to normalize. Default is `"counts"`.
+#' @param save Character vector specifying names of the new layers. Default is 
+#'    `"data"`. If multiple layers are transformed, names are made unique automatically.
+#' @param chunk_size Integer. Maximum number of cells per chunk when computing 
+#'    size factors. Large matrices are split into chunks to save memory. Default is 50,000.
+#'
+#' @return Updated Seurat v5 object with new normalized layers (`log1p` transformed) added.
+#'
+#' @import Seurat
+#' @import SeuratObject
+#' @importFrom purrr map flatten
+#' @importFrom furrr future_map furrr_options
+#' @importFrom progressr progressor
+#' @import SingleCellExperiment
+#' @import scran
+#' @import scuttle
+#' @import Matrix
+#' @export
 #' 
-#' @param sc Seurat v5 object.
-#' @param assay Assay to normalize. If NULL, will be default assay of the Seurat object.
-#' @param layer Layer to normalize. Default is "counts" meaning all raw counts layers.
-#' @param save Name of the new layers. Default is "data" meaning new layers will be named data.X, data.Y, ...
-#' @param chunk_size Maximum number of barcodes for which to compute size factors at once. Large counts matrices will be split into chunks to save memory.
-#' @return Seurat v5 object with new layers data.X, data.Y, ...
+#' @examples
+#' \dontrun{
+#' library(Seurat)
+#' library(scran)
+#' library(scuttle)
+#'
+#' # Create a small Seurat object
+#' sc <- CreateSeuratObject(matrix(rpois(100, lambda=5), nrow=10, ncol=10))
+#'
+#' # Apply scran normalization to counts layer
+#' sc <- NormalizeDataScran(sc, layer="counts", save="data")
+#' }
 NormalizeDataScran = function(sc, assay=NULL, layer="counts", save="data", chunk_size=50000) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -619,13 +877,43 @@ NormalizeDataScran = function(sc, assay=NULL, layer="counts", save="data", chunk
   return(sc)
 }
 
-#' Identify highly variable features with the scran method (mean - var analysis).
+#' Identify Highly Variable Features Using Scran
+#'
+#' This function identifies highly variable features (genes) in a Seurat v5 object
+#' using the [scran](https://bioconductor.org/packages/release/bioc/html/scran.html) package.
+#' Variable features are determined using mean-variance modeling. Data can be analyzed
+#' either combined across all layers or separately per layer.
+#'
+#' @param sc A [Seurat](https://satijalab.org/seurat/) v5 object.
+#' @param assay Character string specifying the assay to analyze. Default is the 
+#'    default assay of the Seurat object.
+#' @param nfeatures Integer. Number of highly variable features to identify. Default is 2000.
+#' @param combined Logical. If `TRUE`, all layers are analyzed together (more memory-intensive). 
+#'                 If `FALSE`, features are identified per layer and then combined. Default is `TRUE`.
+#'
+#' @return Updated Seurat v5 object with highly variable features stored in:
+#'   * `VariableFeatures(sc[[assay]])` – character vector of variable features
+#'   * Metadata columns for each feature containing variance statistics, ranks, and variable status.
+#'
+#' @import Seurat
+#' @import SeuratObject
+#' @importFrom purrr map reduce flatten_chr
+#' @importFrom dplyr filter arrange bind_cols
+#' @import scran
+#' @export
 #' 
-#' @param sc Seurat v5 object.
-#' @param assay Assay to analyze. If NULL, will be default assay of the Seurat object.
-#' @param nfeatures Number of features to identify. Default is 2000.
-#' @param combined If TRUE, analyze all data together. Recommended but requires more memory. If FALSE, features will be identified by dataset and sets will then be combined.
-#' @return Seurat v5 object with highly variable features for assay.
+#' @examples
+#' \dontrun{
+#' library(Seurat)
+#' library(scran)
+#'
+#' # Create a small Seurat object
+#' sc <- CreateSeuratObject(matrix(rpois(100, lambda=5), nrow=10, ncol=10))
+#'
+#' # Identify highly variable features using scran
+#' sc <- FindVariableFeaturesScran(sc, nfeatures=5)
+#' VariableFeatures(sc)
+#' }
 FindVariableFeaturesScran = function(sc, assay=NULL, nfeatures=2000, combined=TRUE) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -730,21 +1018,53 @@ FindVariableFeaturesScran = function(sc, assay=NULL, nfeatures=2000, combined=TR
   return(sc)
 }
 
-#' Wrapper for finding highly variable features.
+#' Wrapper for Highly Variable Feature Selection
+#'
+#' This function provides a unified interface to identify highly variable
+#' features (genes) in a Seurat v5 object using either:
+#' * Seurat’s built-in `vst` method, or
+#' * the scran-based mean–variance modeling method (via `FindVariableFeaturesScran`).
+#'
+#' @param sc A [Seurat](https://satijalab.org/seurat/) v5 object.
+#' @param feature_selection_method Character string specifying the method to use.
+#'   Options are:
+#'   * `"vst"` – variance stabilizing transformation (Seurat default),
+#'   * `"scran"` – mean–variance modeling with the [scran](https://bioconductor.org/packages/scran) package.
+#' @param num_variable_features Integer. Number of features to identify. Default is `2000`.
+#' @param assay Character string. Assay to analyze. If `NULL`, defaults to the active assay of the Seurat object.
+#' @param verbose Logical. Whether to print messages during processing. Default is `TRUE`.
+#'
+#' @return A Seurat v5 object with variable features set for the specified assay.
+#'   Results are stored in:
+#'   * `VariableFeatures(sc[[assay]])` – character vector of variable features.
+#'   * Feature-level metadata (if `scran` is used).
+#'
+#' @import Seurat
+#' @importFrom assertthat assert_that
+#' @export
 #' 
-#' @param sc Seurat v5 object.
-#' @param feature_selection_method Method for identifying highly variable features. Can be: vst, scran.
-#' @param num_variable_features Number of features to identify. Default is 2000.
-#' @param assay Assay to analyze. If NULL, will be default assay of the Seurat object.
-#' @param verbose Be verbose.
-#' @return Seurat v5 object with highly variable features for assay.
+#' @examples
+#' \dontrun{
+#' library(Seurat)
+#'
+#' # Create a toy Seurat object
+#' sc <- CreateSeuratObject(matrix(rpois(100, lambda=5), nrow=10, ncol=10))
+#'
+#' # Identify HVFs using vst
+#' sc <- FindVariableFeaturesWrapper(sc, feature_selection_method="vst", num_variable_features=5)
+#' VariableFeatures(sc)
+#'
+#' # Identify HVFs using scran
+#' sc <- FindVariableFeaturesWrapper(sc, feature_selection_method="scran", num_variable_features=5)
+#' VariableFeatures(sc)
+#' }
 FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variable_features=2000, assay=NULL, verbose=TRUE) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
   # Check
   valid_feature_selection_methods = c("vst", "scran")
   assertthat::assert_that(feature_selection_method %in% valid_feature_selection_methods,
-                          msg=FormatString("Variable features method must must be one of: {valid_feature_selection_methods*}."))
+                          msg=FormatString("Variable features method must be one of: {valid_feature_selection_methods*}."))
   
   # Find variable features
   if (feature_selection_method == "vst") {
@@ -763,15 +1083,44 @@ FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variabl
   return(sc)
 }
 
-#' Wrapper for running a dimensionality reduction.
+#' Wrapper for Dimensionality Reduction
+#'
+#' Runs a dimensionality reduction on a Seurat v5 object.
+#' Currently supports **PCA**, with results stored as a new reduction in the object.
+#'
+#' @param sc A [Seurat](https://satijalab.org/seurat/) v5 object.
+#' @param method Character string. Dimensionality reduction method.
+#'   Currently supported: `"pca"`.
+#' @param name Character string. Name to assign to the reduction in the Seurat object.
+#'   If `NULL`, defaults to the method name in lowercase (e.g., `"pca"`).
+#' @param assay Character string. Assay to use. If `NULL`, defaults to the active assay of the Seurat object.
+#' @param dim_n Integer. Number of dimensions to compute. Default is `50`.
+#' @param verbose Logical. Whether to print messages during processing. Default is `TRUE`.
+#'
+#' @return A Seurat v5 object with a new dimensionality reduction stored in `sc@reductions`.
+#'   Additionally:
+#'   * The reduction is accessible via `sc[[<name>]]`.
+#'   * Metadata (`title`, `method`) are stored in the `Misc` slot of the reduction.
+#'   * The reduction is set as the default for downstream analyses.
+#'
+#' @import Seurat
+#' @importFrom assertthat assert_that
+#' @importFrom stringr str_to_title
+#' @export
 #' 
-#' @param sc Seurat v5 object.
-#' @param method Dimensionality reduction method. Can be: pca.
-#' @param name Name of the reduction in the Seurat object. If NULL, will be the method name in lowercase letters.
-#' @param assay Assay to analyze. If NULL, will be default assay of the Seurat object.
-#' @param dim_n Number of dimensions to compute. Default is 50.
-#' @param verbose Be verbose.
-#' @return Seurat v5 object with a new (integrated) reduction.
+#' @examples
+#' \dontrun{
+#' library(Seurat)
+#'
+#' # Create a toy object
+#' sc <- CreateSeuratObject(matrix(rpois(100, 5), nrow=10, ncol=10))
+#'
+#' # Run PCA with default settings
+#' sc <- RunDimRedWrapper(sc, method="pca")
+#'
+#' # Access PCA results
+#' Embeddings(sc[["pca"]])[1:5, 1:3]
+#' }
 RunDimRedWrapper = function(sc, method="pca", name=NULL, assay=NULL, dim_n=50, verbose=TRUE) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
     
@@ -816,17 +1165,62 @@ RunDimRedWrapper = function(sc, method="pca", name=NULL, assay=NULL, dim_n=50, v
   return(sc)
 }
 
-#' Wrapper for integrating the layers of an assay. Does not touch the data but converts an original reduction into an integrated reduction based on the data.
+#' Wrapper for Layer Integration
+#'
+#' Integrates multiple layers of a Seurat v5 object using a specified integration
+#' method. This does **not** alter the raw data but instead converts an existing
+#' dimensionality reduction into an integrated reduction suitable for downstream
+#' analyses.  
+#'
+#' Supported integration methods include:
+#' - `"CCAIntegration"`  
+#' - `"RPCAIntegration"`  
+#' - `"HarmonyIntegration"`  
+#' - `"FastMNNIntegration"`  
+#' - `"scVIIntegration"`  
+#'
+#' @param sc A [Seurat](https://satijalab.org/seurat/) v5 object.
+#' @param integration_method Character string. Integration method to use.
+#'   Must be one of: `"CCAIntegration"`, `"RPCAIntegration"`, `"HarmonyIntegration"`,
+#'   `"FastMNNIntegration"`, `"scVIIntegration"`.
+#' @param assay Character string. Assay to integrate. If `NULL`, defaults to the active assay.
+#' @param orig_reduct Character string. Original dimensionality reduction to base
+#'   the integration on. Default is `"pca"`. If `NULL`, uses the default reduction.
+#' @param new_reduct Character string. Name of the new (integrated) reduction.
+#'   If `NULL`, a name will be derived from the integration method.
+#' @param new_reduct_suffix Character string or `NULL`. Optional suffix appended to the
+#'   new reduction name (useful for distinguishing multiple runs).
+#' @param additional_args Named list of additional arguments passed to the selected
+#'   integration method (e.g., batch info, conda environment for scVI).
+#' @param verbose Logical. Whether to print progress messages. Default is `TRUE`.
+#'
+#' @return A Seurat v5 object with a new integrated dimensionality reduction
+#'   stored in `sc@reductions`. Specifically:
+#'   * The reduction is accessible via `sc[[<new_reduct>]]`.
+#'   * Metadata (`title`, `method`) are stored in the `Misc` slot of the reduction.
+#'   * The reduction is set as the default for the assay.
+#'   * For `"FastMNNIntegration"`, the intermediate corrected assay is dropped automatically.
+#'
+#' @import Seurat
+#' @importFrom assertthat assert_that
+#' @importFrom stringr str_to_title
+#' @importFrom purrr exec
+#' @export
 #' 
-#' @param sc Seurat v5 object.
-#' @param integration_method Method for identifying highly variable features. Can be: CCAIntegration, RPCAIntegration, HarmonyIntegration, FastMNNIntegration, scVIIntegration.
-#' @param assay Assay to analyze. If NULL, will be default assay of the Seurat object.
-#' @param orig_reduct Original reduction to be used for integration. Default is 'pca'. If NULL, will be default reduction.
-#' @param new_reduct Name of the new (integrated) reduction. Default is 'pca'. If NULL, will be based on the name of the integration method.
-#' @param new_reduct_suffix Additional suffix to append to the name of the new (integrated) reduction. Can be NULL.
-#' @param additional_args List of additional arguments to be passed to the integration method.
-#' @param verbose Be verbose.
-#' @return Seurat v5 object with a new (integrated) reduction.
+#' @examples
+#' \dontrun{
+#' library(Seurat)
+#'
+#' # Toy Seurat object
+#' sc <- CreateSeuratObject(matrix(rpois(100, 5), nrow=10, ncol=10))
+#' sc <- NormalizeData(sc)
+#' sc <- FindVariableFeatures(sc)
+#' sc <- RunPCA(sc)
+#'
+#' # Run Harmony integration
+#' sc <- IntegrateLayersWrapper(sc, integration_method="HarmonyIntegration")
+#' Reductions(sc)
+#' }
 IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduct=NULL, new_reduct=NULL, new_reduct_suffix=NULL, additional_args=NULL, verbose=TRUE) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   if (is.null(orig_reduct)) orig_reduct = SeuratObject::DefaultDimReduc(sc)
@@ -953,18 +1347,9 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
   SeuratObject::Key(sc[[new_reduct]]) = new_reduct_key
 
   # Post-process
-  if (integration_method == "CCAIntegration") {
-    
-  } else if (integration_method == "RPCAIntegration") {
-    
-  } else if (integration_method == "HarmonyIntegration") {
-    
-  } else if (integration_method == "FastMNNIntegration") {
+  if (integration_method == "FastMNNIntegration") {
     # Drop assay with corrected counts
     sc[[paste0(assay, "mnn")]] = NULL
-    
-  } else if (integration_method == "scVIIntegration") {
-    
   }
   
   return(sc)
@@ -972,6 +1357,45 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
 
 # This function is a copy of the scVIIntegration (from the SeuratWrappers) with some bugs fixed.
 # We keep the original code (e.g. <- instead of =) and only fix the bugs.
+
+#' scVI Integration (Bug-Fixed Version)
+#'
+#' This function is a patched copy of `scVIIntegration()` from
+#' [SeuratWrappers](https://github.com/satijalab/seurat-wrappers).  
+#' The original code is preserved, except for two important bug fixes:
+#' \enumerate{
+#'   \item Only uses the specified `conda_env` if provided (does not force one).
+#'   \item Ensures on-disk matrices (e.g. BPCells) are converted to
+#'         `dgCMatrix` before creating the `AnnData` object.
+#' }
+#' 
+#' @examples
+#' \dontrun{
+#' library(Seurat)
+#'
+#' # Load a Seurat object
+#' sc <- CreateSeuratObject(matrix(rpois(2000, 5), nrow=100, ncol=20))
+#'
+#' # Run scVI integration
+#' latent_list <- scVIIntegration_Fixed(
+#'   object = sc,
+#'   conda_env = "scvi-env",
+#'   new.reduction = "scvi.latent",
+#'   ndims = 20
+#' )
+#'
+#' # Attach result back to Seurat object
+#' sc[["scvi.latent"]] <- latent_list[["scvi.latent"]]
+#' Reductions(sc)
+#' }
+#' 
+#' @importFrom Seurat CreateDimReducObject
+#' @importFrom SeuratObject LayerData
+#' @importFrom future nbrOfWorkers
+#' @importFrom Matrix t
+#' @importFrom methods as
+#' @importFrom reticulate import use_condaenv py_to_r r_to_py
+#' @export
 scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers = "counts", 
                                   conda_env = NULL, new.reduction = "integrated.dr", ndims = 30, 
                                   nlayers = 2, gene_likelihood = "nb", max_epochs = NULL, ...) 
@@ -996,7 +1420,6 @@ scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers
   # BUG/FIX - AP: If on-disk matrices are used (with BPCells), convert to dgCMatrix first
   counts_matrix <- as(t(SeuratObject::LayerData(object, layer="counts")[features, ]), "dgCMatrix")
   adata <- sc$AnnData(X = scipy$sparse$csr_matrix(counts_matrix), obs = batches, var = object[[]][features,])
-  #
   
   # Set number of workers and batch size
   num_workers <- future::nbrOfWorkers()
@@ -1020,10 +1443,39 @@ scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers
 }
 
 
-#' Calculate enrichment of cells per sample per cluster.
+#' Enrichment of Cells per Sample per Cluster (Fisher's Exact Test)
+#'
+#' This function calculates enrichment of cells from each sample
+#' (`orig.ident`) in each cluster (`seurat_clusters`) using Fisher's exact test
+#' (`alternative = "greater"`). For each sample–cluster combination, a 2x2
+#' contingency table is constructed and tested, returning odds ratios and p-values.
+#'
+#' @param sc Seurat object with `orig.ident` (sample) and `seurat_clusters` (cluster)
+#'   in its metadata.
+#'
+#' @return A data frame with one row per sample, and columns for each cluster (`Cl_X`).
+#'   Each cell contains a vector with:
+#'   \itemize{
+#'     \item \code{oddsRatio}: estimated odds ratio of enrichment.
+#'     \item \code{p}: p-value from Fisher's exact test (formatted scientific notation).
+#'   }
 #' 
-#' @param sc Seurat object.
-#' @return A table with counts, odd ratios and p-values.
+#' @importFrom dplyr pull filter count
+#' @importFrom purrr reduce
+#' @importFrom stats fisher.test
+#' @export
+#' 
+#' @examples
+#' library(Seurat)
+#'
+#' # Example Seurat object
+#' sc <- CreateSeuratObject(matrix(rpois(2000, 5), nrow = 100, ncol = 20))
+#' sc$seurat_clusters <- sample(1:3, ncol(sc), replace = TRUE)
+#' sc$orig.ident <- sample(c("SampleA", "SampleB"), ncol(sc), replace = TRUE)
+#'
+#' # Run Fisher enrichment
+#' enrichment <- CellsFisher(sc)
+#' head(enrichment)
 CellsFisher = function(sc) {
   cell_samples = sc[[]] %>% dplyr::pull(orig.ident) %>% unique() %>% sort()
   cell_clusters = sc[[]] %>% dplyr::pull(seurat_clusters) %>% unique() %>% sort()
@@ -1045,210 +1497,4 @@ CellsFisher = function(sc) {
   }
   colnames(out) = paste0("Cl_", cell_clusters)
   return(out)
-}
-
-#' Integrate multiple samples using Seurat's integration strategy. In short, a set of features (e.g. genes) is used to anchor cells that are in a matched biological state. Within these anchored set of cells, technical effects are then removed. There are three possible ways to run the integration process:
-#' - Default: Anchors are computed for all pairs of datasets. This will give all datasets the same weight during dataset integration but can be computationally intensive.
-#' - Provide a reference: One dataset is used as reference and anchors are computed for all other datasets. This approach is computational faster but less accurate.
-#' - Use reciprocal PCA: Anchors are not computed based on features (e.g. genes) but in PCA space which reduces the complexity. This approach is much faster and recommended for large datasets (>50000 cells). However, it is also less accurate.
-#' 
-#' @param sc List of seurat objects with variable features
-#' @param ndims Number of dimensions used for integration (Default: min(30, minimum number of cells in a sample - 1))
-#' @param reference Use one or more datasets as reference. Separate multiple datasets by comma (Default: NULL)
-#' @param use_reciprocal_pca Use reciprocal PCA for cell anchoring (Default: FALSE)
-#' @param verbose Be verbose (Default: FALSE)
-#' @param assay Can be 'RNA' or 'SCT' (Default: RNA)
-#' @param k_filter How many neighbors to use when filtering anchors. If NULL, automatically set to min(200, minimum number of cells in a sample)).
-#' @param k_weight Number of neighbors to consider when weighting anchors. If NULL, automatically set to min(100, minimum number of cells in a sample)).
-#' @param k_anchor How many neighbors to use when picking anchors. If NULL, automatically set to min(5, minimum number of cells in a sample)).
-#' @param k_score How many neighbors for calculating scores. If NULL, automatically set to min(30, minimum number of cells in a sample)).
-#' @param vars_to_regress For reciprocal PCA: when doing the scaling, which variables should be regressed out when doing the scaling
-#' @param min_cells For reciprocal PCA: when doing the scaling for SCT, the minimum number of cells a gene should be expressed
-#' @return A Seurat object with an integrated assay (RNAintegrated or SCTintegrated) and a merged assay (RNA or SCT)
-RunIntegration = function(sc, ndims=30, reference=NULL, use_reciprocal_pca=FALSE, verbose=FALSE, assay="RNA", k_filter=NULL, k_weight=NULL, k_anchor=NULL, k_score=NULL, vars_to_regress=NULL, min_cells=1) {
-  # THIS FUNCTION NEEDS TO BE REVIEWED
-  
-  # Note: Assay names should only have numbers and letters
-  # Warning: Keys should be one or more alphanumeric characters followed by an underscore (seurat/R/object.R)
-  
-  # Set defaults
-  # Param k.filter: How many neighbors to use when filtering anchors
-  if (is.null(k_filter)) k_filter = min(200, purrr::map_int(sc, ncol))
-  # Param k.weight: Number of neighbors to consider when weighting anchors
-  if (is.null(k_weight)) k_weight = min(100, purrr::map_int(sc, ncol))
-  # Param k.anchor: How many neighbors to use when picking anchors
-  if (is.null(k_anchor)) k_anchor = min(5, purrr::map_int(sc, ncol))
-  # Param k_score: How many neighbors to use fo calculating scores
-  if (is.null(k_score)) k_score = min(30, purrr::map_int(sc, ncol))
-  
-  # Param ndims: Number of dimensions cannot be larger than number of cells; note: Seurat gives an error that ndims must smaller than the number of cells
-  ndims = min(c(ndims, purrr::map_int(sc, ncol)-1))
-  
-  # Param reference: split by comma and test if all entries are indices
-  if (!is.null(reference)) {
-    reference = trimws(unlist(strsplit(reference, ",")))
-    if (any(is.na(suppressWarnings(as.numeric(reference))))) {
-      # At least one entry is not an index, assume that the entries are names and match to get indices
-      reference = match(reference, names(datasets))
-      if (any(is.na(reference))) stop("RunIntegration: At least one reference dataset name could not be found in the datasets!")
-      
-    } else {
-      # All entries are indices, just check that they are valid
-      reference = as.numeric(reference)
-      if (max(reference) > length(sc) | min(reference) < 1) stop("RunIntegration: Numeric index for the reference is either <1 or >length(samples)!")
-    }
-  }
-  
-  # Depending on assay RNA or SCT, integration is different
-  if (assay == "RNA") {
-    # Find RNA features that are consistently variable
-    integrate_RNA_features = SelectIntegrationFeatures(object.list=sc,
-                                                       nfeatures=3000,
-                                                       verbose=verbose)
-    
-    # If reciprocal PCA is used for integration, scale integration features and use them to run PCA for each sample
-    if (use_reciprocal_pca) {
-      sc = purrr::map(sc, function(s) {
-        s = Seurat::ScaleData(s,
-                              assay="RNA",
-                              features=integrate_RNA_features,
-                              vars.to.regress=vars_to_regress,
-                              verbose=verbose)
-        s = Seurat::RunPCA(x,
-                           assay="RNA",
-                           npcs=min(c(50, ncol(s))),
-                           features=integrate_RNA_features,
-                           verbose=verbose)
-        return(s)
-      })
-    }
-    
-    # Find integration anchors for assay RNA
-    integrate_RNA_anchors = Seurat::FindIntegrationAnchors(object.list=sc, 
-                                                           dims=1:ndims,
-                                                           normalization.method="LogNormalize",
-                                                           anchor.features=integrate_RNA_features, 
-                                                           k.filter=k_filter,
-                                                           k.anchor=k_anchor, 
-                                                           k.score=k_score,
-                                                           reference=reference,
-                                                           verbose=verbose,
-                                                           reduction=ifelse(use_reciprocal_pca, "rpca", "cca"))
-    
-    # Integrate RNA data 
-    sc = Seurat::IntegrateData(integrate_RNA_anchors, 
-                               new.assay.name="RNAintegrated",
-                               normalization.method="LogNormalize",
-                               dims=1:ndims,
-                               k.weight=k_weight,
-                               verbose=verbose)
-    
-    rm(integrate_RNA_anchors, integrate_RNA_features)
-  } else if (assay == "SCT") {
-    # Find integration anchors for assay SCT
-    integrate_SCT_features = Seurat::SelectIntegrationFeatures(object.list=sc, 
-                                                       nfeatures=3000,
-                                                       verbose=verbose)
-    
-    # If reciprocal PCA is used for integration, run SCTransform on the integration features and use them to run PCA for each sample
-    # NOTE: This might be that we run SCTransform twice
-    if (use_reciprocal_pca) {
-      min_npcs = 
-      sc = purrr::map(sc, function(s) {
-        s = SCTransform(s, 
-                    vars.to.regress=vars_to_regress, 
-                    min_cells=min_cells, 
-                    verbose=verbose, 
-                    return.only.var.genes=FALSE,
-                    method=ifelse(packages_installed("glmGamPoi"), "glmGamPoi", "poisson")) 
-        s = Seurat::RunPCA(x,
-                           assay="SCT",
-                           npcs=min(c(50, ncol(s))),
-                           features=integrate_SCT_features,
-                           verbose=verbose)
-        return(s)
-      })
-    }
-    
-    # Ensure that sctransform residuals have been computed for each feature and subset scale.data to only contain residuals for the integration features
-    sc = Seurat::PrepSCTIntegration(object.list=sc, 
-                                 anchor.features=integrate_SCT_features, 
-                                 assay=rep("SCT",length(sc)),
-                                 verbose=verbose)
-    
-    # Find integration anchors for assay SCT
-    integrate_SCT_anchors = Seurat::FindIntegrationAnchors(object.list=sc,
-                                                   dims=1:ndims, 
-                                                   normalization.method="SCT", 
-                                                   anchor.features=integrate_SCT_features, 
-                                                   k.filter=k_filter,
-                                                   k.anchor=k_anchor,
-                                                   k.score=k_score,
-                                                   reference=reference,
-                                                   verbose=verbose,
-                                                   reduction=ifelse(use_reciprocal_pca, "rpca", "cca"))
-    
-    # Integrate SCT data
-    sc = Seurat::IntegrateData(integrate_SCT_anchors, 
-                                    new.assay.name="SCTintegrated",
-                                    normalization.method="SCT",
-                                    dims=1:ndims, 
-                                    k.weight=k_weight,
-                                    verbose=verbose)
-
-    rm(integrate_SCT_features, integrate_SCT_anchors)
-  }
-  
-  # Call garbage collector to free memory (hope it helps)
-  gc(verbose=verbose)
-  return(sc)
-}
-
-#' R implementation of the Seurat LogNormalize strategy but with additional options.
-#' Normalisation: Counts for each cell are divided by the total counts for that cell and multiplied by a scale factor followed by natural-log transformation.
-#' Note: It is likely slower than the C++ implementation of Seurat.
-#' 
-#' @param sc Seurat object.
-#' @param assay The assay to normalize. Default is RNA.
-#' @param slot The assay slot to use for normalization. Default is counts.
-#' @param exclude_highly_expressed Whether to exclude highly expressed genes from size factor computation. Default is FALSE.
-#' @param max_fraction Maximum fraction of counts for a gene not to be considered highly expressed. Default is 0.05.
-#' @param exclude_genes A list of genes to exclude by default. Default is empty.
-#' @param scale_factor The scale factor. Default is 10000.
-#' @return A seurat object with normalized counts in the data slot of the assay.
-LogNormalizeCustom = function(sc, assay="RNA", exclude_highly_expressed=FALSE, max_fraction=0.05, exclude_genes=NULL, scale_factor=10000) {
-  # Get assay data
-  counts = Seurat::GetAssayData(sc, slot="counts", assay=assay)
-  
-  # Determine highly expressed genes
-  if (exclude_highly_expressed) { 
-    
-    # Calculate fractions for genes per cell, as a TRUE/FALSE table
-    is_highly_expressed = Matrix::t(Matrix::t(counts) * (1/Matrix::colSums(counts))) > max_fraction
-    
-    # Which genes are highly expressed in at least one cell, as a TRUE/FALSE vector
-    is_highly_expressed = Matrix::rowSums(is_highly_expressed) > 0
-    
-  } else { 
-    is_highly_expressed = FALSE
-  }
-  
-  # Convert excluded genes into TRUE/FALSE vector
-  is_excluded_by_default = rownames(counts) %in% exclude_genes
-  
-  # For each cell return counts sum excluding genes that are highly expressed or should be excluded anyhow
-  total_counts_per_cell = Matrix::colSums(counts[!is_highly_expressed & !is_excluded_by_default, ])
-  
-  # Size factors for scaling the counts
-  size_factors = 1 / total_counts_per_cell * scale_factor
-  
-  # Multiply counts by size factors
-  # Use R matrix multiplication for speed: matrix %*% diag(v)
-  # To divide, multiply by the inverse
-  # Finally log1p
-  sc = Seurat::SetAssayData(sc, 
-                            slot="data", 
-                            assay=assay, 
-                            new.data=log1p(Matrix::t(Matrix::t(counts) * size_factors)))
-  return(sc)
 }
