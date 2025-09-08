@@ -72,6 +72,7 @@ library(gt)
 library(Seurat)
 library(ggplot2)
 library(future)
+library(BiocParallel)
 library(patchwork)
 
 library(clusterProfiler)
@@ -104,8 +105,15 @@ source("R/functions_enrichment.R")
 # Be verbose or not
 verbose = param("verbose")
 
-# Parallelisation plan for all functions that support future
+# Parallelisation config for all functions that use the future framework
 plan(multisession, workers=param("cores"))
+
+# Parallelisation config for all functions that use the BiocParallel framework
+register(SnowParam(workers=param("cores"), type="SOCK", RNGseed=getOption("random_seed"))) 
+
+# Parallelisation config for BLAS threading. Currently set to 1 because there does not seem to be a performance gain
+# but may be relevant for very large projects.
+RhpcBLASctl::blas_set_num_threads(1)
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
@@ -753,7 +761,7 @@ annot_ensembl = sc[[default_assay]][[]] %>% dplyr::select(dplyr::starts_with("en
 
 # Split by cluster and write to file (function "DegsWriteToFile" in "R/functions_degs.R")
 invisible(DegsWriteToFile(split(markers_out, markers_out$cluster),
-                          annot_ensembl=annot_ensembl,
+                          annotation=annot_ensembl,
                           file=file.path(module_dir, "results", outfile)))
 
 # Note
