@@ -405,7 +405,14 @@ CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
                                          storeRanks=FALSE,
                                          force.gc=FALSE,
                                          name = "")
-        ucell_scores = as.data.frame(ucell_scores[[1]][["cells_AUC"]])
+        # check and use correct name of UCell output
+        if ("cells_AUC" %in% names(ucell_scores[[1]])) {
+          ucell_scores = as.data.frame(ucell_scores[[1]][["cells_AUC"]])
+        } else if ("cells_U" %in% names(ucell_scores[[1]])) {
+          ucell_scores = as.data.frame(ucell_scores[[1]][["cells_U"]])
+        } else {
+          stop("The name of the UCell:::calculate_Uscore function (in functions_analysis.R/CalculateModuleScoreUCell) has changed - please check!")
+        }
         rownames(ucell_scores) = colnames(matrix)
         
     }
