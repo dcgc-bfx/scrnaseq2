@@ -925,7 +925,7 @@ for (i in 1:nrow(datasets)) {
     dplyr::filter(orig.ident==orig_ident) %>%
     dplyr::select(orig_barcode)
   barcodes = setNames(rownames(barcodes), barcodes$orig_barcode)
-  j = match(barcodes, SeuratObject::Cells(sc))
+  j = match(barcodes, SeuratSObject::Cells(sc))
   barcodes = barcodes[order(j)]
 
   # Image directorie(s) and default assays associated to the images
@@ -938,7 +938,7 @@ for (i in 1:nrow(datasets)) {
     default_image_assay = paste0(gsub("\\d+$", "", default_assay), visiumhd_bin_sizes)
     image_key = paste0("image", ".", orig_ident, visiumhd_bin_sizes)
   } else if (technology == "10x_visium") {
-    image_dir = file.path(path, "spatial")
+    image_dir = file.path(dirname(path), "spatial")
     default_image_assay = default_assay
     image_key = paste0("image", ".", orig_ident)
   } else if (technology == "10x_xenium") {
