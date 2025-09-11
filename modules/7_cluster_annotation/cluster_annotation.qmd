@@ -509,9 +509,6 @@ if (!is.null(file_known_markers)) {
     })
     names(known_markers_list) = colnames(known_markers)
     
-    # Fetch annotation for default assay 
-    annot = sc[[default_assay]][[]] %>% dplyr::select(dplyr::starts_with("ensembl_"))
-    
     # Fetch annotation for default assay
     # Note: When using SCT, need to use the original assay
     d = gsub(pattern="_SCT$", replacement="", default_assay)
