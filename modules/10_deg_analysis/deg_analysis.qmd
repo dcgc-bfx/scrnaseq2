@@ -987,43 +987,45 @@ if (have_gsea) {
 #| eval: !expr have_gsea
 #| include: !expr have_gsea
 
-# Create a summary table of all GSEA tests
-gsea_summary_table = purrr::map_depth(gsea_results_list, .depth=2, function(gsea_result) {
-  # Collect summary for each analysis result of a GSEA test (for each geneset)
-  summary_table = purrr::map_dfr(gsea_result[["results"]], function(gsea_res) {
-    # Get comparison name, condition column and values, subset column and subset group. . If multiple, join by '+'.
-    sum_tbl = data.frame(Comparison=gsea_result[["name"]],
-             Condition=gsea_result[["condition_column"]], 
-             Group1=paste(gsea_result[["condition1"]], collapse="+"), 
-             Group2=paste(gsea_result[["condition2"]], collapse="+"))
-    if ("subset_column" %in% names(gsea_result)) {
-      sum_tbl$Subset = gsea_result[["subset_column"]]
-      sum_tbl$SubsetGroup = paste(gsea_result[["subset_group"]], collapse="+")
-    } else {
-      sum_tbl$Subset = ""
-      sum_tbl$SubsetGroup = ""
-    }
+if (have_gsea) {
+  # Create a summary table of all GSEA tests
+  gsea_summary_table = purrr::map_depth(gsea_results_list, .depth=2, function(gsea_result) {
+    # Collect summary for each analysis result of a GSEA test (for each geneset)
+    summary_table = purrr::map_dfr(gsea_result[["results"]], function(gsea_res) {
+      # Get comparison name, condition column and values, subset column and subset group. . If multiple, join by '+'.
+      sum_tbl = data.frame(Comparison=gsea_result[["name"]],
+               Condition=gsea_result[["condition_column"]], 
+               Group1=paste(gsea_result[["condition1"]], collapse="+"), 
+               Group2=paste(gsea_result[["condition2"]], collapse="+"))
+      if ("subset_column" %in% names(gsea_result)) {
+        sum_tbl$Subset = gsea_result[["subset_column"]]
+        sum_tbl$SubsetGroup = paste(gsea_result[["subset_group"]], collapse="+")
+      } else {
+        sum_tbl$Subset = ""
+        sum_tbl$SubsetGroup = ""
+      }
+      
+      # Get the number of geneset terms that were tested, are significant and have an enrichment towards one or the other condition for each GSEA analysis
+      genesets = gsea_res@geneSets
+      genesets_lengths = purrr::map_int(genesets, length)
+      sum_tbl$Terms = length(genesets)
+      sum_tbl$TermsTested = sum(genesets_lengths >= 10 & genesets_lengths<=500)
+      sum_tbl$Sign = nrow(gsea_res)
+      sum_tbl$Sign_up = sum(gsea_res$NES>0)
+      sum_tbl$Sign_down = sum(gsea_res$NES<0)
+      
+      return(sum_tbl)
+    })
+    summary_table = dplyr::mutate(summary_table, GeneSet=names(gsea_result[["results"]]), .before=Terms)
     
-    # Get the number of geneset terms that were tested, are significant and have an enrichment towards one or the other condition for each GSEA analysis
-    genesets = gsea_res@geneSets
-    genesets_lengths = purrr::map_int(genesets, length)
-    sum_tbl$Terms = length(genesets)
-    sum_tbl$TermsTested = sum(genesets_lengths >= 10 & genesets_lengths<=500)
-    sum_tbl$Sign = nrow(gsea_res)
-    sum_tbl$Sign_up = sum(gsea_res$NES>0)
-    sum_tbl$Sign_down = sum(gsea_res$NES<0)
-    
-    return(sum_tbl)
-  })
-  summary_table = dplyr::mutate(summary_table, GeneSet=names(gsea_result[["results"]]), .before=Terms)
+    return(summary_table)
+  })  %>% 
+      purrr::flatten() %>% 
+      dplyr::bind_rows()
   
-  return(summary_table)
-})  %>% 
-    purrr::flatten() %>% 
-    dplyr::bind_rows()
-
-gt(gsea_summary_table) %>%
-    sub_missing(columns=1:ncol(gsea_summary_table), missing_text="")
+  gt(gsea_summary_table) %>%
+      sub_missing(columns=1:ncol(gsea_summary_table), missing_text="")
+}
 ```
 
 ```{r}
