@@ -66,7 +66,6 @@ params:
     - "centroids"
     - "segmentation"
     
-  
   # Number of cores to use for computations
   cores: 4
   
@@ -285,7 +284,6 @@ We next read the counts for each dataset. Here is the summary of barcodes and fe
 counts_lst = list()
 
 for (i in 1:nrow(datasets)) {
-    i = 1
   ###############################################################################
   # Get experiment, sample, path(s), technology, assays and barcode suffix #
   ###############################################################################
