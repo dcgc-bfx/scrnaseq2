@@ -1106,244 +1106,270 @@ assignInNamespace("SpatialPlot",SpatialPlot1,ns="Seurat")
 SpatialPlot = SpatialPlot1
 
 SingleSpatialPlot1 <- function(
-        data,
-        image,
-        cols = NULL,
-        image.alpha = 1,
-        image.scale = "lowres",
-        pt.alpha = NULL,
-        crop = TRUE,
-        pt.size.factor = NULL,
-        shape = 21,
-        stroke = NA,
-        col.by = NULL,
-        alpha.by = NULL,
-        cells.highlight = NULL,
-        cols.highlight = c('#DE2D26', 'grey50'),
-        geom = c('spatial', 'interactive', 'poly', 'sf'),
-        na.value = 'grey50',
-        plot_segmentations = FALSE
+    data,
+    image,
+    cols = NULL,
+    image.alpha = 1,
+    image.scale = "lowres",
+    pt.alpha = NULL,
+    crop = TRUE,
+    pt.size.factor = NULL,
+    shape = 21,
+    stroke = NA,
+    col.by = NULL,
+    alpha.by = NULL,
+    cells.highlight = NULL,
+    cols.highlight = c('#DE2D26', 'grey50'),
+    geom = c('spatial', 'interactive', 'poly', 'sf'),
+    na.value = 'grey50',
+    plot_segmentations = FALSE
 ) {
-    geom <- match.arg(arg = geom)
-    if (!is.null(col.by) && !col.by %in% colnames(data)) {
-        warning("Cannot find '", col.by, "' in data, not coloring", call. = FALSE, immediate. = TRUE)
-        col.by <- NULL
-    }
-    
-    col.by <- col.by %iff% paste0("`", col.by, "`")
-    
-    #Store unquoted col.by name for easier access
-    col.by.clean <- gsub("`", "", col.by)
-    
-    alpha.by <- alpha.by %iff% paste0("`", alpha.by, "`")
-    
-    if (!is.null(x = cells.highlight)) {
-        highlight.info <- SetHighlight(
-            cells.highlight = cells.highlight,
-            cells.all = rownames(x = data),
-            sizes.highlight = pt.size.factor,
-            cols.highlight = cols.highlight[1],
-            col.base = cols.highlight[2]
-        )
-        order <- highlight.info$plot.order
-        data$highlight <- highlight.info$highlight
-        col.by <- 'highlight'
-        levels(x = data$ident) <- c(order, setdiff(x = levels(x = data$ident), y = order))
-        data <- data[order(data$ident), ]
-    }
-    plot <- ggplot(data = data, aes_string(
-        x = colnames(data)[2],
-        y = colnames(data)[1],
-        fill = col.by,
-        alpha = alpha.by
-    ))
-    plot <- switch(
-        EXPR = geom,
-        'spatial' = {
-            if (is.null(x = pt.alpha)) {
-                plot <- plot + Seurat:::geom_spatial(
-                    point.size.factor = pt.size.factor,
-                    data = data,
-                    image = image,
-                    image.alpha = image.alpha,
-                    image.scale = image.scale,
-                    crop = crop,
-                    shape = shape,
-                    stroke = stroke,
-                )
-            } else {
-                plot <- plot + Seurat:::geom_spatial(
-                    point.size.factor = pt.size.factor,
-                    data = data,
-                    image = image,
-                    image.alpha = image.alpha,
-                    image.scale = image.scale,
-                    crop = crop,
-                    shape = shape,
-                    stroke = stroke,
-                    alpha = pt.alpha
-                )
-            }
-            plot + coord_fixed() + theme(aspect.ratio = 1)
-        },
-        'interactive' = {
-            plot + Seurat:::geom_spatial_interactive(
-                data = tibble::tibble(
-                    grob = list(
-                        GetImage(
-                            object = image,
-                            mode = 'grob'
-                        )
-                    )
-                ),
-                mapping = aes_string(grob = 'grob'),
-                x = 0.5,
-                y = 0.5
-            ) +
-                geom_point(mapping = aes_string(color = col.by)) +
-                xlim(0, ncol(x = image)) +
-                ylim(nrow(x = image), 0) +
-                coord_cartesian(expand = FALSE)
-        },
-        'sf' = {
-            
-            # Validate image
-            image.grob <- grid::rasterGrob(
-                image@image,
-                width = unit(1, "npc"),
-                height = unit(1, "npc"),
-                interpolate = FALSE
-            )
-            # Retrieve image dimensions for later use (flipping image)
-            image.height <- dim(image@image)[1]
-            image.width <- dim(image@image)[2]
-            
-            # Retrieve the sf data stored in the Visium V2 object 
-            # Merge it with data dataframe which contains ident and gene expression information 
-            sf.data = image@boundaries$segmentation@sf.data
-            #Create sf object from data (POINTS), and extract xy
-            data$cell <- rownames(data)
-            data.sf <- sf::st_as_sf(data, coords = c("x", "y"), crs = NA)
-            
-            # Import pipe operator locally
-            `%>%` <- magrittr::`%>%`
-            
-            data.coords <- data.sf %>%
-                dplyr::mutate(x = sf::st_coordinates(.)[, 1],
-                       y = sf::st_coordinates(.)[, 2]) %>%
-                sf::st_drop_geometry()
-            
-            #Merge with sf.data
-            sf.merged <- sf.data %>%
-                dplyr::left_join(data.coords, by = c("barcodes" = "cell"))
-            sf.cleaned <- sf.merged %>% dplyr::filter(!is.na(x))
-            
-            #Extract centroids from VisiumV2, update sf.cleaned to match centroids
-            if (!requireNamespace("sp", quietly = TRUE)) {
-                stop("The 'sp' package is required but not installed.")
-            }
-            coordinates <- sp::coordinates
-            coords <- coordinates(image@boundaries$centroids)
-            barcodes <- image@boundaries$centroids@cells
-            rownames(coords) <- barcodes
-            
-            # Find matching barcodes
-            common_cells <- intersect(sf.cleaned$barcodes, rownames(coords))
-            
-            # Use match() to align indices
-            match_idx <- match(common_cells, sf.cleaned$barcodes)
-            coord_idx <- match(common_cells, rownames(coords))
-            
-            # Update x and y in sf.cleaned
-            sf.cleaned$x[match_idx] <- coords[coord_idx, 1]
-            sf.cleaned$y[match_idx] <- image.height - coords[coord_idx, 2]
-            
-            #Flip the Y coords of polygon geometries
-            geom_flipped <- lapply(sf::st_geometry(sf.cleaned), function(poly) {
-                if (inherits(poly, "POLYGON")) {
-                    sf::st_polygon(list(cbind(poly[[1]][, 1], image.height - poly[[1]][, 2])))
-                } else {
-                    poly 
-                }
-            })
-            
-            sf.cleaned <- sf::st_sf(sf.cleaned %>% sf::st_drop_geometry(), geometry = sf::st_sfc(geom_flipped, crs = sf::st_crs(NA)))
-            #Plot (currently independently of switch/case)
-            if(!plot_segmentations){
-                #Plot just the centroids as points
-                ggplot(sf.cleaned, aes(x = x, y = y)) +
-                    annotation_custom(
-                        grob = image.grob,
-                        xmin = 0,
-                        xmax = image.width,
-                        ymin = 0,
-                        ymax = image.height
-                    ) +
-                    geom_point(shape = 21, stroke = stroke, size=pt.size.factor, aes_string(fill = col.by), alpha = if (is.null(pt.alpha)) 1 else pt.alpha) +
-                    coord_fixed() +
-                    xlab("x") +
-                    ylab("y") +
-                    theme_minimal()
-            }else{
-                ggplot() +
-                    annotation_custom(
-                        grob = image.grob,
-                        xmin = 0,
-                        xmax = image.width,
-                        ymin = 0,
-                        ymax = image.height
-                    ) +
-                    geom_sf(
-                        data = sf.cleaned,
-                        aes_string(fill = col.by),
-                        alpha = if (is.null(pt.alpha)) 1 else pt.alpha,
-                        color = "black",
-                        linewidth = stroke
-                    ) +
-                    scale_fill_viridis_d(option = "plasma", alpha = 0.5) +
-                    coord_sf() +
-                    theme_void()
-            }
-        },
-        'poly' = {
-            data$cell <- rownames(x = data)
-            data[, c('x', 'y')] <- NULL
-            data <- merge(
-                x = data,
-                y = GetTissueCoordinates(
-                    object = image,
-                    qhulls = TRUE,
-                    scale = image.scale
-                ),
-                by = "cell"
-            )
-            plot + geom_polygon(
-                data = data,
-                mapping = aes_string(fill = col.by, group = 'cell')
-            ) + coord_fixed() + theme_cowplot()
-            
-        },
-        stop("Unknown geom, choose from 'spatial' or 'interactive'", call. = FALSE)
+  geom <- match.arg(arg = geom)
+  if (!is.null(col.by) && !col.by %in% colnames(data)) {
+    warning("Cannot find '", col.by, "' in data, not coloring", call. = FALSE, immediate. = TRUE)
+    col.by <- NULL
+  }
+  
+  col.by <- col.by %iff% paste0("`", col.by, "`")
+  
+  #Store unquoted col.by name for easier access
+  col.by.clean <- gsub("`", "", col.by)
+  
+  alpha.by <- alpha.by %iff% paste0("`", alpha.by, "`")
+  
+  if (!is.null(x = cells.highlight)) {
+    highlight.info <- SetHighlight(
+      cells.highlight = cells.highlight,
+      cells.all = rownames(x = data),
+      sizes.highlight = pt.size.factor,
+      cols.highlight = cols.highlight[1],
+      col.base = cols.highlight[2]
     )
-    if (!is.null(x = cells.highlight)) {
-        plot <- plot + scale_fill_manual(values = cols.highlight)
-    }
-    if (!is.null(x = cols) && is.null(x = cells.highlight)) {
-        if (length(x = cols) == 1 && (is.numeric(x = cols) || cols %in% rownames(x = RColorBrewer::brewer.pal.info))) {
-            scale <- scale_fill_brewer(palette = cols, na.value = na.value)
-        } else if (length(x = cols) == 1 && (cols %in% c('alphabet', 'alphabet2', 'glasbey', 'polychrome', 'stepped'))) {
-            colors <- DiscretePalette(length(unique(data[[col.by]])), palette = cols)
-            scale <- scale_fill_manual(values = colors, na.value = na.value)
+    order <- highlight.info$plot.order
+    data$highlight <- highlight.info$highlight
+    col.by <- 'highlight'
+    levels(x = data$ident) <- c(order, setdiff(x = levels(x = data$ident), y = order))
+    data <- data[order(data$ident), ]
+  }
+  plot <- ggplot(data = data, aes_string(
+    x = colnames(data)[2],
+    y = colnames(data)[1],
+    fill = col.by,
+    alpha = alpha.by
+  ))
+  plot <- switch(
+    EXPR = geom,
+    'spatial' = {
+      if (is.null(x = pt.alpha)) {
+        plot <- plot + Seurat:::geom_spatial(
+          point.size.factor = pt.size.factor,
+          data = data,
+          image = image,
+          image.alpha = image.alpha,
+          image.scale = image.scale,
+          crop = crop,
+          shape = shape,
+          stroke = stroke,
+        )
+      } else {
+        plot <- plot + Seurat:::geom_spatial(
+          point.size.factor = pt.size.factor,
+          data = data,
+          image = image,
+          image.alpha = image.alpha,
+          image.scale = image.scale,
+          crop = crop,
+          shape = shape,
+          stroke = stroke,
+          alpha = pt.alpha
+        )
+      }
+      plot + coord_fixed() + theme(aspect.ratio = 1)
+    },
+    'interactive' = {
+      plot + Seurat:::geom_spatial_interactive(
+        data = tibble::tibble(
+          grob = list(
+            GetImage(
+              object = image,
+              mode = 'grob'
+            )
+          )
+        ),
+        mapping = aes_string(grob = 'grob'),
+        x = 0.5,
+        y = 0.5
+      ) +
+        geom_point(mapping = aes_string(color = col.by)) +
+        xlim(0, ncol(x = image)) +
+        ylim(nrow(x = image), 0) +
+        coord_cartesian(expand = FALSE)
+    },
+    'sf' = {
+      
+      # Validate image
+      image.grob <- grid::rasterGrob(
+        image@image,
+        width = unit(1, "npc"),
+        height = unit(1, "npc"),
+        interpolate = FALSE
+      )
+      # Retrieve image dimensions for later use (flipping image)
+      image.height <- dim(image@image)[1]
+      image.width <- dim(image@image)[2]
+      
+      # Retrieve the sf data stored in the Visium V2 object 
+      # Merge it with data dataframe which contains ident and gene expression information 
+      sf.data = image@boundaries$segmentation@sf.data
+      #Create sf object from data (POINTS), and extract xy
+      data$cell <- rownames(data)
+      data.sf <- sf::st_as_sf(data, coords = c("x", "y"), crs = NA)
+      
+      # Import pipe operator locally
+      `%>%` <- magrittr::`%>%`
+      
+      data.coords <- data.sf %>%
+        dplyr::mutate(x = sf::st_coordinates(.)[, 1],
+               y = sf::st_coordinates(.)[, 2]) %>%
+        sf::st_drop_geometry()
+      
+      #Merge with sf.data
+      sf.merged <- sf.data %>%
+        dplyr::left_join(data.coords, by = c("barcodes" = "cell"))
+      sf.cleaned <- sf.merged %>% dplyr::filter(!is.na(x))
+      
+      #Extract centroids from VisiumV2, update sf.cleaned to match centroids
+      if (!requireNamespace("sp", quietly = TRUE)) {
+        stop("The 'sp' package is required but not installed.")
+      }
+      coordinates <- sp::coordinates
+      coords <- coordinates(image@boundaries$centroids)
+      barcodes <- image@boundaries$centroids@cells
+      rownames(coords) <- barcodes
+      
+      # Find matching barcodes
+      common_cells <- intersect(sf.cleaned$barcodes, rownames(coords))
+      
+      # Use match() to align indices
+      match_idx <- match(common_cells, sf.cleaned$barcodes)
+      coord_idx <- match(common_cells, rownames(coords))
+      
+      # Update x and y in sf.cleaned
+      sf.cleaned$x[match_idx] <- coords[coord_idx, 1]
+      sf.cleaned$y[match_idx] <- coords[coord_idx, 2]
+      
+      #Plot (currently independently of switch/case)
+      if(!plot_segmentations){
+        #If plot_segmentations FALSE, then plot just the centroids from sf data
+        
+        if (is.null(pt.alpha)) {
+          #If pt.alpha not provided, then alpha parameter is derived from group/cluster data
+          #Use alpha.by instead of pt.alpha
+          geom_point_layer <- geom_point(
+            shape = 21, 
+            stroke = stroke, 
+            size = pt.size.factor, 
+            aes_string(fill = col.by, alpha = alpha.by)
+          )
         } else {
-            data[[col.by.clean]] <- as.character(data[[col.by.clean]])
-            vals <- unique(as.character(data[[col.by.clean]]))
-            cols <- cols[names(cols) %in% vals]
-            scale <- scale_fill_manual(values = cols, na.value = na.value)
+          #If pt.alpha is indeed provided, then use that to define alpha
+          geom_point_layer <- geom_point(
+            shape = 21,
+            stroke = stroke,
+            size = pt.size.factor,
+            aes_string(fill = col.by), 
+            alpha = if (is.null(pt.alpha)) 1 else pt.alpha
+          )
         }
-        plot <- plot + scale
+        ggplot(sf.cleaned, aes(x = x, y = y)) +
+          annotation_custom(
+            grob = image.grob,
+            xmin = 0,
+            xmax = image.width,
+            ymin = 0,
+            ymax = image.height
+          ) +
+          geom_point_layer +
+          coord_fixed() +
+          xlab("x") +
+          ylab("y") +
+          theme_minimal()
+        
+      }else{
+        #If plot_segmentations TRUE, then use geometry data stored in sf to plot cell polygons
+        
+        if (is.null(pt.alpha)) {
+          #If pt.alpha not provided, then alpha parameter is derived from group/cluster data
+          #Use alpha.by instead of pt.alpha
+          geom_sf_layer <- geom_sf(
+            data = sf.cleaned,
+            aes_string(fill = col.by, alpha = alpha.by),
+            color = "black",
+            linewidth = stroke
+          )
+        } else {
+          #If pt.alpha is indeed provided, then use that to define alpha
+          geom_sf_layer <- geom_sf(
+            data = sf.cleaned,
+            aes_string(fill = col.by),
+            alpha = if (is.null(pt.alpha)) 1 else pt.alpha,
+            color = "black",
+            linewidth = stroke
+          ) 
+        }
+        ggplot() +
+          annotation_custom(
+            grob = image.grob,
+            xmin = 0,
+            xmax = image.width,
+            ymin = 0,
+            ymax = image.height
+          ) +
+          geom_sf_layer +
+          scale_fill_viridis_d(option = "plasma") +
+          coord_sf() +
+          theme_void()
+      }
+    },
+    'poly' = {
+      data$cell <- rownames(x = data)
+      data[, c('x', 'y')] <- NULL
+      data <- merge(
+        x = data,
+        y = GetTissueCoordinates(
+          object = image,
+          qhulls = TRUE,
+          scale = image.scale
+        ),
+        by = "cell"
+      )
+      plot + geom_polygon(
+        data = data,
+        mapping = aes_string(fill = col.by, group = 'cell')
+      ) + coord_fixed() + theme_cowplot()
+      
+    },
+    stop("Unknown geom, choose from 'spatial' or 'interactive'", call. = FALSE)
+  )
+  if (!is.null(x = cells.highlight)) {
+    plot <- plot + scale_fill_manual(values = cols.highlight)
+  }
+  if (!is.null(x = cols) && is.null(x = cells.highlight)) {
+    if (length(x = cols) == 1 && (is.numeric(x = cols) || cols %in% rownames(x = RColorBrewer::brewer.pal.info))) {
+      scale <- scale_fill_brewer(palette = cols, na.value = na.value)
+    } else if (length(x = cols) == 1 && (cols %in% c('alphabet', 'alphabet2', 'glasbey', 'polychrome', 'stepped'))) {
+      colors <- DiscretePalette(length(unique(data[[col.by]])), palette = cols)
+      scale <- scale_fill_manual(values = colors, na.value = na.value)
+    } else {
+      data[[col.by.clean]] <- as.character(data[[col.by.clean]])
+      vals <- unique(as.character(data[[col.by.clean]]))
+      cols <- cols[names(cols) %in% vals]
+      scale <- scale_fill_manual(values = cols, na.value = na.value)
     }
-    plot <- plot + NoAxes() + theme(panel.background = element_blank())
-    return(plot)
+    plot <- plot + scale
+  }
+  plot <- plot + NoAxes() + theme(panel.background = element_blank())
+  return(plot)
 }
 assignInNamespace("SingleSpatialPlot", SingleSpatialPlot1, ns="Seurat")
 SingleSpatialPlot = SingleSpatialPlot1
