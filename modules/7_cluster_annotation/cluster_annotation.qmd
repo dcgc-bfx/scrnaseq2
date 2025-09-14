@@ -753,7 +753,7 @@ annot_ensembl = sc[[default_assay]][[]] %>% dplyr::select(dplyr::starts_with("en
 
 # Split by cluster and write to file (function "DegsWriteToFile" in "R/functions_degs.R")
 invisible(DegsWriteToFile(split(markers_out, markers_out$cluster),
-                          annot_ensembl=annot_ensembl,
+                          annotation=annot_ensembl,
                           file=file.path(module_dir, "results", outfile)))
 
 # Note

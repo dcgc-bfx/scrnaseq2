@@ -847,6 +847,7 @@ Gene Set Enrichment Analysis (GSEA) is a computational method used to determine 
 
 ```{r}
 #| label: deg_analysis_run_gsea
+#| results: asis
 
 if (have_gsea) {
   # Custom genesets for gene-set enrichment analysis
@@ -1244,14 +1245,16 @@ gt(paraminfo)
 ```{r}
 #| label: deg_analysis_save_seurat
 
-# This will overwrite the (bugged) function SeuratObject::SaveSeuratRds with the content of our function SaveSeuratRds_Fixed
-assignInNamespace("SaveSeuratRds",SaveSeuratRds_Fixed, ns="SeuratObject")
-
 # Save Seurat object and layer data
+# Save Seurat object and layer data
+outdir = file.path(module_dir, "sc")
 with_progress({
   SaveSeuratRdsWrapper(sc,
-                       on_disk_layers=on_disk_counts,
-                       outdir=file.path(module_dir, "sc"))
+                       outdir=outdir,
+                       write_disk_data=FALSE,
+                       relative_paths=FALSE,
+                       compress=FALSE
+                       )
 }, enable=verbose)
 ```
 

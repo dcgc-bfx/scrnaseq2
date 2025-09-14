@@ -60,7 +60,7 @@ params:
   # When parsing plate information, set the name of the single-cell experiment (orig.ident) for each cell to the cell name after having removed the plate information
   plate_information_update_identity: false
   
-  # For segmentation-based (i.e. non-spot/bin-based) spatial data, what to load and use: "centroids", "segmentation" or both. 
+  # For segmentation-based (i.e. non-spot/bin-based) spatial data, what to load and use: "centroids" OR "centroids" and "segmentation" (only "segmentation" is not possible). 
   # When both are specified, the first will be used for visualization. Default is to load both but to use "centroids". 
   spatial_coordinate_type:
     - "centroids"
@@ -896,7 +896,6 @@ For spatial datasets, we read the image information and add it to the Seurat obj
 
 # Per dataset
 for (i in 1:nrow(datasets)) {
-    i = 1
   # Experiment = orig.ident, technology and path
   orig_ident = datasets$experiment[i]
   technology = datasets$technology[i]
@@ -929,6 +928,7 @@ for (i in 1:nrow(datasets)) {
   
   # For segmentation-based (not spot/bin-based), which coordinate type to load and use
   spatial_coordinate_type = param("spatial_coordinate_type")
+  spatial_coordinate_type = "centroids"
   
   # Read in image(s)
   image = ReadImage(image_dir=image_dir,

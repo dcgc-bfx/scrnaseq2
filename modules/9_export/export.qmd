@@ -154,9 +154,14 @@ image_names = SeuratObject::Images(sc, assay=default_assay)
 if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 ```
 
-## Cell metadata
+## Cell metadata and projections
 
-The cell metadata is exported as CSV file which includes cell ID, cluster assignment and other cell metadata. This metadata can then be imported into other tools. Export is done per dataset (with the original cell IDs) and per aggregated analysis (where the cell IDs were made unique).
+Cell metadata (sample, cluster, ...) and projections (PCA, UMAP, ...)  are exported as CSV file. These file can then be imported into other tools. Export is done per dataset (with the original cell IDs) and per aggregated analysis (`all`, where the cell IDs were made unique).
+
+**Notes**: 
+
+- Loupe Browser and Xenium Explorer support the import of these files.
+- When using the aggregated analysis (`all`), make sure that the order of samples in the aggregated dataset matches the order of samples in this analysis.
 
 ```{r}
 #| label: export_metadata
@@ -272,9 +277,12 @@ The Loupe Cell Browser is a powerful tool to explore 10x single cell data. It al
 Results of the analysis are exported as cloupe file which can be read by the Loupe Cell Browser. The cloupe file includes the raw counts, categorial cell metadata and visualisations like UMAP or PCA. 
 
 **Notes**: 
+
 - Due to license issues, this is only supported for 10x datasets. Non-10x datasets will not be exported.
 - Since the Loupe Cell Browser does its own internal normalization, only the raw counts are exported.
-- Spatial information is not included in the cloupe file. For 10x Visium/VisiumHD data, we recommend to use the original cloupe file provided by Spaceranger and to import the CSV cell metadata (see above for details) in Loupe. For 10x Xenium, the cloupe file can be loaded into the Loupe Cell Browser to inspect the cell clustering. For spatial information, use the Xenium explorer (see below for details).
+- Spatial information is not included in the cloupe file. For 10x Visium/VisiumHD data, we recommend to use the original cloupe file provided by Spaceranger and to import the CSV cell metadata (see above for details) in Loupe.
+
+For 10x Xenium, the cloupe file can be loaded into the Loupe Cell Browser to inspect the cell clustering. For spatial information, use the Xenium explorer (see below for details).
 
 ```{r}
 #| label: create_loupe_file
@@ -300,7 +308,7 @@ if (create_loupe_file & all(grepl("10x", sc$technology))) {
   
   # Only consider barcodes of the default assay
   bcs = SeuratObject::Cells(sc[[default_assay]])
-  
+
   # Export as loupe file
   ExportLoupe(sc, 
               assay=SeuratObject::DefaultAssay(sc), 
