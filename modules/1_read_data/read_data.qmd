@@ -926,15 +926,15 @@ for (i in 1:nrow(datasets)) {
   
   # For segmentation-based (not spot/bin-based), which coordinate type to load and use
   spatial_coordinate_type = param("spatial_coordinate_type")
-  spatial_coordinate_type = "centroids"
-  
+
   # Read in image(s)
   image = ReadImage(image_dir=image_dir,
                         technology=technology,
                         assay=default_image_assay,
                         barcodes=barcodes,
                         coordinate_type=spatial_coordinate_type)
-
+  barcode_metadata = attr(image, "barcode_metadata")
+  attr(image, "barcode_metadata") = NULL
 
   # Update image key(s)
   SeuratObject::Key(image) = paste0(gsub("[^[:alnum:]]", "", image_key), "_")
@@ -943,12 +943,11 @@ for (i in 1:nrow(datasets)) {
   sc[[image_key]] = image
 
   # If additional barcode metadata is provided, add as well
-  barcode_metadata = attr(image, "barcode_metadata")
   if (!is.null(barcode_metadata)) {
       sc = Seurat::AddMetaData(sc, barcode_metadata)
   }
   
-  # Remove image_lst and call garbage collector
+  # Remove image and call garbage collector
   rm(image)
   invisible(gc())
 }

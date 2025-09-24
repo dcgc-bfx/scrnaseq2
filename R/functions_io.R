@@ -1274,17 +1274,17 @@ WriteCounts_MatrixMarket = function(counts, path, overwrite=FALSE, barcode_data=
 #' @param coordinate_type For Visium HD segmented output, load cell "centroids", cell "segmentation" or both (default).
 #' @return A Seurat VisiumV1/V2 object.
 ReadImage_10xVisium = function(image_dir, barcodes=NULL, coordinate_type=c("centroids", "segmentation")) {
-  # Checks
+  # Check files
   assertthat::is.readable(image_dir)
   for (f in c("tissue_hires_image.png", "tissue_lowres_image.png", "scalefactors_json.json")) {
     assertthat::assert_that(file.exists(file.path(image_dir, f)),
                             msg=FormatString("10x Visium image directory {image_dir} misses the file {f}."))
   }
   
-  # Decide whether this is a bin/spot-based or a segmented dataset
-  cell_segmentations_file = file.path(dirname(image_dir), "cell_segmentations.geojson")
-  nucleus_segmentations_file = file.path(dirname(image_dir), "nucleus_segmentations.geojson")
+  # Image type: lowres or hires
+  image_type = "lowres"
   
+  # Decide whether this is a bin/spot-based or a segmented dataset
   tissue_positions_file = ""
   if (file.exists(file.path(image_dir, "tissue_positions.parquet"))) {
       tissue_positions_file = file.path(image_dir, "tissue_positions.parquet")
@@ -1296,13 +1296,6 @@ ReadImage_10xVisium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
   
   is_segmented = !file.exists(tissue_positions_file)
   
-  if (is_segmented) {
-      assertthat::assert_that(file.exists(cell_segmentations_file) & file.exists(nucleus_segmentations_file),
-                              msg=FormatString("10x Visium image directory {image_dir} seems to contain segmented data but is missing either the cell segmentations file {cell_segmentations_file} or the nucleus segmentations file {nucleus_segmentations_file}."))
-  } else {
-      assertthat::assert_that(file.exists(tissue_positions_file),
-                              msg=FormatString("10x Visium image directory {image_dir} seems to contain bin/spot-based data but is missing the tissue positions file {tissue_positions_file}."))
-  }
   
   # Read image
   if (!is_segmented) {
@@ -1311,7 +1304,7 @@ ReadImage_10xVisium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
       # Read image and spots as VisiumV2 object
       image = Seurat::Read10X_Image(image_dir, 
                                     filter.matrix=TRUE,
-                                    image.name="tissue_lowres_image.png")
+                                    image.name=paste0("tissue_", image_type, "_image.png"))
       
       # Reorder/rename
       if (!is.null(barcodes)) {
@@ -1334,7 +1327,20 @@ ReadImage_10xVisium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
       }
   } else {
       # Segmentation-based dataset
+      segm_dir = dirname(image_dir)
+    
+      # Check files
+      for (f in c("cell_segmentations.geojson", "nucleus_segmentations.geojson")) {
+        assertthat::assert_that(file.exists(file.path(segm_dir, f)),
+                                msg=FormatString("10x Visium segmented outputs directory {segm_dir} misses the file {f}."))
+      }
       
+      data_dir = dirname(segm_dir)
+      for (f in c("barcode_mappings.parquet")) {
+        assertthat::assert_that(file.exists(file.path(data_dir, f)),
+                                msg=FormatString("10x Visium base directory {data_dir} misses the file {f}."))
+      }  
+    
       # Make sure SeuratObject version is at least 5.2.0
       assertthat::assert_that(compareVersion(packageVersion("SeuratObject") %>% as.character(), "5.2.0") >= 0,
                               msg="To read 10x Visium HD segmentations, the SeuratObject package must be at least version 5.2.0. Please update.")
@@ -1343,19 +1349,17 @@ ReadImage_10xVisium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
       # Read image and cell segmentations as VisiumV2 object 
       image = Read10X_Segmentations(
           image.dir=image_dir,
-          data.dir=dirname(dirname(image_dir)),
-          image.name="tissue_lowres_image.png",
-          segmentation.type="cell",
+          data.dir=data_dir,
+          image.name=paste0("tissue_", image_type, "_image.png"),
           cell.names=names(barcodes)
       )
+      segmentations_obj = image[["segmentation"]]
       
-      # Get segmentations object and sf data (the cell polygons)
-      segmentations_obj = image@boundaries$segmentation
+      # Get sf data (the cell polygons)
       segmentations_sf_data = segmentations_obj@sf.data
       
       # Reorder/rename segmentations
       if (!is.null(barcodes)) {
-        
         # Check that requested barcodes are present in the sf data
         missing_barcodes_idx = which(!names(barcodes) %in% segmentations_sf_data$barcodes)
         assertthat::assert_that(length(missing_barcodes_idx) == 0,
@@ -1385,43 +1389,12 @@ ReadImage_10xVisium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
       )
       
       # Create centroids object
-      centroids_obj = SeuratObject::CreateCentroids(centroids_df,
-                                   nsides = Inf,
-                                   radius = NULL,
-                                   theta = 0)
-      
-      # Decide whether we want to keep the segmentations. 
-      # They are large and for plotting, centroids are usually better.
-      # However, segmentations are still needed for the plotting functions.
-      # Therefore, if not we do not need them, we simplify them to four points (a square).
-      if (!"segmentation" %in% coordinate_type) {
-          simplify_polygon = function(poly) {
-              num_points = nrow(poly[[1]])
-            
-              # Select two points from the center region and get x and y coordinates
-              c = c(floor(num_points/2), ceiling(num_points/2))
-              x = sort(poly[[1]][c, 1])
-              y = sort(poly[[1]][c, 2])
-              
-              # Re-arrange x and y to a square
-              p = list(rbind(c(x[1], y[1]), c(x[1], y[2]), c(x[2], y[2]), c(x[2], y[1]), c(x[1], y[1])))
-              poly = sf::st_polygon(p)
-              return(poly)
-          }
-          
-          segmentations_coords = sf::st_geometry(segmentations_sf_data)
-          segmentations_coords = purrr::map(segmentations_coords, .f=simplify_polygon)
-          segmentations_sf_data = sf::st_set_geometry(segmentations_sf_data, sf::st_sfc(segmentations_coords))
-          segmentations_obj = SeuratObject::CreateSegmentation(segmentations_sf_data)
-      }
-      
-      # Named list with segmentation
-      boundaries = list(segmentation=segmentations_obj, centroids=centroids_obj)
+      centroids_obj = SeuratObject::CreateCentroids(centroids_df)
       
       # Build VisiumV2 object
       image = new(
           Class = "VisiumV2",
-          boundaries = boundaries,
+          boundaries = list(segmentation=segmentations_obj, centroids=centroids_obj),
           assay = image@assay,
           key = image@key,
           image = image@image,
@@ -1430,6 +1403,43 @@ ReadImage_10xVisium = function(image_dir, barcodes=NULL, coordinate_type=c("cent
       
       # Set default for plotting
       SeuratObject::DefaultBoundary(image) = coordinate_type[1]
+      
+      # Add information about cell_area (2um bins in cell) and nucleus_area (2um bins in nucleus) as barcode_metadata
+      # Read barcode mappings to cells from parquet file
+      barcode_mappings = arrow::read_parquet(file.path(data_dir, "barcode_mappings.parquet"),
+                                               col_select=c("square_002um", "cell_id", "in_nucleus","in_cell"),
+                                               as_data_frame=FALSE)
+      
+      # Compute areas from 2x2um bins
+      barcode_metadata = barcode_mappings %>% 
+        dplyr::filter(!is.na(cell_id)) %>%
+        dplyr::group_by(cell_id) %>%
+        dplyr::summarise(bins_in_nucleus=sum(in_nucleus),
+                         bins_in_cell=sum(in_cell)) %>%
+        dplyr::mutate(cell_area = bins_in_cell * 4,
+                      nucleus_area = bins_in_nucleus * 4) %>%
+        as.data.frame()
+      barcode_metadata$bins_in_cell = NULL
+      barcode_metadata$bins_in_nucleus = NULL
+      
+      # Reorder/rename
+      if (!is.null(barcodes)) {
+        # Check that requested barcodes are present
+        missing_barcodes_idx = which(!names(barcodes) %in% barcode_metadata$cell_id)
+        assertthat::assert_that(length(missing_barcodes_idx) == 0,
+                                msg=FormatString("Not all requested barcodes are present in the 10x Visium HD segmentation data (barcode_mappings.parquet)."))
+        
+        # Subset and re-order
+        i = match(names(barcodes), barcode_metadata$cell_id)
+        barcode_metadata = barcode_metadata[i,]
+        
+        # Rename
+        barcode_metadata$cell_id = unname(barcodes)
+      }
+      
+      rownames(barcode_metadata) = as.character(barcode_metadata$cell_id)
+      barcode_metadata$cell_id = NULL
+      attr(image, "barcode_metadata") = barcode_metadata
   }
   
   return(image)
