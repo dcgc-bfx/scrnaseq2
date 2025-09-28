@@ -97,6 +97,7 @@ library(Seurat)
 library(BPCells)
 library(ggplot2)
 library(future)
+library(BiocParallel)
 
 # Get module directory (needed to access files within the module directory)
 module_dir = params$module_dir
@@ -119,8 +120,15 @@ source("R/functions_analysis.R")
 # Be verbose or not
 verbose = param("verbose")
 
-# Parallelisation plan for all functions that support future
+# Parallelisation config for all functions that use the future framework
 plan(multisession, workers=param("cores"))
+
+# Parallelisation config for all functions that use the BiocParallel framework
+register(SnowParam(workers=param("cores"), type="SOCK", RNGseed=getOption("random_seed"))) 
+
+# Parallelisation config for BLAS threading. Currently set to 1 because there does not seem to be a performance gain
+# but may be relevant for very large projects.
+RhpcBLASctl::blas_set_num_threads(1)
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
@@ -909,7 +917,7 @@ for (i in 1:nrow(datasets)) {
     dplyr::filter(orig.ident==orig_ident) %>%
     dplyr::select(orig_barcode)
   barcodes = setNames(rownames(barcodes), barcodes$orig_barcode)
-  j = match(barcodes, SeuratObject::Cells(sc))
+  j = match(barcodes, SeuratSObject::Cells(sc))
   barcodes = barcodes[order(j)]
 
   # Image directorie(s) and default assays associated to the images
@@ -978,14 +986,14 @@ for (a in Seurat::Assays(sc)) {
   for (l in SeuratObject::Layers(sc[[a]], "^counts")) {
 
     # Get data for layer (sample)
-    counts = sc[[a]][l]
+    counts = SeuratObject::GetAssayData(sc, assay=a, layer=l)
     bcs = counts %>% colnames()
     total_counts = sc[[]][bcs, paste0("nCount_", a), drop=TRUE]
     names(total_counts) = bcs
     
     # Get counts of the top 50 features per barcode
     with_progress({
-      top_n_counts = SumTopN(counts, top_n=top_n, margin=2, chunk_size=10000)
+      top_n_counts = SumTopN(matrix=counts, top_n=top_n, margin=2, chunk_size=10000)
     }, enable=verbose)
     
     # Then calculate percentages for topn
@@ -1013,7 +1021,7 @@ for (a in Seurat::Assays(sc)) {
   # And each layer (dataset)
   for (l in SeuratObject::Layers(sc[[a]], search="^counts\\.")) {
     # Get data for layer (sample)
-    counts = sc[[a]][l]
+    counts = SeuratObject::GetAssayData(sc, assay=a, layer=l)
     
     # Calculate feature filters
     num_bcs_expr = rowSums(counts >= 1)
@@ -1022,7 +1030,7 @@ for (a in Seurat::Assays(sc)) {
     # Then for each batch calculate the percentage of counts for each feature per barcode. 
     # Then return the median for each feature.
     with_progress({
-      counts_median = CalculateMedians(counts, margin=1, chunk_size=2000, fun=CalculateColumnPerc)
+      counts_median = CalculateMedians(matrix=counts, margin=1, chunk_size=2000, fun=CalculateColumnPerc)
     }, enable=verbose)
     
     # Add to metadata
