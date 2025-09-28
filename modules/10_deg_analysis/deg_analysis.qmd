@@ -875,6 +875,7 @@ Gene Set Enrichment Analysis (GSEA) is a computational method used to determine 
 
 ```{r}
 #| label: deg_analysis_run_gsea
+#| results: asis
 
 if (have_gsea) {
   # Custom genesets for gene-set enrichment analysis

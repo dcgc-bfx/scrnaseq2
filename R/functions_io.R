@@ -759,44 +759,16 @@ ReadCounts_10xVisium = function(path, assays=NULL, strip_suffix=NULL) {
 
 #' Reads counts data produced by the 10x VisiumHD platform.
 #' 
-#' @param path Path to the 'binned_outputs' directory. Bin sizes specified by the bin_sizes parameter are read (hdf5 files only).
+#' @param path Path to 10x counts data for 10x Visium. Can be a 10x hdf5 file (recommended for big datasets) or a 10x matrix exchange format directory.
 #' @param assays Which assays to read. If NULL, read all assays.
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
-#' @param bin_sizes Bin sizes to read (default: c(8, 16)). If set to NULL, read all bin sizes.
-#' @return List with a counts matrix per assay and bin size. Format is either IterableMatrix (when reading hdf5) or dgCMatrix (when reading matrix exchange format directory). Additional information on barcodes, features, assay and technology and path is attached as attributes.
-ReadCounts_10xVisiumHD = function(path, assays=NULL, strip_suffix=NULL, bin_sizes=c(8, 16)) {
+#' @return List with a counts matrix per assay. Format is either IterableMatrix (when reading hdf5) or dgCMatrix (when reading matrix exchange format directory). Additional information on barcodes, features, assay and technology and path is attached as attributes.
+ReadCounts_10xVisiumHD = function(path, assays=NULL, strip_suffix=NULL) {
   # Checks
   assertthat::is.readable(path)
   
-  # If set to NULL, collect all available bin sizes
-  if (is.null(bin_sizes)) {
-    subdirs = list.dirs(path, full.names=FALSE, recursive=FALSE)
-    subdirs = subdirs[grepl("square_\\d+um", subdirs)]
-    bin_sizes = gsub("square_(\\d+)um", "\\1", subdirs) %>% as.integer()
-  }
-  
-  # Expand paths for bin sizes and check whether they exist
-  bin_sizes = sprintf("%03d", bin_sizes)
-  paths = file.path(path, paste0("square_", bin_sizes, "um"), "filtered_feature_bc_matrix.h5")
-  for(p in paths) {
-    assertthat::is.readable(p)
-  }
-
-  # Read counts for all bin sizes; the result is a list of bin sizes where each entry is a list of assays read for each bin size
-  counts_lst = purrr::map(paths, ReadCounts_10x, assays=assays, strip_suffix=strip_suffix)
-  
-  # For multiple bin sizes, rename the assays accordingly
-  if (length(bin_sizes) > 1) {
-    for (i in seq_along(counts_lst)) {
-      names(counts_lst[[i]]) = paste0(names(counts_lst[[i]]), bin_sizes[i])
-      for (j in seq_along(counts_lst[[i]])) {
-        attr(counts_lst[[i]][[j]], "assay") = paste0(attr(counts_lst[[i]][[j]], "assay"), bin_sizes[i])
-      }
-    }
-  }
-  
-  # Flatten the counts list
-  counts_lst = purrr::flatten(counts_lst)
+  # Read counts
+  counts_lst = ReadCounts_10xVisium(path, assays=assays, strip_suffix=strip_suffix)
   
   # Update technology
   for (i in seq_along(counts_lst)) {
@@ -1016,9 +988,8 @@ ReadCounts_ScaleBio = function(path, assays, strip_suffix=NULL) {
 #' @param barcode_metadata Table with additional barcode metadata. Can also be a list specifying metadata for each assay. First column must contain the barcode. Missing barcodes will be filled with NA.
 #' @param feature_metadata Table with additional feature metadata. Can also be a list specifying metadata for each assay. First column must contain the feature id. Missing features will be filled with NA.
 #' @param barcode_suffix Suffix to add to the barcodes (default: NULL).
-#' @param visiumhd_bin_sizes For 10x VisiumHD, which bin sizes to read. Default is c(8, 16).
 #' @return  One sparse counts matrix per assay. Format can be dgCMatrix (general) or IterableMatrix (when reading an anndata.h5ad or h5 file). Additional information on barcodes, features, assay and technology and path is attached as attributes. For 10x VisiumHD data, the different bin sizes are returned as individual assays. 
-ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_metadata=NULL, barcode_suffix=NULL, visiumhd_bin_sizes=c(8, 16)) {
+ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_metadata=NULL, barcode_suffix=NULL) {
   library(magrittr)
 
   # Checks
@@ -1040,7 +1011,7 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
     counts_lst = ReadCounts_10xVisium(path=path, assays=assays, strip_suffix=strip_suffix)
   } else if(technology == "10x_visiumhd") {
     if(!is.null(barcode_suffix)) strip_suffix = "-1"
-    counts_lst = ReadCounts_10xVisiumHD(path=path, assays=assays, strip_suffix=strip_suffix, bin_sizes=visiumhd_bin_sizes)
+    counts_lst = ReadCounts_10xVisiumHD(path=path, assays=assays, strip_suffix=strip_suffix)
   } else if(technology == "10x_xenium") {
     if(!is.null(barcode_suffix)) strip_suffix = "-1"
     counts_lst = ReadCounts_10xXenium(path=path, assays=assays, strip_suffix=strip_suffix)
@@ -1300,35 +1271,175 @@ WriteCounts_MatrixMarket = function(counts, path, overwrite=FALSE, barcode_data=
 #' 
 #' @param path Path to the 'spatial' directory produced by 10x Visium or 10x VisiumHD.
 #' @param barcodes If not NULL, named vector with barcodes to keep, order and rename. Names are original barcodes and values are barcodes after renaming. Barcodes will be re-ordered.
+#' @param coordinate_type For Visium HD segmented output, load cell "centroids", cell "segmentation" or both (default).
 #' @return A Seurat VisiumV1/V2 object.
-ReadImage_10xVisium = function(image_dir, barcodes=NULL) {
-  # Checks
+ReadImage_10xVisium = function(image_dir, barcodes=NULL, coordinate_type=c("centroids", "segmentation")) {
+  # Check files
   assertthat::is.readable(image_dir)
-  for (f in c("tissue_lowres_image.png", "scalefactors_json.json")) {
+  for (f in c("tissue_hires_image.png", "tissue_lowres_image.png", "scalefactors_json.json")) {
     assertthat::assert_that(file.exists(file.path(image_dir, f)),
                             msg=FormatString("10x Visium image directory {image_dir} misses the file {f}."))
   }
   
-  # Read image
-  image = Seurat::Read10X_Image(image_dir, filter.matrix=TRUE)
+  # Image type: lowres or hires
+  image_type = "lowres"
   
-  if (!is.null(barcodes)) {
-    image_bcs = SeuratObject::Cells(image)
+  # Decide whether this is a bin/spot-based or a segmented dataset
+  tissue_positions_file = ""
+  if (file.exists(file.path(image_dir, "tissue_positions.parquet"))) {
+      tissue_positions_file = file.path(image_dir, "tissue_positions.parquet")
+  } else if (file.exists(file.path(image_dir, "tissue_positions_list.csv"))) {
+      tissue_positions_file = file.path(image_dir, "tissue_positions_list.csv")
+  } else if (file.exists(file.path(image_dir, "tissue_positions.csv"))) {
+      tissue_positions_file = file.path(image_dir, "tissue_positions.csv")
+  }
+  
+  is_segmented = !file.exists(tissue_positions_file)
+  
+  
+  # Read image
+  if (!is_segmented) {
+      # Bin/spot-based dataset
     
-    # Keep only barcodes that are requested
-    i = which(image_bcs %in% names(barcodes))
-    image_bcs = image_bcs[i]
+      # Read image and spots as VisiumV2 object
+      image = Seurat::Read10X_Image(image_dir, 
+                                    filter.matrix=TRUE,
+                                    image.name=paste0("tissue_", image_type, "_image.png"))
+      
+      # Reorder/rename
+      if (!is.null(barcodes)) {
+        image_bcs = SeuratObject::Cells(image)
+        
+        # Keep only barcodes that are requested
+        i = which(image_bcs %in% names(barcodes))
+        image_bcs = image_bcs[i]
+        
+        # Re-order and subset
+        i = match(names(barcodes), image_bcs)
+        i = i[!is.na(i)]
+        image_bcs = image_bcs[i]
+        image = image[image_bcs]
+        
+        # Re-name
+        image_bcs = SeuratObject::Cells(image)
+        new_image_bcs = unname(barcodes[SeuratObject::Cells(image)])
+        image = SeuratObject::RenameCells(image, new.names=new_image_bcs)
+      }
+  } else {
+      # Segmentation-based dataset
+      segm_dir = dirname(image_dir)
     
-    # Re-order and subset
-    i = match(names(barcodes), image_bcs)
-    i = i[!is.na(i)]
-    image_bcs = image_bcs[i]
-    image = image[image_bcs]
+      # Check files
+      for (f in c("cell_segmentations.geojson", "nucleus_segmentations.geojson")) {
+        assertthat::assert_that(file.exists(file.path(segm_dir, f)),
+                                msg=FormatString("10x Visium segmented outputs directory {segm_dir} misses the file {f}."))
+      }
+      
+      data_dir = dirname(segm_dir)
+      for (f in c("barcode_mappings.parquet")) {
+        assertthat::assert_that(file.exists(file.path(data_dir, f)),
+                                msg=FormatString("10x Visium base directory {data_dir} misses the file {f}."))
+      }  
     
-    # Re-name
-    image_bcs = SeuratObject::Cells(image)
-    new_image_bcs = unname(barcodes[SeuratObject::Cells(image)])
-    image = SeuratObject::RenameCells(image, new.names=new_image_bcs)
+      # Make sure SeuratObject version is at least 5.2.0
+      assertthat::assert_that(compareVersion(packageVersion("SeuratObject") %>% as.character(), "5.2.0") >= 0,
+                              msg="To read 10x Visium HD segmentations, the SeuratObject package must be at least version 5.2.0. Please update.")
+      
+      
+      # Read image and cell segmentations as VisiumV2 object 
+      image = Read10X_Segmentations(
+          image.dir=image_dir,
+          data.dir=data_dir,
+          image.name=paste0("tissue_", image_type, "_image.png"),
+          cell.names=names(barcodes)
+      )
+      segmentations_obj = image[["segmentation"]]
+      
+      # Get sf data (the cell polygons)
+      segmentations_sf_data = segmentations_obj@sf.data
+      
+      # Reorder/rename segmentations
+      if (!is.null(barcodes)) {
+        # Check that requested barcodes are present in the sf data
+        missing_barcodes_idx = which(!names(barcodes) %in% segmentations_sf_data$barcodes)
+        assertthat::assert_that(length(missing_barcodes_idx) == 0,
+                                msg=FormatString("Not all requested barcodes are present in the 10x Visium HD segmentation data."))
+        
+        # Subset and re-order
+        i = match(names(barcodes), segmentations_sf_data$barcodes)
+        segmentations_sf_data = segmentations_sf_data[i,]
+        
+        # Rename
+        segmentations_sf_data$barcodes = unname(barcodes)
+        
+        # Create new segmentation object
+        segmentations_obj = SeuratObject::CreateSegmentation(segmentations_sf_data)
+      }
+      
+      # Set the attribute-geometry relationship to constant
+      # See https://r-spatial.github.io/sf/reference/sf.html#details
+      sf::st_agr(segmentations_sf_data) = "constant"
+      
+      # Create a dataframe from sf data to hold centroids
+      centroid_coords = sf::st_coordinates(sf::st_centroid(segmentations_sf_data))
+      centroids_df = data.frame(
+          x = centroid_coords[, "X"],
+          y = centroid_coords[, "Y"],
+          row.names = segmentations_sf_data$barcodes
+      )
+      
+      # Create centroids object
+      centroids_obj = SeuratObject::CreateCentroids(centroids_df)
+      
+      # Build VisiumV2 object
+      image = new(
+          Class = "VisiumV2",
+          boundaries = list(segmentation=segmentations_obj, centroids=centroids_obj),
+          assay = image@assay,
+          key = image@key,
+          image = image@image,
+          scale.factors = image@scale.factors
+      )
+      
+      # Set default for plotting
+      SeuratObject::DefaultBoundary(image) = coordinate_type[1]
+      
+      # Add information about cell_area (2um bins in cell) and nucleus_area (2um bins in nucleus) as barcode_metadata
+      # Read barcode mappings to cells from parquet file
+      barcode_mappings = arrow::read_parquet(file.path(data_dir, "barcode_mappings.parquet"),
+                                               col_select=c("square_002um", "cell_id", "in_nucleus","in_cell"),
+                                               as_data_frame=FALSE)
+      
+      # Compute areas from 2x2um bins
+      barcode_metadata = barcode_mappings %>% 
+        dplyr::filter(!is.na(cell_id)) %>%
+        dplyr::group_by(cell_id) %>%
+        dplyr::summarise(bins_in_nucleus=sum(in_nucleus),
+                         bins_in_cell=sum(in_cell)) %>%
+        dplyr::mutate(cell_area = bins_in_cell * 4,
+                      nucleus_area = bins_in_nucleus * 4) %>%
+        as.data.frame()
+      barcode_metadata$bins_in_cell = NULL
+      barcode_metadata$bins_in_nucleus = NULL
+      
+      # Reorder/rename
+      if (!is.null(barcodes)) {
+        # Check that requested barcodes are present
+        missing_barcodes_idx = which(!names(barcodes) %in% barcode_metadata$cell_id)
+        assertthat::assert_that(length(missing_barcodes_idx) == 0,
+                                msg=FormatString("Not all requested barcodes are present in the 10x Visium HD segmentation data (barcode_mappings.parquet)."))
+        
+        # Subset and re-order
+        i = match(names(barcodes), barcode_metadata$cell_id)
+        barcode_metadata = barcode_metadata[i,]
+        
+        # Rename
+        barcode_metadata$cell_id = unname(barcodes)
+      }
+      
+      rownames(barcode_metadata) = as.character(barcode_metadata$cell_id)
+      barcode_metadata$cell_id = NULL
+      attr(image, "barcode_metadata") = barcode_metadata
   }
   
   return(image)
@@ -1500,7 +1611,7 @@ ReadImage = function(image_dir, technology, assay, barcodes, coordinate_type=c("
   # Read image
   if(technology %in% c("10x_visium", "10x_visiumhd")) {
     # Visium
-    image = ReadImage_10xVisium(image_dir=image_dir, barcodes=barcodes)
+    image = ReadImage_10xVisium(image_dir=image_dir, barcodes=barcodes, coordinate_type=coordinate_type)
   } else if(technology == "10x_xenium") {
     # Xenium
     image = ReadImage_10xXenium(image_dir=image_dir, barcodes=barcodes, coordinate_type=coordinate_type)
@@ -1619,21 +1730,21 @@ ReadMetrics_ScaleBio = function(metrics_file) {
 #' Reads summary metrics files produced by Smartseq, 10x, 10x Visium, 10x Xenium, Parse Biosciences, Scale Bio.
 #' 
 #' @param metrics_file Path to a metrics file.
-#' @param technology Technology. Can be: 'smartseq2', 'smartseq3', '10x', '10x_visium', '10x_xenium', 'parse' or 'scale'.
+#' @param technology Technology. Can be: 'smartseq2', 'smartseq3', '10x', '10x_visium', '10x_visiumhd', '10x_xenium', 'parse' or 'scale'.
 #' @return One or more tables with summary metrics.
 ReadMetrics = function(metrics_file, technology) {
   #metrics_file = datasets$metrics_file[1]
   #technology = "10x"
   
   # Checks
-  valid_technologies = c("smartseq2", "smartseq3", "10x", "10x_visium", "10x_xenium", "parse", "scale")
+  valid_technologies = c("smartseq2", "smartseq3", "10x", "10x_visium", "10x_visiumhd", "10x_xenium", "parse", "scale")
   assertthat::assert_that(technology %in% valid_technologies,
                           msg=FormatString("Technology is {technology} but must be one of: {valid_technologies*}."))
   
   # Read metrics file
   if (technology %in% c("smartseq2", "smartseq3")) {
     metrics_table = ReadMetrics_SmartSeq(metrics_file=metrics_file)
-  } else if(technology %in% c("10x", "10x_visium", "10x_xenium")) {
+  } else if(technology %in% c("10x", "10x_visium", "10x_visiumhd", "10x_xenium")) {
     metrics_table = ReadMetrics_10x(metrics_file=metrics_file)
   } else if(technology == "parse") {
     metrics_table = ReadMetrics_ParseBio(metrics_file=metrics_file)
@@ -2020,6 +2131,23 @@ ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, barcode
   seurat_obj_version = NULL
   if (!is.null(sc@version)) seurat_obj_version = as.character(sc@version)
   
+  # loupeR does not support Visium HD segmentated data and will fail because the barcode names do not match any of the accepted formats defined in the package.
+  # The easiest way is to reformat the barcode names so that they match the format accepted for Xenium (which is "closest").
+  bcs = colnames(counts)
+  segmented_cellids_idx = grep("^cellid_", bcs)
+  if (length(segmented_cellids_idx) > 0) {
+    segmented_cellids = bcs[segmented_cellids_idx]
+    segmented_cellids = gsub("^cellid_", "cellid-", segmented_cellids) 
+    segmented_cellids = gsub("-(\\d+)$", "_\\1", segmented_cellids)
+    bcs[segmented_cellids_idx] = segmented_cellids
+  }
+  
+  colnames(counts) = bcs
+  embeddings = purrr::map(embeddings, function(emb) {
+    rownames(emb) = bcs
+    return(emb)
+  })
+  
   # Create Loupe file
   success = loupeR::create_loupe(counts, 
                                  clusters=categorial_data,
@@ -2190,3 +2318,92 @@ ExportXeniumExplorer = function(sc, assay=NULL, categories=NULL, barcodes=NULL, 
     zarr_store$close()
   }
 }
+
+################################################################################
+# IMPORTANT: The following functions are part of the pull request that implements
+# reading of spaceranger segmentations for Seurat: https://github.com/satijalab/seurat/pull/10028
+#
+# Once they are part of the next official Seurat release (>5.3.0), these functions are not needed.
+################################################################################
+
+if (!exists("Read10X_Segmentations", where="package:Seurat", mode="function")) {
+    # Function to create a segmentations object for VisiumHD data
+    Read10X_Segmentations <- function (image.dir,
+                                       data.dir,
+                                       image.name = "tissue_lowres_image.png",
+                                       assay = "Spatial.Polygons",
+                                       slice = "slice1.polygons",
+                                       segmentation.type = "cell",
+                                       cell.names
+    )
+    {
+      
+      image <- png::readPNG(source = file.path(image.dir, image.name))
+      image.height <- dim(image)[1] 
+      scale.factors <- Read10X_ScaleFactors(filename = file.path(image.dir,
+                                                                 "scalefactors_json.json"))
+      key <- Key(slice, quiet = TRUE)
+      
+      sf.data <- Read10X_HD_GeoJson(data.dir = data.dir, image.dir = image.dir, scale.factor = "lowres", image.height = image.height)
+      
+      # Create a Segmentation object based on sf, populate sf.data and polygons
+      segmentation <- CreateSegmentation(sf.data)
+      
+      # Named list with segmentation
+      boundaries <- list(segmentation = segmentation)
+      
+      # Build VisiumV2 object
+      visium.v2 <- new(
+        Class = "VisiumV2",
+        boundaries = boundaries,
+        assay = assay,
+        key = key,
+        image = image,
+        scale.factors = scale.factors
+      )
+      
+      return(visium.v2)
+    }
+}
+
+if (!exists("Read10X_HD_GeoJson", where="package:Seurat", mode="function")) {
+    # Function to read a  geojson file with segmentations and convert to an sf object
+    Read10X_HD_GeoJson <- function(data.dir, image.dir, segmentation.type = "cell", scale.factor = NULL, image.height) {
+      segmentation_polygons <- sf::read_sf(file.path(data.dir,"segmented_outputs", paste0(segmentation.type, "_segmentations.geojson")))
+      if (!is.null(scale.factor)) {
+        scale.factors <- Read10X_ScaleFactors(
+          filename = file.path(image.dir, "scalefactors_json.json")
+        )
+        segmentation_polygons$geometry <- segmentation_polygons$geometry*scale.factors[[scale.factor]]
+      }
+      
+      segmentation_polygons$geometry <- lapply(
+        segmentation_polygons$geometry,
+        function(geom) {
+          coords <- geom[[1]]
+          coords[,2] <- image.height - coords[,2]
+          sf::st_polygon(list(coords))
+        }
+      ) %>% sf::st_sfc(crs = sf::st_crs(segmentation_polygons))
+      
+      segmentation_polygons$barcodes <- Format10X_GeoJson_CellID(segmentation_polygons$cell_id)
+      segmentation_polygons
+    }
+}
+
+if (!exists("Format10X_GeoJson_CellID", where="package:Seurat", mode="function")) {
+    # Function to format cell ids from geojson file to 10x cell ids
+    Format10X_GeoJson_CellID <- function(ids, prefix = "cellid_", suffix = "-1", digits = 9) {
+      format_string <- paste0("%0", as.integer(digits), "d")
+      
+      formatted_ids <- sapply(ids, function(id) {
+        numeric_part <- sprintf(format_string, as.integer(id))
+        paste0(prefix, numeric_part, suffix)
+      })
+      
+      return(formatted_ids)
+    }
+}
+
+################################################################################
+

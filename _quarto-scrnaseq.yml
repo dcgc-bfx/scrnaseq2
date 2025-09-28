@@ -80,9 +80,6 @@ params:
       spatial_coordinate_type:
         - "centroids"
         - "segmentations"
-      visiumhd_bin_sizes:
-      - 8
-      - 16
 
     qc_filtering_rna:
       barcode_qc_cor:

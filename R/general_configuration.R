@@ -75,6 +75,10 @@ options(bitmapType='cairo')
 # ggrepel: maximum number of overlaps
 options(ggrepel.max.overlaps=100)
 
+# Seurat and SeuratObject version
+seurat_version = packageVersion("Seurat")
+seuratobject_version = packageVersion("SeuratObject")
+
 ###################
 # Colour palettes #
 ###################
