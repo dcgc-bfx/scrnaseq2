@@ -1246,7 +1246,6 @@ gt(paraminfo)
 #| label: deg_analysis_save_seurat
 
 # Save Seurat object and layer data
-# Save Seurat object and layer data
 outdir = file.path(module_dir, "sc")
 with_progress({
   SaveSeuratRdsWrapper(sc,
