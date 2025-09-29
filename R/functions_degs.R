@@ -2061,11 +2061,8 @@ DegsScatterPlot = function(deg_result, n_label=5, font_size=11) {
     deg_table$deg_status = factor(deg_table$deg_status, levels=c("none", "up", "down"))
     lims = c(min(c(deg_table$condition1, deg_table$condition2)), max(deg_table$condition1, deg_table$condition2))
     
-    # Get the top 5 up- and down-regulated DEGs
-    # top10_deg_table = deg_table %>% 
-    #     dplyr::filter(deg_status %in% c("up", "down")) %>%
-    #     dplyr::group_by(deg_status) %>%
-    #     dplyr::slice_min(order_by=abs(p_val ), n=5, with_ties=FALSE)
+    # Get the top n up- and down-regulated DEGs
+
     top_deg_table = deg_table %>% 
       dplyr::filter(deg_status %in% c("up", "down")) %>%
       dplyr::group_by(deg_status) %>%
@@ -2163,7 +2160,7 @@ DegsVolcanoPlot = function(deg_result, n_label=5, font_size=11) {
     i = which(is.infinite(deg_table$p_val_log10_n) & deg_table$p_val_log10_n < 0)
     deg_table$p_val_log10_n[i] = 0
     
-    # Get the top 5 up- and down-regulated DEGs
+    # Get the top n up- and down-regulated DEGs
     top_deg_table = deg_table %>% 
         dplyr::filter(deg_status %in% c("up", "down")) %>%
         dplyr::group_by(deg_status) %>%
@@ -2691,7 +2688,7 @@ DegsEmptyMarkerResultsTable = function(clusters) {
 }
 
 #' Returns an empty Enrichr results table.
-# '
+#'
 #' @param overlap_split: If TRUE, then table will contain the two columns 'In.List' and 'In.Annotation' (which result from splitting 'Overlap') instead of the column 'Overlap'.
 #' @return An empty Enrichr results dataframe.
 EmptyEnrichrDf = function(overlap_split=FALSE) {
