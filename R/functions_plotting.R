@@ -640,7 +640,7 @@ DfAllColumnCombinations = function(x, cell_classification) {
 assertthat::assert_that(exists("SpatialFeaturePlot1") | !"plot_segmentations" %in% names(formals(Seurat::SpatialPlot)),
                         msg="Seurat::SpatialFeaturePlot now supports plotting segmentations. Please remove all function definitions below in R/functions_plotting.R!")
 assertthat::assert_that(exists("SpatialDimPlot1") | !"plot_segmentations" %in% names(formals(Seurat::SpatialPlot)),
-                        msg="Seurat::SpatialDimPlot now supports plotting segmentations. Please remove remove all function definitions below in R/functions_plotting.R!")
+                        msg="Seurat::SpatialDimPlot now supports plotting segmentations. Please remove all function definitions below in R/functions_plotting.R!")
 
 SpatialFeaturePlot1 <- function(
         object,

@@ -86,6 +86,7 @@ library(gt)
 library(Seurat)
 library(ggplot2)
 library(future)
+library(BiocParallel)
 
 # Get module directory (needed to access files within the module directory)
 module_dir = params$module_dir
@@ -107,8 +108,15 @@ source("R/functions_analysis.R")
 # Be verbose or not
 verbose = param("verbose")
 
-# Parallelisation plan for all functions that support future
+# Parallelisation config for all functions that use the future framework
 plan(multisession, workers=param("cores"))
+
+# Parallelisation config for all functions that use the BiocParallel framework
+register(SnowParam(workers=param("cores"), type="SOCK", RNGseed=getOption("random_seed"))) 
+
+# Parallelisation config for BLAS threading. Currently set to 1 because there does not seem to be a performance gain
+# but may be relevant for very large projects.
+RhpcBLASctl::blas_set_num_threads(1)
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project

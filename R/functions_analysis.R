@@ -384,7 +384,13 @@ CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
                                     storeRanks=FALSE,
                                     force.gc=FALSE,
                                     name = "")
-            ucell = as.data.frame(ucell[[1]])
+            if ("cells_AUC" %in% names(ucell[[1]])) {
+              ucell = as.data.frame(ucell[[1]][["cells_AUC"]])
+            } else if ("cells_U" %in% names(ucell[[1]])) {
+              ucell = as.data.frame(ucell[[1]][["cells_U"]])
+            } else {
+              stop("The name of the UCell:::calculate_Uscore function (in functions_analysis.R/CalculateModuleScoreUCell) has changed - please check!")
+            }
             rownames(ucell) = colnames(counts)
             return(ucell)
         }, .options = furrr::furrr_options(seed=getOption("random_seed")))
