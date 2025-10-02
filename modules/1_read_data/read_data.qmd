@@ -877,10 +877,10 @@ sc
 # Add colours
 set.seed(1)
 sc = ScAddColours(sc, colours=list(
-  orig.ident=setNames(zeileis_28 %>% sample(size=length(levels(sc$orig.ident))), levels(sc$orig.ident)),
-  sample=setNames(zeileis_28 %>% sample(size=length(levels(sc$sample))), levels(sc$sample)),
-  technology=setNames(zeileis_28 %>% sample(size=length(levels(sc$technology))), levels(sc$technology)),
-  seurat_clusters=setNames(godsnot_102 %>% sample(size=length(godsnot_102)), 1:length(godsnot_102)),
+  orig.ident=setNames(c(zeileis_28, godsnot_102) %>% sample(size=length(levels(sc$orig.ident))), levels(sc$orig.ident)),
+  sample=setNames(c(zeileis_28, godsnot_102) %>% sample(size=length(levels(sc$sample))), levels(sc$sample)),
+  technology=setNames(c(zeileis_28, godsnot_102) %>% sample(size=length(levels(sc$technology))), levels(sc$technology)),
+  seurat_clusters=setNames(c(godsnot_102, zeileis_28) %>% sample(size=length(godsnot_102)), 1:length(godsnot_102)),
   Phase=c(G1="#FDD086", S="#9FD7E1", G2M="#FF8DA1")
 ))
 ```

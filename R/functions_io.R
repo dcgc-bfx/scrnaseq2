@@ -801,18 +801,27 @@ ReadCounts_10xXenium = function(path, assays=NULL, strip_suffix=NULL) {
 
 #' Reads Parse Biosciences counts that are in market exchange format.
 #' 
-#' @param mtx_directory Path to Parse Biosciences counts directory in market exchange format. Typically contains the files count_matrix.mtx, cell_metadata.csv and all_genes.csv.
+#' @param mtx_directory Path to Parse Biosciences counts directory in market exchange format. Typically contains the files count_matrix.mtx(.gz), cell_metadata.csv(.gz) and all_genes.csv(.gz).
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
 #' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes and features is attached as attributes barcode_metadata and feature_metadata. Additional information on barcodes, features and path is attached as attributes.
 ReadCounts_ParseBio_mtx = function(mtx_directory, strip_suffix=NULL) {
   # Determine the name of the matrix file
   mtx_file_name = "count_matrix.mtx"
+  if (!file.exists(file.path(mtx_directory, mtx_file_name))) {
+    mtx_file_name = "count_matrix.mtx.gz"
+  }
   
   # Determine the name of the barcodes file
   barcodes_file_name = "cell_metadata.csv"
+  if (!file.exists(file.path(mtx_directory, barcodes_file_name))) {
+    barcodes_file_name = "cell_metadata.csv.gz"
+  }
   
   # Determine the name of the features file
   features_file_name = "all_genes.csv"
+  if (!file.exists(file.path(mtx_directory, features_file_name))) {
+    features_file_name = "all_genes.csv.gz"
+  }
   
   # Use more generic function to data in market exchange format
   counts_lst = ReadCounts_mtx(
