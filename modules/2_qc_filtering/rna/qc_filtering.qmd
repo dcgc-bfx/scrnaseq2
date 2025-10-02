@@ -188,41 +188,42 @@ orig_idents = levels(sc$orig.ident)
 # Note: In case the argument 'features' is empty, PercentageFeatureSet will try the argument 'pattern' and will fail since 'pattern' is NULL. 
 # We provide a dummy pattern to avoid this. Ignore the warning.
 mt_features = grep(pattern="^MT-", x=rownames(feature_metadata), value=TRUE, ignore.case=TRUE)
-mt_vals = Seurat::PercentageFeatureSet(sc, features=mt_features, pattern="^$")
+mt_vals = Seurat::PercentageFeatureSet(sc, features=mt_features)
 mt_vals = ifelse(is.nan(mt_vals), 0, mt_vals)
 sc = Seurat::AddMetaData(sc, mt_vals, col.name=paste("pMito", default_assay, sep="_"))
 
 # Calculate percentage of counts in ribosomal genes
 ribo_features = grep(pattern="^RP[SL]", x=rownames(feature_metadata), value=TRUE, ignore.case=TRUE)
-ribo_vals = Seurat::PercentageFeatureSet(sc, features=ribo_features, pattern="^$")
+ribo_vals = Seurat::PercentageFeatureSet(sc, features=ribo_features)
 ribo_vals = ifelse(is.nan(ribo_vals), 0, ribo_vals)
 sc = Seurat::AddMetaData(sc, ribo_vals, col.name=paste("pRibosomal", default_assay, sep="_"))
 
 # Calculate percentage of counts in globin genes
 globin_features = grep("^HB[ABDGEMQZ]", x=rownames(feature_metadata), value=TRUE, ignore.case=TRUE)
-globin_vals = Seurat::PercentageFeatureSet(sc, features=globin_features, pattern="^$")
+globin_vals = Seurat::PercentageFeatureSet(sc, features=globin_features)
 globin_vals = ifelse(is.nan(globin_vals), 0, globin_vals)
 sc = Seurat::AddMetaData(sc, globin_vals, col.name=paste("pGlobin", default_assay, sep="_"))
 
 # Calculate percentage of counts in globin genes
 ercc_features = grep("^ERCC-", x=rownames(feature_metadata), value=TRUE, ignore.case=TRUE)
-ercc_vals = Seurat::PercentageFeatureSet(sc, features=ercc_features, pattern="^$")
+ercc_vals = Seurat::PercentageFeatureSet(sc, features=ercc_features)
 ercc_vals = ifelse(is.nan(ercc_vals), 0, ercc_vals)
 sc = Seurat::AddMetaData(sc, ercc_vals, col.name=paste("pERCC", default_assay, sep="_"))
 
 # Calculate number of counts in XIST
 xist_feature = grep("^XIST", x=rownames(feature_metadata), value=TRUE, ignore.case=TRUE)
-xist_vals = Seurat::PercentageFeatureSet(sc, features=xist_feature, pattern="^$")
+xist_vals = Seurat::PercentageFeatureSet(sc, features=xist_feature)
 xist_vals = ifelse(is.nan(xist_vals), 0, xist_vals)
 sc = Seurat::AddMetaData(sc, xist_vals, col.name=paste("pXIST", default_assay, sep="_"))
 
 # Calculate percentage of counts in chrY genes
 if ("ensembl_chr" %in% colnames(feature_metadata)) {
-  chrY_features = which(feature_metadata$ensembl_chr %in% c("chrY", "Y"))
+  idx = which(feature_metadata$ensembl_chr %in% c("chrY", "Y"))
+  chrY_features = rownames(feature_metadata[idx, ])
 } else {
  chrY_features = c()
 }
-chrY_vals = Seurat::PercentageFeatureSet(sc, features=chrY_features, pattern="^$")
+chrY_vals = Seurat::PercentageFeatureSet(sc, features=chrY_features,)
 chrY_vals = ifelse(is.nan(chrY_vals), 0, chrY_vals)
 sc = Seurat::AddMetaData(sc, chrY_vals, col.name=paste("pChrY", default_assay, sep="_"))
 
