@@ -51,3 +51,4 @@ environment.local
 
 # Ignore rstudio-server directories
 rstudio-server/**
+**/*.quarto_ipynb
