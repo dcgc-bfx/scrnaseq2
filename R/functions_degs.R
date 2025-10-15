@@ -1672,7 +1672,7 @@ DegsScatterPlot = function(deg_result, font_size=11) {
                            labels=c(none='none', up='up', down='down')) +
         xlim(lims) + 
         ylim(lims) +
-        AddPlotStyle(ylab=group1, xlab=group2, legend_position="none", font_size=font_size)
+        AddPlotStyle(xlab=group1, ylab=group2, legend_position="none", font_size=font_size)
     
     # If there is a log2 threshold > 0, add lines
     if (log2FC > 0) {
