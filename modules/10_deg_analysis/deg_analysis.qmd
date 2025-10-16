@@ -493,9 +493,9 @@ if (have_deg_comparisons) {
 deg_summary_table = purrr::map_depth(deg_results_list, .depth=2, function(deg_result) {
     # Get comparison name, condition column and values, subset column and subset group. . If multiple, join by '+'.
     summary_table = data.frame(Comparison=deg_result[["name"]],
-               Condition=deg_result[["condition_column"]], 
-               Group1=paste(deg_result[["condition1"]], collapse="+"), 
-               Group2=paste(deg_result[["condition2"]], collapse="+"))
+               Group=deg_result[["condition_column"]], 
+               Condition1=paste(deg_result[["condition1"]], collapse="+"), 
+               Condition2=paste(deg_result[["condition2"]], collapse="+"))
     if ("subset_column" %in% names(deg_result)) {
         summary_table$Subset = deg_result[["subset_column"]]
         summary_table$SubsetGroup = paste(deg_result[["subset_group"]], collapse="+")
@@ -526,7 +526,7 @@ deg_summary_table = purrr::map_depth(deg_results_list, .depth=2, function(deg_re
     dplyr::bind_rows()
 
 deg_summary_table = deg_summary_table %>% 
-    dplyr::select(Comparison, Condition, Group1, Group2, Subset, SubsetGroup, Sign, Sign_up, Sign_down)
+    dplyr::select(Comparison, Group, Condition1, Condition2, Subset, SubsetGroup, Sign, Sign_up, Sign_down)
 
 gt(deg_summary_table) %>%
     sub_missing(columns=1:ncol(deg_summary_table), missing_text="")
@@ -603,7 +603,7 @@ gt(deg_configuration_table)
 
 deg_results_table = deg_summary_table %>% 
     dplyr::filter(Comparison == '{{name}}', SubsetGroup=='{{subset_group}}') %>%
-    dplyr::select(Condition, Group1, Group2, Subset, SubsetGroup, Sign, Sign_up, Sign_down)
+    dplyr::select(Group, Condition1, Condition2, Subset, SubsetGroup, Sign, Sign_up, Sign_down)
     
 gt(deg_results_table) %>%
     sub_missing(columns=1:ncol(deg_results_table), missing_text='') %>%

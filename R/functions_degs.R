@@ -1665,19 +1665,19 @@ DegsScatterPlot = function(deg_result, font_size=11) {
     # Ggplot2 provided '.pt' as conversion factor: mm = pt / .pt OR pt = mm * .pt
     # https://ggplot2.tidyverse.org/articles/ggplot2-specs.html#text
     p = ggplot(deg_table, aes(x=condition1, y=condition2, col=deg_status)) + 
-        geom_abline(slope=1, intercept=0, col="lightgrey") +
         geom_point() +
         ggrepel::geom_text_repel(data=top10_deg_table, aes(x=condition1, y=condition2, col=deg_status, label=gene), size=font_size / .pt, colour="black") +
         scale_color_manual("Gene status", values=c(none="grey", up="darkgoldenrod1", down="steelblue"), 
                            labels=c(none='none', up='up', down='down')) +
         xlim(lims) + 
         ylim(lims) +
-        AddPlotStyle(xlab=group1, ylab=group2, legend_position="none", font_size=font_size)
+        AddPlotStyle(xlab=group1, ylab=group2, legend_position="none", font_size=font_size) +
+        ggtitle(FormatString("{group1} vs {group2}", quote=FALSE))
     
     # If there is a log2 threshold > 0, add lines
-    if (log2FC > 0) {
-        p = p + geom_abline(slope=1, intercept=c(-log2FC, log2FC), col="lightgrey", lty=2)
-    }
+    #if (log2FC > 0) {
+    #    p = p + geom_abline(slope=1, intercept=c(-log2FC, log2FC), col="grey10", lty=2)
+    #}
     
     
     return(p)
@@ -1741,11 +1741,12 @@ DegsVolcanoPlot = function(deg_result, font_size=11) {
                            labels=c(none='none', up='up', down='down')) +
         AddPlotStyle(xlab=ifelse(fc_col == "avg_log2FC", expression(log[2]~"foldchange"), "condition1 - condition2"),
                      ylab=expression("-"~log[10]~"p-value"), 
-                     legend_position="none", font_size=font_size)
+                     legend_position="none", font_size=font_size) +
+        ggtitle(FormatString("{group1} vs {group2}", quote=FALSE))
     
     # If there is a log2 threshold > 0, add vertical lines
     if (log2FC > 0) {
-        p = p + geom_vline(xintercept=c(-log2FC, log2FC), linetype="dashed", color="grey")
+        p = p + geom_vline(xintercept=c(-log2FC, log2FC), linetype="dashed", color="grey10")
     }
     
     return(p)
@@ -1803,8 +1804,8 @@ AverageCounts = function(sc, group_by=NULL, assay=NULL, layer=NULL) {
       means = rowMeans(ldat[, group, drop=FALSE])
     } else if (layer == "data") {
       # Data: calculate the mean of the exponentiated data, then log again
-      means = (rowSums(expm1(ldat[, group, drop=FALSE])) + 1) / NCOL(ldat[, group, drop=FALSE])
-      means = log(means)
+      means = (rowSums(expm1(ldat[, group, drop=FALSE]))) / NCOL(ldat[, group, drop=FALSE])
+      means = log1p(means)
     }
   })
   group_means = as.data.frame(group_means)
