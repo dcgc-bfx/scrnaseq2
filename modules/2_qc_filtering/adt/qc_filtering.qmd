@@ -34,8 +34,8 @@ params:
 
   # Filter for barcodes. Set to 'null' to deactivate.
   barcode_filter: !expr list(
-    nCount_RNA = c(1000, NA),
-    nFeature_RNA = c(400, 10000))
+    nCount_ADT = c(1000, NA),
+    nFeature_ADT = c(400, 10000))
 
   # Filter for features. Set to 'null' to deactivate.
   feature_filter: !expr list(
