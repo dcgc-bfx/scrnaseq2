@@ -38,19 +38,15 @@ module_dir = params$module_dir
 
 ## Scientific project
 
-For this tutorial, we analyzed two datasets of Peripheral Blood Mononuclear Cells (PBMC) freely available from 10X Genomics.
+To be defined
 
--   Two datasets, 1k and 5k cells
--   10x 3' assay
--   Blood cells
+## Questions
 
-Questions
-
--   How many clusters do we find?
--   What are the most abundant cell types?
--   How many T-cells do we find?
+## To be defined
 
 ## Analysis
+
+To be defined
 
 ### About
 
