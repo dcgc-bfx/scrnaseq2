@@ -569,11 +569,11 @@ if (!is.null(downsample_barcodes_n) | downsample_barcodes_equally) {
       
       # Subset counts
       keep = colnames(counts_lst[[i]][[j]]) %in% barcodes_per_dataset[[i]]
-      counts_lst[[i]][[j]] = counts_lst[[i]][[j]][, keep]
+      counts_lst[[i]][[j]] = counts_lst[[i]][[j]][, keep, drop=FALSE]
       
       # Subset barcode metadata
       keep = rownames(barcode_metadata) %in% barcodes_per_dataset[[i]]
-      barcode_metadata = barcode_metadata[keep,]
+      barcode_metadata = barcode_metadata[keep,, drop=FALSE]
 
       # Restore metadata
       attr(counts_lst[[i]][[j]], "feature_metadata") = feature_metadata
@@ -609,10 +609,10 @@ if (!is.null(downsample_features_n)) {
       rows = sample(seq(nrow(counts_lst[[i]][[j]])), downsample_features_n)
       
       # Subset counts
-      counts_lst[[i]][[j]] = counts_lst[[i]][[j]][rows, ]
+      counts_lst[[i]][[j]] = counts_lst[[i]][[j]][rows,, drop=FALSE]
       
       # Subset feature metadata
-      feature_metadata = feature_metadata[rows,]
+      feature_metadata = feature_metadata[rows,, drop=FALSE]
 
       # Restore metadata
       attr(counts_lst[[i]][[j]], "feature_metadata") = feature_metadata
@@ -892,11 +892,27 @@ sc
 
 # Add colours
 set.seed(1)
+
+orig_ident_levels = levels(sc$orig.ident)
+orig_ident_cols = c(sample(zeileis_28, length(zeileis_28)), sample(godsnot_102, length(godsnot_102)))
+orig_ident_cols = orig_ident_cols[1:length(orig_ident_levels)]
+
+sample_levels = levels(sc$sample)
+sample_cols = c(sample(zeileis_28, length(zeileis_28)), sample(godsnot_102, length(godsnot_102)))
+sample_cols = sample_cols[1:length(sample_levels)]
+
+technology_levels =  levels(sc$technology)
+technology_cols = c(sample(zeileis_28, length(zeileis_28)), sample(godsnot_102, length(godsnot_102)))
+technology_cols = technology_cols[1:length(technology_levels)]
+
+seurat_clusters_cols = c(sample(godsnot_102, length(godsnot_102)), sample(zeileis_28, length(zeileis_28)))
+seurat_clusters_levels = 1:length(seurat_clusters_cols)
+
 sc = ScAddColours(sc, colours=list(
-  orig.ident=setNames(c(zeileis_28, godsnot_102) %>% sample(size=length(levels(sc$orig.ident))), levels(sc$orig.ident)),
-  sample=setNames(c(zeileis_28, godsnot_102) %>% sample(size=length(levels(sc$sample))), levels(sc$sample)),
-  technology=setNames(c(zeileis_28, godsnot_102) %>% sample(size=length(levels(sc$technology))), levels(sc$technology)),
-  seurat_clusters=setNames(c(godsnot_102, zeileis_28) %>% sample(size=length(c(godsnot_102, zeileis_28))), 1:length(c(godsnot_102, zeileis_28))),
+  orig.ident=setNames(orig_ident_cols, orig_ident_levels),
+  sample=setNames(sample_cols, sample_levels),
+  technology=setNames(technology_cols, technology_levels),
+  seurat_clusters=setNames(seurat_clusters_cols, seurat_clusters_levels),
   Phase=c(G1="#FDD086", S="#9FD7E1", G2M="#FF8DA1")
 ))
 ```
