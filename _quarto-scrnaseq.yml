@@ -94,7 +94,7 @@ params:
       feature_filter: !expr list(
         min_counts = 1,
         min_cells = 3)
-      samples_to_drop: null
+      samples_to_remove: null
       samples_min_cells: 10
 
     normalization_rna:
