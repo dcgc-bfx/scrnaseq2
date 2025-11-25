@@ -359,10 +359,7 @@ ReadMetadata = function(file) {
 #' @return A \code{data.frame} containing the datasets configuration.
 #'
 #' @details
-#' This function is similar to \code{\link{ReadMetadata}} but is specifically
-
-#' designed for reading datasets configuration tables. It performs additional
-#' validation checks specific to dataset tables.
+#' This function is similar to \code{\link{ReadMetadata}} but is specifically designed for reading datasets configuration tables. It performs additional validation checks specific to dataset tables.
 #'
 #' @importFrom tools file_ext
 #' @importFrom readr read_delim

@@ -1235,7 +1235,7 @@ GitRepositoryVersion = function(path_to_git) {
 #' \dontrun{
 #' container_info <- ContainerVersion()
 #' }
-ContainerVersion = function(path_to_git) {
+ContainerVersion = function() {
   container_info = c(Sys.getenv("CONTAINER_GIT_NAME"), Sys.getenv("CONTAINER_VERSION"), Sys.getenv("CONTAINER_GIT_COMMIT_ID"), Sys.getenv("CONTAINER_BUILD_DATE"))
   container_info = container_info[nchar(container_info)>0]
   if (length(container_info) > 0) {

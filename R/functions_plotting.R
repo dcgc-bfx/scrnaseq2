@@ -69,7 +69,7 @@ AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, lege
   # Legend title
   if (!is.null(legend_title)) {
     if (nchar(legend_title) > 0) {
-      style = c(style, list(labs(color=legend_title, fill=legend_title)))
+      style = c(style, list(ggplot2::labs(color=legend_title, fill=legend_title)))
     } else {
       style = c(style, list(ggplot2::theme(legend.title=element_blank())))
     }
@@ -653,7 +653,7 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
 #' @export
 #'
 #' @examples
-#' \dontrun
+#' \dontrun{
 #' # RLE plot for raw counts
 #' p <- PlotRLE(seurat_obj, layer = "counts", nbarcodes = 200)
 #'
