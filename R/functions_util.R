@@ -1,13 +1,32 @@
 
-#' Transformer for the glue package:
-#' - if quote=TRUE, quotes all variables in the glue string
-#' - if a variable has multiple values and its glue string contains a '*' (e.g. {variable*}, include all values separated by sep. If quote=TRUE, they will be quoted as well.
-#' 
-#' https://glue.tidyverse.org/articles/transformers.html
-#' 
-#' @param sep When a variable contains multiple values and is marked with a '*', which separator to use to collapse the values
-#' @param quote Whether to quote variables
-#' @return A function to transform the glue string
+#' Glue Transformer for Quote and Collapse Operations
+#'
+#' A transformer function for the glue package that optionally quotes variables
+#' and handles multiple values with automatic collapsing.
+#'
+#' @param sep Character. Separator to use when collapsing multiple values.
+#'   Default is \code{", "}.
+#' @param quote Logical. Whether to quote variables. Default is \code{TRUE}.
+#' @param ... Additional arguments passed to \code{glue_collapse}.
+#'
+#' @return A transformer function to be used with \code{glue::glue}.
+#'
+#' @details
+#' Use \code{*} suffix in glue strings to indicate that a variable may contain
+#' multiple values that should be collapsed. For example, \code{{variable*}}
+#' will collapse all values of \code{variable} with the specified separator.
+#'
+#' @seealso \code{\link{FormatString}}
+#' @keywords internal
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Used internally by FormatString
+#' glue::glue("Values: {x*}", x = c("a", "b", "c"),
+#'   .transformer = GlueTransformer_quote_collapse())
+#' # Returns: "Values: 'a', 'b', 'c'"
+#' }
 GlueTransformer_quote_collapse = function(sep=", ", quote=TRUE, ...) {
   function(text, envir) {
     collapse = grepl("[*]$", text)
@@ -26,27 +45,75 @@ GlueTransformer_quote_collapse = function(sep=", ", quote=TRUE, ...) {
   }
 }
 
-#' Formats strings
-#' 
-#' - Variables can be automatically inserted with '{variable}'.
-#' - If quote=TRUE, quotes all variables.
-#' - If a variable has multiple values, use {variable*} to include all values separated by sep. If quote=TRUE, they will be quoted as well.
-#' 
-#' @param x Character string
-#' @param quote Whether to quote variables
-#' @param sep When a variable contains multiple values and is marked with a '*', which separator to use to collapse the values
-#' @return The formatted message
+#' Format Strings with Variable Interpolation
+#'
+#' A wrapper around \code{glue::glue} that provides convenient string formatting
+#' with optional quoting and automatic handling of multiple values.
+#'
+#' @param x Character. The string template with variables in curly braces.
+#' @param quote Logical. Whether to quote interpolated variables.
+#'   Default is \code{TRUE}.
+#' @param sep Character. Separator for collapsing multiple values when using
+#'   the \code{*} suffix. Default is \code{", "}.
+#'
+#' @return A glue object (character string) with interpolated values.
+#'
+#' @details
+#' Variables can be inserted using \code{{variable}} syntax. Add \code{*} suffix
+#' to collapse multiple values: \code{{variable*}}.
+#'
+#' @importFrom glue glue single_quote glue_collapse identity_transformer
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Simple interpolation
+#' name <- "World"
+#' FormatString("Hello, {name}!")
+#' # Returns: "Hello, 'World'!"
+#'
+#' # Multiple values with collapse
+#' items <- c("apple", "banana", "cherry")
+#' FormatString("Fruits: {items*}")
+#' # Returns: "Fruits: 'apple', 'banana', 'cherry'"
+#'
+#' # Without quoting
+#' FormatString("Value: {x}", x = 42, quote = FALSE)
+#' # Returns: "Value: 42"
+#' }
 FormatString = function(x, quote=TRUE, sep=", ") {
   return(glue::glue(x, .transformer=GlueTransformer_quote_collapse(quote=quote, sep=sep), .envir=parent.frame()))
 }
 
-#' Generates a callout box for showing notes, tips or warnings
-#' 
-#' @param x Character string that will be formatted by the FormatString function
-#' @param type Type of callout box. Can be: 'note', 'tip', 'important', 'caution' and 'warning'.
-#' @param print Whether to print (if TRUE) or to return (FALSE) the message box
-#' @param quote Whether to quote expanded variables in the message box
-#' @return Character string to generate a message box
+#' Generate Callout Box for Documentation
+#'
+#' Creates a Quarto-style callout box for displaying notes, tips, warnings,
+#' or other important information in rendered documents.
+#'
+#' @param x Character. The message content. Will be formatted using
+#'   \code{\link{FormatString}}.
+#' @param type Character. Type of callout box. Options: \code{"note"},
+#'   \code{"tip"}, \code{"important"}, \code{"caution"}, \code{"warning"}.
+#' @param print Logical. If \code{TRUE}, prints the callout box using \code{cat}.
+#'   If \code{FALSE}, returns the string. Default is \code{TRUE}.
+#' @param quote Logical. Whether to quote expanded variables in the message.
+#'   Default is \code{TRUE}.
+#'
+#' @return If \code{print = TRUE}, invisibly returns \code{NULL} and prints
+#'   the callout box. If \code{print = FALSE}, returns the callout box as a
+#'   character string.
+#'
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Print a note
+#' CalloutBox("Remember to save your work!", type = "note")
+#'
+#' # Get warning as string
+#' warning_text <- CalloutBox("This may take a while.", type = "warning", print = FALSE
+#' }
 CalloutBox = function(x, type, print=TRUE, quote=TRUE) {
   valid_types = c("note", "tip", "important", "caution", "warning")
   assertthat::assert_that(type %in% valid_types,
@@ -62,11 +129,27 @@ CalloutBox = function(x, type, print=TRUE, quote=TRUE) {
   }
 }
 
-#' Returns the content of the profile yaml.
-#' 
-#' Note: The current profile must be set via the environment variable 'QUARTO_PROFILE'.
-#' 
-#' @return The content as nested list.
+#' Get Profile YAML Configuration
+#'
+#' Reads and returns the content of the current Quarto profile YAML file.
+#' The profile is determined by the \code{QUARTO_PROFILE} environment variable.
+#'
+#' @return A nested list containing the parsed YAML configuration.
+#'
+#' @details
+#' The function expects a file named \code{_quarto-<profile>.yml} in the
+#' current working directory, where \code{<profile>} is the value of the
+#' \code{QUARTO_PROFILE} environment variable.
+#'
+#' @importFrom yaml read_yaml
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' Sys.setenv(QUARTO_PROFILE = "development")
+#' config <- GetProfileYaml()
+#' }
 GetProfileYaml = function() {
   profile = Sys.getenv("QUARTO_PROFILE")
   assertthat::assert_that(nchar(profile) > 0,
@@ -76,11 +159,27 @@ GetProfileYaml = function() {
   return(profile_yml)
 }
 
-#' Given a module directory, returns the module directory that was run before this module according to the workflow ('chapters') defined in the current profile.
-#' 
-#' Note: The current profile must be set via the environment variable 'QUARTO_PROFILE'.
-#' 
-#' @return The previous module directory or NULL if there is none.
+#' Get Previous Module Directory
+#'
+#' Given the current module directory, returns the module that was run before
+#' this module according to the workflow defined in the current profile YAML.
+#'
+#' @param current_module_dir Character. The current module directory.
+#'
+#' @return Character string with the previous module directory, or \code{NULL}
+#'   if there is no previous module (i.e., this is the first module).
+#'
+#' @details
+#' The workflow order is determined by the \code{chapters} parameter in the
+#' \code{book} section of the profile YAML file.
+#'
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' prev_module <- PreviousModuleDir("02_filtering")
+#' }
 PreviousModuleDir = function(current_module_dir) {
   current_module_dir = module_dir
   
@@ -105,15 +204,39 @@ PreviousModuleDir = function(current_module_dir) {
   }
 }
 
-#' Access a workflow parameters set in the profile and the module yaml.
-#' 
-#' This function merged parameters defined in the module yaml head general with general and module-specific parameters from the profile yaml (in this order). This is currently the only way to work with profile and module 
-#' parameters a) interactively in rstudio as well as b) during rendering by quarto.
-#' 
-#' Note: The current profile must be set via the environment variable 'QUARTO_PROFILE'.
-#' 
-#' @param p Parameter to access. If NULL, returns all parameters.
-#' @return One or more parameters as list
+#' Access Workflow Parameters
+#'
+#' Retrieves workflow parameters by merging module YAML parameters with
+#' general and module-specific parameters from the profile YAML.
+#'
+#' @param p Character or \code{NULL}. Parameter name to retrieve. If \code{NULL},
+#'   returns all parameters as a list. Default is \code{NULL}.
+#'
+#' @return If \code{p} is specified, returns the value of that parameter.
+#'   If \code{p} is \code{NULL}, returns a list of all parameters.
+#'
+#' @details
+#' Parameter precedence (later overrides earlier):
+#' \enumerate{
+#'   \item Module YAML parameters (document \code{params})
+#'   \item Profile YAML general parameters
+#'   \item Profile YAML module-specific parameters
+#' }
+#'
+#' This function works both interactively in RStudio and during Quarto rendering.
+#'
+#' @importFrom purrr list_assign
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Get all parameters
+#' all_params <- param()
+#'
+#' # Get a specific parameter
+#' project_id <- param("project_id")
+#' }
 param = function(p=NULL) {
 
   # Read module parameter (document params yaml) and get module name
@@ -149,11 +272,30 @@ param = function(p=NULL) {
   }
 }
 
-#' Returns an Ensembl biomaRt for a species and Ensembl version.
-#' 
-#' @param species Latin species name in format genus_species (for example homo_sapiens or mus_musculus).
-#' @param ensembl_version Ensembl version (for example 98).
-#' @return A biomaRt object.
+#' Get Ensembl BioMart
+#'
+#' Creates a connection to an Ensembl BioMart database for a specific species
+#' and Ensembl version.
+#'
+#' @param species Character. Latin species name in \code{genus_species} format
+#'   (e.g., \code{"homo_sapiens"}, \code{"mus_musculus"}).
+#' @param ensembl_version Character or numeric. Ensembl version number
+#'   (e.g., \code{"98"} or \code{98}).
+#'
+#' @return A biomaRt \code{Mart} object connected to the specified database.
+#'
+#' @importFrom biomaRt listEnsemblArchives useMart listDatasets useDataset
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Connect to human Ensembl version 98
+#' mart <- GetBiomaRt("homo_sapiens", 98)
+#'
+#' # Connect to mouse Ensembl
+#' mart <- GetBiomaRt("mus_musculus", "104")
+#' }
 GetBiomaRt = function(species, ensembl_version) {
   # Check if we can find find an Ensembl database for this species and annotation version
   ensembl_archives = biomaRt::listEnsemblArchives()
@@ -187,15 +329,47 @@ GetBiomaRt = function(species, ensembl_version) {
   return(ensembl_mart)
 }
 
-#' Fetches gene information from Ensembl using biomaRt.
-#' 
-#' @param ids A list of Ensembl ids or - if symbols is TRUE - gene symbols.
-#' @param symbols If TRUE, ids are interpreted as gene symbols.
-#' @param species Species.
-#' @param ensembl_version Ensembl version.
-#' @param mart_attributes Ensembl attributes to fetch. Can be a character vector or a named character vector. Defaults to: c(ensembl_id="ensembl_gene_id, ensembl_symbol="external_gene_name", ensembl_biotype="gene_biotype", ensembl_description="description", ensembl_chr="chromosome_name", ensembl_start_position="start_position", ensembl_end_position="end_position", ensembl_strand="strand").
-#' @param useCache Use local cache for faster querying. Default is TRUE. Set to FALSE if there are problems.
-#' @return A table with gene information. Ids that were not found are included but most of the information will be NA.
+#' Fetch Gene Information from Ensembl
+#'
+#' Retrieves gene annotations from Ensembl BioMart for a list of gene IDs
+#' or symbols.
+#'
+#' @param ids Character vector. Ensembl gene IDs or gene symbols to query.
+#' @param symbols Logical. If \code{TRUE}, \code{ids} are interpreted as gene
+#'   symbols instead of Ensembl IDs. Default is \code{FALSE}.
+#' @param species Character. Species name in \code{genus_species} format.
+#' @param ensembl_version Character or numeric. Ensembl version to use.
+#' @param mart_attributes Named character vector. BioMart attributes to fetch.
+#'   Names become column names in the output. Default includes gene ID, symbol,
+#'   biotype, description, chromosome, and strand information.
+#' @param useCache Logical. Use local cache for faster querying.
+#'   Default is \code{TRUE}.
+#'
+#' @return A data frame with requested gene information. IDs not found in
+#'   Ensembl are included but with \code{NA} values.
+#'
+#' @importFrom biomaRt getBM
+#' @importFrom dplyr left_join
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Fetch information for Ensembl IDs
+#' gene_info <- EnsemblFetchGeneInfo(
+#'   ids = c("ENSG00000141510", "ENSG00000157764"),
+#'   species = "homo_sapiens",
+#'   ensembl_version = 98
+#' )
+#'
+#' # Fetch by gene symbols
+#' gene_info <- EnsemblFetchGeneInfo(
+#'   ids = c("TP53", "BRAF"),
+#'   symbols = TRUE,
+#'   species = "homo_sapiens",
+#'   ensembl_version = 98
+#' )
+#' }
 EnsemblFetchGeneInfo = function(ids, symbols=FALSE, species, ensembl_version, mart_attributes=c(ensembl_id="ensembl_gene_id", ensembl_symbol="external_gene_name", ensembl_biotype="gene_biotype", ensembl_description="description", ensembl_chr="chromosome_name", ensembl_start_position="start_position", ensembl_end_position="end_position", ensembl_strand="strand"), useCache=TRUE) {
   # Get species mart
   species_mart = GetBiomaRt(species, ensembl_version)
@@ -236,17 +410,42 @@ EnsemblFetchGeneInfo = function(ids, symbols=FALSE, species, ensembl_version, ma
   return(annotation_ensembl)
 }
 
-#' Fetches orthologues information between two species from Ensembl using biomaRt.
-#' 
-#' @param ids A list of Ensembl ids or - if symbols is TRUE - gene symbols.
-#' @param symbols If TRUE, ids are interpreted as gene symbols.
-#' @param species1 Species 1.
-#' @param species1 Species 2.
-#' @param ensembl_version Ensembl version.
-#' @param mart_attributes1 Ensembl attributes to fetch fo species 1. Can be a character vector or a named character vector. Defaults to: c(ensembl_id="ensembl_gene_id, ensembl_symbol="external_gene_name"). Can be empty.
-#' @param mart_attributes1 Ensembl attributes to fetch fo species 2. Can be a character vector or a named character vector. Defaults to: c(ensembl_id="ensembl_gene_id, ensembl_symbol="external_gene_name"). Cannot be empty.
-#' @param useCache Use local cache for faster querying. Default is TRUE. Set to FALSE if there are problems.
-#' @return A table with orthologues between species 1 and species 2. Ids that were not found are included but most of the information will be NA.
+#' Fetch Orthologues from Ensembl
+#'
+#' Retrieves orthologue information between two species from Ensembl using
+#' BioMart's cross-species linking.
+#'
+#' @param ids Character vector. Ensembl gene IDs or gene symbols from species1.
+#' @param symbols Logical. If \code{TRUE}, \code{ids} are gene symbols.
+#'   Default is \code{FALSE}.
+#' @param species1 Character. First species in \code{genus_species} format.
+#' @param species2 Character. Second species in \code{genus_species} format.
+#' @param ensembl_version Character or numeric. Ensembl version to use.
+#' @param mart_attributes1 Named character vector. Attributes to fetch for
+#'   species1. Default includes gene ID and symbol.
+#' @param mart_attributes2 Named character vector. Attributes to fetch for
+#'   species2. Default includes gene ID and symbol.
+#' @param useCache Logical. Use local cache. Default is \code{TRUE}.
+#'
+#' @return A data frame with orthologue mappings including a \code{one_to_one}
+#'   column indicating whether the orthologue relationship is one-to-one.
+#'   IDs without orthologues are included with \code{NA} values.
+#'
+#' @importFrom biomaRt getLDS
+#' @importFrom dplyr left_join group_by summarise filter pull mutate
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Get human-mouse orthologues
+#' orthologs <- EnsemblFetchOrthologues(
+#'   ids = c("ENSG00000141510", "ENSG00000157764"),
+#'   species1 = "homo_sapiens",
+#'   species2 = "mus_musculus",
+#'   ensembl_version = 98
+#' )
+#' }
 EnsemblFetchOrthologues = function(ids, symbols=FALSE, species1, species2, ensembl_version, mart_attributes1=c(ensembl_id1="ensembl_gene_id", ensembl_symbol1="external_gene_name"), mart_attributes2=c(ensembl_id2="ensembl_gene_id", ensembl_symbol2="external_gene_name"), useCache=TRUE) {
   # Get species marts
   species1_mart = GetBiomaRt(species1, ensembl_version)
@@ -303,10 +502,24 @@ EnsemblFetchOrthologues = function(ids, symbols=FALSE, species1, species2, ensem
   
 }  
 
-#' Makes names syntactically valid, i.e., it replaces all invalid characters with underscores.
-#' 
-#' @param x A vector of names.
-#' @return A vector with syntactically valid names.
+#' Make Names Syntactically Valid
+#'
+#' Converts names to syntactically valid R identifiers by replacing invalid
+#' characters with underscores.
+#'
+#' @param x Character vector. Names to make valid.
+#'
+#' @return A character vector with syntactically valid names.
+#'
+#' @details
+#' Uses \code{make.names} internally and then cleans up multiple consecutive
+#' dots, leading/trailing dots, and replaces remaining dots with underscores.
+#'
+#' @export
+#'
+#' @examples
+#' MakeNamesValid(c("my-var", "123abc", "a.b.c"))
+#' # Returns: c("my_var", "X123abc", "a_b_c")
 MakeNamesValid = function(x) {
    x = make.names(x) %>%  
         gsub("\\.\\.+", ".", .) %>% 
@@ -316,14 +529,34 @@ MakeNamesValid = function(x) {
    return(x)
 }
 
-#' Adds feature metadata to an Seurat object or an Assay object.
-#' 
-#' Note: Seurat::AddMetaData does not seem to work for features in Seurat v5.
-#' 
-#' @param obj A Seurat or Assay object.
-#' @param assay The assay to which to add the feature metadata. Will be ignored if adding to an Assay object.
-#' @param metadata A table with feature metadata with feature names being row names.
-#' @return The Seurat (v5) or Assay object with updated feature metadata.
+#' Add Feature Metadata to Seurat Object
+#'
+#' Adds or updates feature (gene) metadata in a Seurat object or Assay.
+#' This function works around limitations in \code{Seurat::AddMetaData} for
+#' feature metadata in Seurat v5.
+#'
+#' @param obj A Seurat object or Assay5/Assay object.
+#' @param assay Character or \code{NULL}. Assay to modify. Ignored if \code{obj}
+#'   is an Assay. Default is \code{NULL}.
+#' @param metadata Data frame. Feature metadata to add, with feature names as
+#'   row names.
+#'
+#' @return The updated Seurat or Assay object.
+#'
+#' @importFrom tibble rownames_to_column
+#' @importFrom dplyr left_join select
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Add gene annotations to a Seurat object
+#' gene_info <- data.frame(
+#'   gene_type = c("protein_coding", "lncRNA"),
+#'   row.names = c("Gene1", "Gene2")
+#' )
+#' seurat_obj <- AddFeatureMetadata(seurat_obj, assay = "RNA", metadata = gene_info)
+#' }
 AddFeatureMetadata = function(obj, assay=NULL, metadata) {
   # Checks
   valid_objs = c("Seurat", "Assay5", "Assay")
@@ -357,10 +590,23 @@ AddFeatureMetadata = function(obj, assay=NULL, metadata) {
   return(obj)
 }
 
-#' Evaluates a knitr chunk as R code.
-#' 
-#' @param x Knitr chunk code
-#' @return The last return value of the code
+#' Evaluate Knitr Chunk Code
+#'
+#' Extracts and evaluates R code from knitr-style code chunks.
+#'
+#' @param x Character. String containing knitr code chunks (text between
+#'   \code{```{r}} and \code{```}).
+#'
+#' @return The result of evaluating the last expression in the extracted code.
+#'
+#' @importFrom stringr str_extract_all regex
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' code <- "```{r}\nx <- 1 + 1\nx\n```"
+#' result <- EvalKnitrChunk(code)  # Returns 2
+#' }
 EvalKnitrChunk = function(x) {
   chunks = unlist(stringr::str_extract_all(string=x, 
                            pattern=stringr::regex(pattern="```\\s*\\{r\\}.*?\\n```", dotall=TRUE)
@@ -371,12 +617,38 @@ EvalKnitrChunk = function(x) {
   return(eval(r_code))
 }
 
-#' Prepares the barcode filter.
-#' 
-#' @param filter Filter from yaml configuration
-#' @param orig_idents The samples in the analysis
-#' @param metadata The barcode metadata table
-#' @return A filter with entries for each sample
+#' Prepare Barcode Filter
+#'
+#' Processes filter configurations from YAML, applying general and sample-specific
+#' filters to barcode metadata.
+#'
+#' @param filter List. Filter configuration from YAML. Can contain general
+#'   filters and sample-specific filters (named by sample).
+#' @param orig_idents Character vector. Sample identifiers in the analysis.
+#' @param metadata Data frame. Barcode metadata to validate filter columns against.
+#'
+#' @return A named list with filter entries for each sample, or \code{NULL}
+#'   if no filters are defined.
+#'
+#' @details
+#' Filters can be specified as:
+#' \itemize{
+#'   \item Numeric vectors of length 2 for \code{c(min, max)} thresholds
+#'   \item Character vectors for categorical values to keep
+#' }
+#'
+#' @importFrom purrr map_depth list_modify
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' filter <- list(
+#'   nCount_RNA = c(500, 50000),  # Applied to all samples
+#'   Sample1 = list(pMito_RNA = c(NA, 20))  # Sample-specific
+#' )
+#' prepared <- PrepareBarcodeFilter(filter, c("Sample1", "Sample2"), metadata)
+#' }
 PrepareBarcodeFilter = function(filter, orig_idents, metadata) {
   if (is.null(filter) | length(filter) == 0) {
     return(NULL)
@@ -413,11 +685,28 @@ PrepareBarcodeFilter = function(filter, orig_idents, metadata) {
   return(filter)
 }
 
-#' Prepares the feature filter.
-#' 
-#' @param filter Filter from yaml configuration
-#' @param orig_idents The samples in the analysis
-#' @return A filter with entries for each sample
+#' Prepare Feature Filter
+#'
+#' Processes feature filter configurations from YAML, applying general and
+#' sample-specific filters.
+#'
+#' @param filter List. Filter configuration from YAML.
+#' @param orig_idents Character vector. Sample identifiers in the analysis.
+#'
+#' @return A named list with filter entries for each sample, or \code{NULL}
+#'   if no filters are defined.
+#'
+#' @importFrom purrr map_depth list_modify
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' filter <- list(
+#'   min_counts = 10,
+#'   Sample1 = list(min_cells = 5)
+#' )
+#' prepared <- PrepareFeatureFilter(filter, c("Sample1", "Sample2"))
+#' }
 PrepareFeatureFilter = function(filter, orig_idents) {
   if (is.null(filter) | length(filter) == 0) {
     return(NULL)
@@ -447,14 +736,36 @@ PrepareFeatureFilter = function(filter, orig_idents) {
   return(filter)
 }
 
-#' Adds one or more lists to the misc slot of the Seurat object.
-#' 
-#' @param sc A Seurat sc object.
-#' @param lists A named list with one or more lists (named or unnamed vectors only).
-#' @param lists_slot In which slot of the Seurat misc slot should the list(s) be stored.
-#' @param add_to_list When a list with this name already exists, add to the list instead of overwriting the list. Default is FALSE.
-#' @param make_unique Make lists unique (after they were stored in the misc slot). Default is FALSE.
-#' @return A Seurat sc object with updated list(s).
+#' Add Lists to Seurat Misc Slot
+#'
+#' Stores named lists (e.g., gene lists, signatures) in the misc slot of a
+#' Seurat object for later retrieval.
+#'
+#' @param sc A Seurat object.
+#' @param lists Named list. Lists to store. Each element should be a character
+#'   vector.
+#' @param lists_slot Character. Name of the misc slot to use.
+#'   Default is \code{"gene_lists"}.
+#' @param add_to_list Logical. If \code{TRUE} and a list with the same name
+#'   exists, append to it instead of overwriting. Default is \code{FALSE}.
+#' @param make_unique Logical. If \code{TRUE}, remove duplicates from lists
+#'   after storing. Default is \code{FALSE}.
+#'
+#' @return The Seurat object with updated lists in the misc slot.
+#'
+#' @importFrom Seurat Misc
+#' @importFrom purrr map_chr
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Add gene lists
+#' gene_lists <- list(
+#'   markers = c("Gene1", "Gene2"),
+#'   housekeeping = c("GAPDH", "ACTB")
+#' )
+#' seurat_obj <- ScAddLists(seurat_obj, gene_lists)
+#' }
 ScAddLists = function(sc, lists, lists_slot='gene_lists', add_to_list=FALSE, make_unique=FALSE) {
   stored_lists = Seurat::Misc(sc, slot=lists_slot)
   if (is.null(stored_lists)) stored_lists = list()
@@ -481,12 +792,31 @@ ScAddLists = function(sc, lists, lists_slot='gene_lists', add_to_list=FALSE, mak
   return(sc)
 }
 
-#' Get one or more lists from the misc slot of the Seurat object.
-#' 
-#' @param sc A Seurat sc object.
-#' @param lists One or more list names. If NULL, return all lists defined in the misc slot.
-#' @param lists_slot From which slot of the Seurat misc slot should the lists be pulled. If NULL, pull from the top level of the Seurat misc slot.
-#' @return Lists saved in the misc slot of the Seurat object.
+#' Get Lists from Seurat Misc Slot
+#'
+#' Retrieves one or more named lists from the misc slot of a Seurat object.
+#'
+#' @param sc A Seurat object.
+#' @param lists Character vector or \code{NULL}. Names of lists to retrieve.
+#'   If \code{NULL}, returns all lists. Default is \code{NULL}.
+#' @param lists_slot Character or \code{NULL}. Name of the misc slot containing
+#'   the lists. If \code{NULL}, retrieves from the top level of misc.
+#'
+#' @return If a single list is requested, returns that list directly.
+#'   If multiple lists are requested, returns a named list of lists.
+#'
+#' @importFrom Seurat Misc
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Get a specific list
+#' markers <- ScLists(seurat_obj, "markers", lists_slot = "gene_lists")
+#'
+#' # Get all lists
+#' all_lists <- ScLists(seurat_obj, lists_slot = "gene_lists")
+#' }
 ScLists = function(sc, lists=NULL, lists_slot=NULL) {
   stored_lists = Seurat::Misc(sc, slot=lists_slot)
   assertthat::assert_that(!is.null(stored_lists), 
@@ -503,44 +833,104 @@ ScLists = function(sc, lists=NULL, lists_slot=NULL) {
   }
 }
 
-#' Adds colours for one or more categories to the misc slot of the Seurat object.
-#' 
-#' @param sc A Seurat sc object.
-#' @param colours A named list with one or more lists with colours for categories (named or unnamed vectors only).
-#' @param colours_slot Name of the misc slot which stores the colours. Default is 'colour_lists'.
-#' @param add_to_list When a colour list with this name already exists, add to the colour list instead of overwriting the list. Default is FALSE.
-#' @param make_unique Make colour lists unique (after they were stored in the misc slot). Default is FALSE.
-#' @return A Seurat sc object with updated colour list(s).
+#' Add Colours to Seurat Object
+#'
+#' Stores colour palettes for categorical variables in the misc slot of a
+#' Seurat object. This is a wrapper around \code{\link{ScAddLists}}.
+#'
+#' @param sc A Seurat object.
+#' @param colours Named list. Colour palettes where names are category values
+#'   and values are colour codes.
+#' @param colours_slot Character. Name of the misc slot to use.
+#'   Default is \code{"colour_lists"}.
+#' @param add_to_list Logical. If \code{TRUE}, append to existing palettes.
+#'   Default is \code{FALSE}.
+#' @param make_unique Logical. If \code{TRUE}, remove duplicate colour entries.
+#'   Default is \code{FALSE}.
+#'
+#' @return The Seurat object with updated colour palettes.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Add cluster colours
+#' cluster_colours <- list(
+#'   seurat_clusters = c("0" = "red", "1" = "blue", "2" = "green")
+#' )
+#' seurat_obj <- ScAddColours(seurat_obj, cluster_colours)
+#' }
 ScAddColours = function(sc, colours, colours_slot='colour_lists', add_to_list=FALSE, make_unique=FALSE) {
   return(ScAddLists(sc, colours, lists_slot=colours_slot, add_to_list=add_to_list, make_unique=make_unique))
 }
 
-#' Gets colours for one or more categories from the misc slot of the Seurat object.
-#' 
-#' @param sc A Seurat sc object.
-#' @param categories One or more category names. If NULL, return all categories defined in the colours slot.
-#' @param colours_slot Name of the misc slot which stores the colours. Default is 'colour_lists'.
-#' @return Colour lists for categories.
+#' Get Colours from Seurat Object
+#'
+#' Retrieves colour palettes for one or more categories from the misc slot
+#' of a Seurat object.
+#'
+#' @param sc A Seurat object.
+#' @param categories Character vector or \code{NULL}. Category names to retrieve
+#'   colours for. If \code{NULL}, returns all colour palettes.
+#' @param colours_slot Character. Name of the misc slot containing colours.
+#'   Default is \code{"colour_lists"}.
+#'
+#' @return Named character vector(s) of colours.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Get colours for clusters
+#' colours <- ScColours(seurat_obj, "seurat_clusters")
+#' }
 ScColours = function(sc, categories=NULL, colours_slot="colour_lists") {
   return(ScLists(sc, lists=categories, lists_slot=colours_slot))
 }
 
-#' Gets the name of the default dimensionality reduction for an assay.
-#' 
-#' @param sc A Seurat sc object.
-#' @param assay The assay for which to pull the name of the dimensionality reduction. If NULL, will be the default assay.
-#' @return The name of the default dimensionality reduction for the assay.
+#' Get Default Dimensionality Reduction
+#'
+#' Retrieves the name of the default dimensionality reduction for an assay.
+#'
+#' @param sc A Seurat object.
+#' @param assay Character or \code{NULL}. Assay to query. If \code{NULL},
+#'   uses the default assay.
+#'
+#' @return Character string with the name of the default dimensionality reduction.
+#'
+#' @importFrom Seurat DefaultAssay
+#' @importFrom SeuratObject Misc
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' default_red <- DefaultReduct(seurat_obj, assay = "RNA")
+#' }
 DefaultReduct = function(sc, assay=NULL) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
   return(SeuratObject::Misc(sc[[assay]], slot="default.dimred"))
 }
 
+#' Set Default Dimensionality Reduction
+#'
 #' Sets the name of the default dimensionality reduction for an assay.
-#' 
-#' @param sc A Seurat sc object.
-#' @param assay The assay for which to set the name of the dimensionality reduction. If NULL, will be the default assay.
-#' @return A Seurat sc object with updated default dimensionality reduction for the assay.
+#'
+#' @param sc A Seurat object.
+#' @param assay Character or \code{NULL}. Assay to modify. If \code{NULL},
+#'   uses the default assay.
+#' @param value Character. Name of the dimensionality reduction to set as default.
+#'
+#' @return The Seurat object with updated default dimensionality reduction.
+#'
+#' @importFrom Seurat DefaultAssay
+#' @importFrom SeuratObject Misc
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' DefaultReduct(seurat_obj, assay = "RNA") <- "pca"
+#' }
 "DefaultReduct<-" <- function(sc, assay=NULL, value) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -548,22 +938,50 @@ DefaultReduct = function(sc, assay=NULL) {
   return(sc)
 }
 
-#' Gets the name of the default visualization method for an assay.
-#' 
-#' @param sc A Seurat sc object.
-#' @param assay The assay for which to pull the name of the default visualization method. If NULL, will be the default assay.
-#' @return The name of the default visualization method for the assay.
+#' Get Default Visualization Method
+#'
+#' Retrieves the name of the default visualization method (e.g., "umap", "tsne")
+#' for an assay.
+#'
+#' @param sc A Seurat object.
+#' @param assay Character or \code{NULL}. Assay to query. If \code{NULL},
+#'   uses the default assay.
+#'
+#' @return Character string with the name of the default visualization method.
+#'
+#' @importFrom Seurat DefaultAssay
+#' @importFrom SeuratObject Misc
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' default_viz <- DefaultVisualization(seurat_obj)
+#' }
 DefaultVisualization = function(sc, assay=NULL) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
   return(SeuratObject::Misc(sc[[assay]], slot="default.visualization"))
 }
 
+#' Set Default Visualization Method
+#'
 #' Sets the name of the default visualization method for an assay.
-#' 
-#' @param sc A Seurat sc object.
-#' @param assay The assay for which to set the name of the visualization method. If NULL, will be the default assay.
-#' @return A Seurat sc object with updated default visualization method for the assay.
+#'
+#' @param sc A Seurat object.
+#' @param assay Character or \code{NULL}. Assay to modify. If \code{NULL},
+#'   uses the default assay.
+#' @param value Character. Name of the visualization method to set as default.
+#'
+#' @return The Seurat object with updated default visualization method.
+#'
+#' @importFrom Seurat DefaultAssay
+#' @importFrom SeuratObject Misc
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' DefaultVisualization(seurat_obj) <- "umap"
+#' }
 "DefaultVisualization<-" <- function(sc, assay=NULL, value) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -571,6 +989,17 @@ DefaultVisualization = function(sc, assay=NULL) {
   return(sc)
 }
 
+#' Format Chunk Option
+#'
+#' Formats a single knitr/quarto chunk option as a YAML comment.
+#'
+#' @param name Character. Option name.
+#' @param value Any. Option value (logical, character, numeric, or list).
+#'
+#' @return Character string with the formatted chunk option.
+#'
+#' @keywords internal
+#' @export
 FormatChunkOption = function(name, value) {
     # Convert value to correct format
     if (is.logical(value)) {
@@ -589,6 +1018,23 @@ FormatChunkOption = function(name, value) {
     return(paste0("#| ", name, ": ", value))
 }
 
+#' Generate Code Chunks
+#'
+#' Recursively generates knitr/quarto code chunks from a nested list of
+#' objects (plots or tables).
+#'
+#' @param olist A list of objects to generate chunks for.
+#' @param olist_name Character or \code{NULL}. Name of the list variable.
+#'   Usually auto-detected.
+#' @param indices Integer vector. Internal parameter for tracking recursion.
+#' @param chunk_label Character or \code{NULL}. Label for the chunk.
+#' @param chunk_caption Character or \code{NULL}. Caption for the chunk.
+#' @param chunk_opts List or \code{NULL}. Additional chunk options.
+#'
+#' @return Character vector of chunk code.
+#'
+#' @keywords internal
+#' @export
 GenerateChunks = function(olist, olist_name=NULL, indices=c(), chunk_label=NULL, chunk_caption=NULL, chunk_opts=NULL) {
     # Note: This function will recurse through a nested list. All arguments except for 'indices' 
     # only reflect the current recursion. The 'indices' argument is used to track the recursion process so
@@ -698,49 +1144,98 @@ GenerateChunks = function(olist, olist_name=NULL, indices=c(), chunk_label=NULL,
 ######################
 ######################
 
-#' Tests if values can be converted to numbers.
-#' 
-#' @param x A vector with values.
-#' @return TRUE if they can be converted otherwise FALSE.
+#' Test if Values Convert to Numbers
+#'
+#' Checks whether values can be converted to numeric type.
+#'
+#' @param x A vector of values.
+#'
+#' @return Logical vector indicating which values can be converted.
+#'
+#' @export
+#'
+#' @examples
+#' converts_to_number(c("1", "2.5", "abc"))
+#' # Returns: c(TRUE, TRUE, FALSE)
 converts_to_number = function(x) {
   return(suppressWarnings(!is.na(as.numeric(na.omit(x)))))
 }
 
-#' Tests if values can be converted to logical.
-#' 
-#' @param x A vector with values.
-#' @return TRUE if they can be converted otherwise FALSE.
+#' Test if Values Convert to Logical
+#'
+#' Checks whether values can be converted to logical type.
+#'
+#' @param x A vector of values.
+#'
+#' @return Logical vector indicating which values can be converted.
+#'
+#' @export
+#'
+#' @examples
+#' converts_to_logical(c("TRUE", "FALSE", "abc"))
+#' # Returns: c(TRUE, TRUE, FALSE)
 converts_to_logical = function(x) {
   return(suppressWarnings(!is.na(as.logical(na.omit(x)))))
 }
 
 
-#' Given a vector, report at most n elements as concatenated string.
-#' 
+#' Format First N Elements as String
+#'
+#' Given a vector, reports at most n elements as a concatenated string,
+#' adding "..." if there are more elements.
+#'
 #' @param x A vector.
-#' @param n Number of elements to report at most.
-#' @param sep Separator for string concatenation.
-#' @return A string with at most n elements to concatenated.
+#' @param n Integer. Maximum number of elements to include. Default is \code{5}.
+#' @param sep Character. Separator for concatenation. Default is \code{","}.
+#'
+#' @return A character string with at most n elements concatenated.
+#'
+#' @export
+#'
+#' @examples
+#' first_n_elements_to_string(letters, n = 3)
+#' # Returns: "a,b,c,..."
 first_n_elements_to_string = function(x, n=5, sep=",") {
   s = paste(x[1:min(n,length(x))], collapse=sep)
   if (length(x) > n) s = paste(s, "...", sep=sep)
   return(s)
 }
 
-#' Get scrnaseq git repository version
-#' 
-#' @param path_to_git: Path to git repository.
-#' @return The git repository version.
+#' Get Git Repository Version
+#'
+#' Retrieves the current commit SHA of a git repository.
+#'
+#' @param path_to_git Character. Path to the git repository.
+#'
+#' @return Character string with the commit SHA, or \code{"NA"} if not available.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' version <- GitRepositoryVersion(".")
+#' }
 GitRepositoryVersion = function(path_to_git) {
   repo = tryCatch({system(paste0("git --git-dir=", path_to_git, "/.git rev-parse HEAD"), intern=TRUE)},
                   warning = function(war) {return("NA")})
   return(repo)
 }
 
-#' Get container information (if available)
-#' 
-#' @return A string with container git name, container git commit id and container build date.
-ContainerVersion = function(path_to_git) {#
+#' Get Container Version Information
+#'
+#' Retrieves container information from environment variables if the code
+#' is running inside a container.
+#'
+#' @return Character string with container git name, commit ID, and build date,
+#'   or \code{"NA"} if not running in a container.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' container_info <- ContainerVersion()
+#' }
+ContainerVersion = function(path_to_git) {
   container_info = c(Sys.getenv("CONTAINER_GIT_NAME"), Sys.getenv("CONTAINER_VERSION"), Sys.getenv("CONTAINER_GIT_COMMIT_ID"), Sys.getenv("CONTAINER_BUILD_DATE"))
   container_info = container_info[nchar(container_info)>0]
   if (length(container_info) > 0) {
@@ -751,10 +1246,24 @@ ContainerVersion = function(path_to_git) {#
   return(container_info)
 }
 
-#' Report session info in a table
-#' 
-#' @param path_to_git: Path to git repository.
-#' @return The session info as table.
+#' Get scrnaseq Session Information
+#'
+#' Collects comprehensive session information for reproducibility, including
+#' git version, container info, R version, and loaded packages.
+#'
+#' @param path_to_git Character. Path to the scrnaseq2 git repository.
+#'   Default is \code{"."}.
+#'
+#' @return A matrix with two columns (Name, Value) containing session information.
+#'
+#' @importFrom sessioninfo package_info
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' session_info <- ScrnaseqSessionInfo()
+#' knitr::kable(session_info)
+#' }
 ScrnaseqSessionInfo = function(path_to_git=".") {
   out = matrix(NA, nrow=0, ncol=2)
   colnames(out) = c("Name", "Value")
@@ -783,13 +1292,30 @@ ScrnaseqSessionInfo = function(path_to_git=".") {
   return(out)
 }
 
-#' Subsamples barcodes of a Seurat v5 object.
-#' 
+#' Subsample Cells from Seurat Object
+#'
+#' Randomly samples a specified number of cells from a Seurat object,
+#' optionally stratified by a grouping variable.
+#'
 #' @param sc A Seurat v5 object.
-#' @param n Total number of barcodes to subsample. Default is 500.
-#' @param seed Seed for sampling. Default is 1.
-#' @param group If not NULL, sample the same number of barcodes from each group defined by this barcode metadata column. The number of barcodes per group is then the total number of barcodes divided by the number of groups. Default is NULL.
-#' @return Sampled barcodes.
+#' @param n Integer. Total number of barcodes to sample. Default is \code{500}.
+#' @param seed Integer. Random seed for reproducibility. Default is \code{1}.
+#' @param group Character or \code{NULL}. If provided, samples equally from each
+#'   group defined by this barcode metadata column. Default is \code{NULL}.
+#'
+#' @return Character vector of sampled barcode names.
+#'
+#' @importFrom purrr map flatten
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Sample 500 cells total
+#' sampled_cells <- SubsampleSC(seurat_obj, n = 500)
+#'
+#' # Sample equally from each cluster
+#' sampled_cells <- SubsampleSC(seurat_obj, n = 500, group = "seurat_clusters")
+#' }
 SubsampleSC = function(sc, n=500, seed=1, group=NULL) {
   barcode_metadata = sc[[]]
   barcodes = rownames(barcode_metadata)
@@ -811,38 +1337,87 @@ SubsampleSC = function(sc, n=500, seed=1, group=NULL) {
 
 
 
-#' Returns the names of an object.
-#' 
+#' Get Named Vector of Names
+#'
+#' Returns a named vector where both names and values are the original names.
+#'
 #' @param x A list or vector with names.
-#' @return A named vector with names as names and names as values.
+#'
+#' @return A named vector with names as both names and values.
+#'
+#' @export
+#'
+#' @examples
+#' list_names(list(a = 1, b = 2))
+#' # Returns: c(a = "a", b = "b")
 list_names = function(x) {
   return(setNames(names(x), names(x)))
 }
 
-#' Returns a vector with its values as names.
-#' 
+#' Set Values as Names
+#'
+#' Returns a vector with its values used as names.
+#'
 #' @param x A vector.
+#'
 #' @return A vector with its values as names.
+#'
+#' @export
+#'
+#' @examples
+#' values_to_names(c("a", "b", "c"))
+#' # Returns: c(a = "a", b = "b", c = "c")
 values_to_names = function(x) {
   return(setNames(x,x))
 }
 
-#' Returns the indices of an object.
-#' 
+#' Get Named Vector of Indices
+#'
+#' Returns a named vector of indices, where names are from the input and
+#' values are sequential integers.
+#'
 #' @param x A list or vector with names.
+#'
 #' @return A named vector with names as names and indices as values.
+#'
+#' @export
+#'
+#' @examples
+#' list_indices(list(a = 1, b = 2, c = 3))
+#' # Returns: c(a = 1, b = 2, c = 3)
 list_indices = function(x) {
   return(setNames(seq(x), names(x)))
 }
 
-#' Generate colours based on a palette. If the requested number exceeds the number of colours in the palette, then the palette is reused but with a different alpha.
-#' 
-#' @param num_colours The number of colours to generate.
-#' @param names A character vector with names to be assigned to the colour values. If NULL, no names. 
-#' @param palette A palette function for generating the colours.
-#' @param palette_options List of additional arguments (beside alpha) to pass on to the palette function.
-#' @param alphas Alpha value(s) to use. If the number of colours exceeds the palette, multiple alpha value are used to generate more colours.
-#' @return The generated colours.
+#' Generate Colours from a Palette
+#'
+#' Generates a specified number of colours from a palette function.
+#' If more colours are needed than the palette provides, uses different
+#' alpha values to extend the palette.
+#'
+#' @param num_colours Integer. Number of colours to generate.
+#' @param names Character vector or \code{NULL}. Names to assign to colours.
+#' @param palette Character. Name of the palette function (e.g.,
+#'   \code{"ggsci::pal_igv"}). Default is \code{"ggsci::pal_igv"}.
+#' @param palette_options List. Additional arguments (besides alpha) to pass
+#'   to the palette function.
+#' @param alphas Numeric vector. Alpha values to use. If more colours are
+#'   needed than the palette provides, subsequent alpha values are used.
+#'   Default is \code{c(1, 0.7, 0.3)}.
+#'
+#' @return Character vector of colour codes.
+#'
+#' @importFrom purrr flatten_chr map
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Generate 10 colours
+#' colours <- GenerateColours(10)
+#'
+#' # Generate named colours
+#' colours <- GenerateColours(3, names = c("A", "B", "C"))
+#' }
 GenerateColours = function(num_colours, names=NULL, palette="ggsci::pal_igv", alphas=c(1,0.7,0.3), palette_options=list()) {
   palette = tryCatch({eval(parse(text=palette))}, error=function(cond) return(NULL))
   if (is.null(palette)) stop("GenerateColours: Could not find specified palette!")
@@ -862,9 +1437,21 @@ GenerateColours = function(num_colours, names=NULL, palette="ggsci::pal_igv", al
   return(colours)
 }
 
-#' Report parameters in a table.
-#' @param params The parameter list.
-#' @return A table with parameters for printing.
+#' Format Parameters as Table
+#'
+#' Converts a parameter list to a two-column table for display.
+#'
+#' @param params Named list. Parameters to format.
+#'
+#' @return A matrix with columns "Name" and "Value".
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' params <- list(a = 1, b = c(1, 2, 3), c = list(x = 1, y = 2))
+#' knitr::kable(ScrnaseqParamsInfo(params))
+#' }
 ScrnaseqParamsInfo = function(params) { 
   
   # Initialize output table
@@ -895,10 +1482,16 @@ ScrnaseqParamsInfo = function(params) {
   return(out)
 }
 
-# Checks if the parameters of the scrnaseq workflow are valid and converts them if needed.
+#' Check scrnaseq Workflow Parameters
 #'
-#' @param param The parameter list.
-#' @return Returns a list with error messages.
+#' Validates and converts parameters for the scrnaseq workflow.
+#'
+#' @param param Named list. Parameters to validate.
+#'
+#' @return The validated parameter list with an \code{error_messages} element
+#'   if any validation errors occurred.
+#'
+#' @export
 check_parameters_scrnaseq = function(param) {
   error_messages = c()
   param[["error_messages"]] = NULL
@@ -1371,9 +1964,14 @@ check_parameters_scrnaseq = function(param) {
   # Check
 }
 
-# Checks if python is valid.
+#' Check Python Availability
 #'
-#' @return Returns a list with error messages.
+#' Verifies that Python is available and required modules are installed.
+#'
+#' @return Character vector of error messages, or empty vector if all checks pass.
+#'
+#' @importFrom reticulate py_available py_config py_module_available
+#' @export
 check_python = function() {
   error_messages = c()
   
@@ -1390,9 +1988,14 @@ check_python = function() {
   return(error_messages)
 }
 
-# Checks if pandoc is valid.
+#' Check Pandoc Availability
 #'
-#' @return Returns a list with error messages.
+#' Verifies that Pandoc is available for document rendering.
+#'
+#' @return Character vector of error messages, or empty vector if Pandoc is found.
+#'
+#' @importFrom rmarkdown find_pandoc
+#' @export
 check_pandoc = function() {
   error_messages = c()
   
@@ -1403,10 +2006,17 @@ check_pandoc = function() {
   return(error_messages)
 }
 
-#' Checks if enrichR is live.
+#' Check EnrichR Availability
 #'
-#' @param databases The enrichR databases to use.
-#' @return Returns a list with error messages.
+#' Verifies that EnrichR is available and specified databases exist.
+#'
+#' @param databases Character vector. EnrichR databases to check.
+#' @param site Character. EnrichR site to use. Default is \code{"Enrichr"}.
+#'
+#' @return Character vector of error messages, or empty vector if all checks pass.
+#'
+#' @importFrom enrichR setEnrichrSite listEnrichrDbs
+#' @export
 check_enrichr = function(databases, site="Enrichr") {
   if(is.null(databases) || length(databases)==0) return(c())
   
@@ -1432,18 +2042,31 @@ check_enrichr = function(databases, site="Enrichr") {
   return(c())
 }
 
-#' Checks if packages are installed.
+#' Check if Packages are Installed
 #'
-#' @param packages A character vector with package names.
-#' @return Logical vector with TRUE for installed and FALSE for not installed
+#' Checks whether specified R packages are installed.
+#'
+#' @param packages Character vector. Package names to check.
+#'
+#' @return Logical vector indicating which packages are installed.
+#'
+#' @export
+#'
+#' @examples
+#' packages_installed(c("ggplot2", "nonexistent_package"))
 packages_installed = function(packages) {
   return(packages %in% installed.packages()[ , "Package"])
 }
 
 
-#' Checks if all packages required for the scrnaseq workflow are installed.
+#' Check Required Packages for scrnaseq Workflow
 #'
-#' @return Returns a list with error messages.
+#' Checks that all required packages for the scrnaseq workflow are installed.
+#'
+#' @return Character vector of error messages, or empty vector if all packages
+#'   are installed.
+#'
+#' @export
 check_installed_packages_scrnaseq = function() {
   required_packages = c("Seurat", "ggplot2", "patchwork", "magrittr",
                         "reticulate", "enrichR", "future", "knitr",
@@ -1461,16 +2084,24 @@ check_installed_packages_scrnaseq = function() {
   }
 }
 
-#' Checks if Ensembl is available so that annotation and cell cycle markers can be downloaded.
+#' Check Ensembl Availability
 #'
-#' @param biomart Biomart database name.
-#' @param dataset Dataset name.
-#' @param mirror Ensembl mirror.
-#' @param version Ensembl version.
-#' @param attributes The attributes to download.
-#' @param file_annot File with existing annotation to use.
-#' @param file_cc_markers File with existing cell cycle markers to use.
-#' @return Returns a list with error messages.
+#' Checks whether Ensembl is available for downloading annotations and
+#' cell cycle markers.
+#'
+#' @param biomart Character. BioMart database name.
+#' @param dataset Character. Dataset name.
+#' @param mirror Character. Ensembl mirror to use.
+#' @param version Character. Ensembl version.
+#' @param attributes Character vector. Attributes to verify.
+#' @param file_annot Character or \code{NULL}. Path to existing annotation file.
+#' @param file_cc_markers Character or \code{NULL}. Path to existing cell cycle
+#'   markers file.
+#'
+#' @return Character vector of error messages, or empty vector if all checks pass.
+#'
+#' @importFrom biomaRt listAttributes
+#' @export
 check_ensembl = function(biomart, dataset, mirror, version, attributes, file_annot=NULL, file_cc_markers=NULL) {
   error_messages = c()
   
@@ -1504,8 +2135,15 @@ check_ensembl = function(biomart, dataset, mirror, version, attributes, file_ann
   return(error_messages)
 }
 
-#' On error, R will not start a debugger but just print a traceback. For non-interactive use.
-#' @return None.
+#' Set Error Handler to Print Traceback
+#'
+#' Configures R to print a traceback on error instead of starting a debugger.
+#' Useful for non-interactive use.
+#'
+#' @return Invisibly returns \code{NULL}.
+#'
+#' @importFrom rlang caller_env trace_back
+#' @export
 on_error_just_print_traceback = function(x) {
   options(rlang_trace_top_env = rlang::caller_env())
   options(error = function() {
@@ -1515,8 +2153,14 @@ on_error_just_print_traceback = function(x) {
   return(invisible(NULL))
 }
 
-#' On error, R will start a debugger on the terminal. For interactive use without X11.
-#' @return None.
+#' Set Error Handler to Start Terminal Debugger
+#'
+#' Configures R to start a debugger on the terminal on error.
+#' Useful for interactive use without X11.
+#'
+#' @return Invisibly returns \code{NULL}.
+#'
+#' @export
 on_error_start_terminal_debugger = function(x) {
   options(error = function() {
     sink()
@@ -1525,17 +2169,36 @@ on_error_start_terminal_debugger = function(x) {
   return(invisible(NULL))
 }
 
-#' On error, R will run the default debugging process. Default.
-#' @return None.
+#' Set Default Error Handler
+#'
+#' Keeps R's default error handling behavior.
+#'
+#' @return Invisibly returns \code{NULL}.
+#'
+#' @export
 on_error_default_debugging = function(x) {
   return(invisible(NULL))
 }
 
-#' Wrapper around citep and citet. Takes care of connection problems.
+#' Cite a Reference
 #'
-#' @param reference Argument for citep or citet.
-#' @param type Use 'citet' or 'citep'.
-#' @return Returns the output of citep or citet.
+#' Wrapper around \code{knitcitations::citet} and \code{knitcitations::citep}
+#' with error handling for connection problems.
+#'
+#' @param reference Reference to cite (DOI, URL, or BibTeX key).
+#' @param type Character. Citation type: \code{"citet"} for textual citation
+#'   or \code{"citep"} for parenthetical citation. Default is \code{"citet"}.
+#'
+#' @return Formatted citation string, or the original reference if citation
+#'   fails.
+#'
+#' @importFrom knitcitations citet citep
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' Cite("10.1038/s41592-019-0654-x")
+#' }
 Cite = function(reference, type="citet") {
   formatted = tryCatch({
     if (type=="citet") knitcitations::citet(reference) else knitcitations::citep(reference)
