@@ -1,14 +1,49 @@
-#' Our plotting style.
+#' Add Custom Plot Style
 #'
-#' @param title The plot title.
-#' @param col A vector of colours to use.
-#' @param fill A vector of fill colours to use.
-#' @param legend_title The legend title.
-#' @param legend_position The legend position.
-#' @param xlab The title of the x-axis.
-#' @param ylab The title of the y-axis.
-#' @param font_size The base font size. Default is 11.
-#' @return None, add as theme.
+#' Applies a consistent, clean plotting style to ggplot2 plots. This function
+#' returns a list of ggplot2 theme elements and scales that can be added to
+#' any ggplot.
+#'
+#' @param title Character or \code{NULL}. Plot title. If empty string \code{""},
+#'   the title is hidden. Default is \code{NULL} (no change).
+#' @param col Character vector or \code{NULL}. Colors for \code{colour} aesthetic.
+#'   Default is \code{NULL} (no change).
+#' @param fill Character vector or \code{NULL}. Colors for \code{fill} aesthetic.
+#'   Default is \code{NULL} (no change).
+#' @param legend_title Character or \code{NULL}. Legend title. If empty string
+#'   \code{""}, the legend title is hidden. Default is \code{NULL} (no change).
+#' @param legend_position Character or \code{NULL}. Legend position (e.g.,
+#'   \code{"right"}, \code{"bottom"}, \code{"none"}). Default is \code{NULL}.
+#' @param xlab Character or \code{NULL}. X-axis label. If empty string \code{""},
+#'   the label is hidden. Default is \code{NULL} (no change).
+#' @param ylab Character or \code{NULL}. Y-axis label. If empty string \code{""},
+#'   the label is hidden. Default is \code{NULL} (no change).
+#' @param font_size Numeric. Base font size for the theme. Default is \code{11}.
+#'
+#' @return A list of ggplot2 theme elements and scales that can be added to a plot.
+#'
+#' @importFrom ggplot2 theme_light theme element_blank ggtitle scale_colour_manual
+#'   scale_fill_manual labs xlab ylab
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' library(ggplot2)
+#'
+#' # Basic usage
+#' ggplot(mtcars, aes(mpg, wt)) +
+#'   geom_point() +
+#'   AddPlotStyle(title = "MPG vs Weight")
+#'
+#' # With custom colors
+#' ggplot(iris, aes(Sepal.Length, Sepal.Width, color = Species)) +
+#'   geom_point() +
+#'   AddPlotStyle(
+#'     title = "Iris Data",
+#'     col = c("setosa" = "red", "versicolor" = "blue", "virginica" = "green"),
+#'     legend_position = "bottom"
+#'   )
+#' }
 AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, legend_position=NULL, xlab=NULL, ylab=NULL, font_size=11) {
   style = list(
     # Basic theme
@@ -34,7 +69,7 @@ AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, lege
   # Legend title
   if (!is.null(legend_title)) {
     if (nchar(legend_title) > 0) {
-      style = c(style, list(labs(color=legend_title, fill=legend_title)))
+      style = c(style, list(ggplot2::labs(color=legend_title, fill=legend_title)))
     } else {
       style = c(style, list(ggplot2::theme(legend.title=element_blank())))
     }
@@ -63,13 +98,52 @@ AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, lege
   return(style)
 }
 
-#' Helper function to generate plot captions.
+#' Generate Plot Captions
 #'
-#' @param plot_names A list of plot names.
-#' @param assay_names A list of assay names that should be recognized in the plot names as such.
-#' @param split If not NULL, split plot names to generate a X vs Y caption.
-#' @param capitalize If TRUE, capitalize the first letter of the caption.
-#' @return A list of captions.
+#' A helper function to generate human-readable captions for plots based on
+#' column/variable names. Recognizes common single-cell QC metric patterns
+#' and generates descriptive captions.
+#'
+#' @param plot_names Character vector. Names of plots/variables to generate
+#'   captions for.
+#' @param assay_names Character vector or \code{NULL}. Assay names that should
+#'   be recognized in the plot names. If found, the assay is added to the caption.
+#' @param split Character or \code{NULL}. If provided, split plot names on this
+#'   delimiter to generate "X vs Y" style captions.
+#' @param capitalize Logical. If \code{TRUE}, capitalize the first letter of
+#'   each caption. Default is \code{TRUE}.
+#'
+#' @return A character vector of captions corresponding to the input plot names.
+#'
+#' @details
+#' Recognized patterns and their captions:
+#' \itemize{
+#'   \item \code{nCount_*} → "number of counts"
+#'   \item \code{nFeature_*} → "number of features"
+#'   \item \code{pMito_*} → "percent counts in mitochondrial genes"
+#'   \item \code{S.Score} → "S phase score"
+#'   \item \code{G2M.Score} → "G2M phase score"
+#'   \item \code{Phase} → "cell cycle phase"
+#' }
+#'
+#' @importFrom dplyr case_when
+#' @importFrom purrr map map_lgl map_chr
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Generate captions for QC metrics
+#' captions <- GeneratePlotCaptions(
+#'   c("nCount_RNA", "nFeature_RNA", "pMito_RNA"),
+#'   assay_names = "RNA"
+#' )
+#'
+#' # Generate comparison captions
+#' captions <- GeneratePlotCaptions(
+#'   c("nCount_RNA__nFeature_RNA"),
+#'   split = "__"
+#' )
+#' }
 GeneratePlotCaptions = function(plot_names, assay_names=NULL, split=NULL, capitalize=TRUE) {
   if (length(plot_names) == 0) return(NULL)
 
@@ -166,18 +240,51 @@ GeneratePlotCaptions = function(plot_names, assay_names=NULL, split=NULL, capita
   return(captions)
 }
 
-#' Plots barcode metadata for QC. Numeric columns will plotted as violin plots and non-numeric
-#' columns will be plotted as bar plots.
+#' Plot Barcode QC Metrics
 #'
-#' @param sc Seurat v5 object.
-#' @param qc Barcode metadata columns to plot.
-#' @param filter A nested list where the first level is the barcode metadata column and the second levels 
-#' contains filters per dataset. Filters for numeric columns must numeric vectors with min and max. Filter
-#' for character/factor columns must be character vectors with the values that should be kept. 
-#' level contains the filter values
-#' @param assay The assay of the barcodes. If NULL, defaults to default assay of the Seurat object.
-#' @param log10 If set to TRUE, show the y-axis in log10. Can also be a regular expression to apply only to specific columns. Only numeric columns will be affected.
-#' @return A list of ggplot2 objects.
+#' Creates violin plots for numeric QC metrics and bar plots for categorical
+#' QC metrics, with optional filter threshold annotations.
+#'
+#' @param sc A Seurat v5 object.
+#' @param qc Character vector. Barcode metadata column names to plot.
+#' @param filter Named list or \code{NULL}. Nested list specifying filter thresholds.
+#'   First level: dataset names; second level: metric names. Numeric metrics
+#'   should have length-2 vectors \code{c(min, max)}. Categorical metrics should
+#'   have character vectors of values to keep.
+#' @param assay Character or \code{NULL}. Assay to use for barcode selection.
+#'   If \code{NULL}, uses the default assay.
+#' @param log10 Logical or character. If \code{TRUE}, apply log10 transformation
+#'   to y-axis. Can also be a regex pattern to apply only to matching columns.
+#'   Only affects numeric columns.
+#'
+#' @return A named list of ggplot2 objects, one per QC metric.
+#'
+#' @details
+#' For numeric metrics, filter thresholds are shown as horizontal line segments:
+#' \itemize{
+#'   \item Dashed lines for minimum thresholds
+#'   \item Dotted lines for maximum thresholds
+#' }
+#'
+#' For categorical metrics, filtered-out categories are shown with reduced opacity.
+#'
+#' @importFrom Seurat VlnPlot
+#' @importFrom SeuratObject DefaultAssay Cells
+#' @importFrom ggplot2 geom_bar scale_x_discrete scale_color_manual scale_alpha_manual
+#'   annotate theme element_text
+#' @importFrom purrr map map_lgl pmap
+#' @importFrom dplyr select count group_by mutate
+#' @importFrom tidyr pivot_longer
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Plot QC metrics with filter thresholds
+#' filter <- list(
+#'   Sample1 = list(nCount_RNA = c(500, 50000), pMito_RNA = c(NA, 20))
+#' )
+#' plots <- PlotBarcodeQC(seurat_obj, qc = c("nCount_RNA", "pMito_RNA"), filter = filter)
+#' }
 PlotBarcodeQC = function(sc, qc, filter=NULL, assay=NULL, log10=FALSE) {
   # Get assay and barcodes
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -280,15 +387,44 @@ PlotBarcodeQC = function(sc, qc, filter=NULL, assay=NULL, log10=FALSE) {
   return(plist)
 }
 
-#' Plots two barcode metadata columns for QC. Supports only numeric columns.
+#' Plot Correlated Barcode QC Metrics
 #'
-#' @param sc Seurat v5 object.
-#' @param qc Pairs of barcode metadata columns to plot.
-#' @param filter A nested list where the first level is the barcode metadata column and the second levels 
-#' contains filters per dataset. Filters for numeric columns must numeric vectors with min and max. Filter
-#' @param assay The assay of the barcodes. If NULL, defaults to default assay of the Seurat object.
-#' for character/factor columns must be character vectors with the values that should be kept.
-#' @return A list of ggplot2 objects.
+#' Creates scatter plots comparing pairs of numeric barcode metadata columns,
+#' useful for identifying relationships between QC metrics.
+#'
+#' @param sc A Seurat v5 object.
+#' @param qc List of character vectors. Each element should be a length-2 vector
+#'   specifying a pair of columns to compare.
+#' @param filter Named list or \code{NULL}. Filter thresholds in the same format
+#'   as \code{\link{PlotBarcodeQC}}. Thresholds are shown as vertical and
+#'   horizontal lines.
+#' @param assay Character or \code{NULL}. Assay to use. If \code{NULL}, uses
+#'   the default assay.
+#'
+#' @return A named list of ggplot2 objects, one per pair of metrics.
+#'   Names are formatted as \code{"metric1__metric2"}.
+#'
+#' @details
+#' Only numeric columns are supported. Filter thresholds are displayed as
+#' dashed (minimum) or dotted (maximum) lines.
+#'
+#' @importFrom Seurat FeatureScatter
+#' @importFrom SeuratObject DefaultAssay Cells
+#' @importFrom ggplot2 geom_vline geom_hline
+#' @importFrom purrr flatten map map_lgl map_dfr pmap
+#' @importFrom dplyr select
+#' @importFrom tidyr pivot_longer
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Compare nCount vs nFeature
+#' plots <- PlotBarcodeQCCor(
+#'   seurat_obj,
+#'   qc = list(c("nCount_RNA", "nFeature_RNA"))
+#' )
+#' }
 PlotBarcodeQCCor = function(sc, qc, filter=NULL, assay=NULL) {
   # Get assay and barcodes
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -351,13 +487,43 @@ PlotBarcodeQCCor = function(sc, qc, filter=NULL, assay=NULL) {
   return(plist)
 }
 
-#' Plots the variable features for each layer (dataset).
+#' Plot Variable Features
 #'
-#' @param sc Seurat v5 object.
-#' @param method Method used to find variable features. Can be: 'vst' (Seurat standard), 'sct' (SCTransform) or 'scran' (Scran).
-#' @param assay Assay. If NULL, defaults to default assay of the Seurat object.
-#' @param top The top genes that should be labeled.
-#' @return A list of ggplot2 objects.
+#' Creates scatter plots showing the relationship between mean expression and
+#' variance/dispersion for each gene, highlighting highly variable features.
+#'
+#' @param sc A Seurat v5 object.
+#' @param method Character. Method used to find variable features. Options:
+#'   \itemize{
+#'     \item \code{"vst"} – Seurat's standard variance stabilizing transformation
+#'     \item \code{"sct"} – SCTransform
+#'     \item \code{"scran"} – Scran's model-based approach
+#'   }
+#' @param assay Character or \code{NULL}. Assay to use. If \code{NULL}, uses
+#'   the default assay.
+#' @param top Integer. Number of top variable genes to label. Default is \code{10}.
+#'
+#' @return A named list of ggplot2 objects, one per dataset/layer.
+#'   Names are formatted as \code{"varFeatures_<dataset>"}.
+#'
+#' @details
+#' The x-axis shows average expression (log10 scale), and the y-axis shows
+#' the variance metric (which depends on the method used). Variable features
+#' are highlighted in red.
+#'
+#' @importFrom Seurat VariableFeatures SCTResults LabelPoints DefaultAssay
+#' @importFrom SeuratObject Layers HVFInfo
+#' @importFrom ggplot2 ggplot aes geom_point scale_x_log10 scale_y_continuous
+#'   scale_color_manual theme
+#' @importFrom purrr map
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Plot variable features for VST method
+#' plots <- PlotVariableFeatures(seurat_obj, method = "vst", top = 15)
+#' }
 PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
 
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
@@ -452,14 +618,48 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
   return(plist)
 }
 
-#' Plots the relative log expression features for each layer (dataset).
+#' Plot Relative Log Expression (RLE)
 #'
-#' @param sc Seurat v5 object.
-#' @param assay Assay. If NULL, defaults to default assay of the Seurat object.
-#' @param layer Type of layer. Can be counts or data but also a specific layer.
-#' @param nbarcodes Number of barcodes to plot.
-#' @param is_log Is the data already in log? If not, will be logged.
-#' @return A ggplot2 object.
+#' Creates an RLE plot to assess normalization quality across cells.
+#' Well-normalized data should show RLE distributions centered around zero.
+#'
+#' @param sc A Seurat v5 object.
+#' @param assay Character or \code{NULL}. Assay to use. If \code{NULL}, uses
+#'   the default assay.
+#' @param layer Character. Layer to use (\code{"counts"} or \code{"data"}).
+#'   Can also be a specific layer name. Default is \code{"counts"}.
+#' @param nbarcodes Integer. Number of barcodes to sample for plotting.
+#'   Sampling is done per dataset to ensure representation.
+#'   Default is \code{500}.
+#' @param is_log Logical. If \code{TRUE}, assumes data is already log-transformed.
+#'   If \code{FALSE}, applies log1p transformation. Default is \code{FALSE}.
+#'
+#' @return A ggplot2 object showing the RLE distribution for each sampled cell,
+#'   colored by dataset.
+#'
+#' @details
+#' The Relative Log Expression (RLE) for each gene in each cell is calculated as:
+#' \code{log(expression) - median(log(expression across all cells))}
+#'
+#' For well-normalized data, RLE distributions should be centered at zero
+#' with similar spread across all cells.
+#'
+#' @importFrom Seurat DefaultAssay
+#' @importFrom SeuratObject Layers LayerData
+#' @importFrom ggplot2 ggplot aes geom_segment geom_point
+#' @importFrom purrr map reduce flatten_chr
+#' @importFrom dplyr arrange
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # RLE plot for raw counts
+#' p <- PlotRLE(seurat_obj, layer = "counts", nbarcodes = 200)
+#'
+#' # RLE plot for normalized data
+#' p <- PlotRLE(seurat_obj, layer = "data", is_log = TRUE)
+#' }
 PlotRLE = function(sc, assay=NULL, layer="counts", nbarcodes=500, is_log=FALSE) { 
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -546,13 +746,35 @@ PlotRLE = function(sc, assay=NULL, layer="counts", nbarcodes=500, is_log=FALSE) 
   return(p)
 }
 
-#' Wrapper for spatial dim plots. Takes as input a Seurat v5 object, one or more image names and other parameters to 
-#' be passed on to SpatialDimPlot (sequencing-based) or ImageDimPlot (image-based).
+#' Spatial Dimension Plot Wrapper
 #'
-#' @param sc Seurat v5 object.
-#' @param images One or more images. If NULL, will use all images in Seurat object.
-#' @param assay Get all images with this default assay.
-#' @return A list of ggplot2 objects.
+#' A wrapper function for creating spatial dimension plots. Automatically selects
+#' between \code{SpatialDimPlot} (for Visium data) and \code{ImageDimPlot}
+#' (for Xenium data) based on the image type.
+#'
+#' @param sc A Seurat v5 object with spatial data.
+#' @param assay Character or \code{NULL}. Assay to use for selecting images.
+#'   If \code{NULL}, uses the default assay.
+#' @param images Character vector or \code{NULL}. Image names to plot.
+#'   If \code{NULL}, plots all images associated with the assay.
+#' @param ... Additional arguments passed to \code{SpatialDimPlot} or
+#'   \code{ImageDimPlot}.
+#'
+#' @return A named list of ggplot2 objects, one per image.
+#'
+#' @importFrom Seurat SpatialDimPlot ImageDimPlot DefaultAssay
+#' @importFrom SeuratObject Images
+#' @importFrom purrr map
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Plot all spatial images
+#' plots <- DimPlotSpatial(seurat_obj)
+#'
+#' # Plot specific images with custom parameters
+#' plots <- DimPlotSpatial(seurat_obj, images = "slice1", group.by = "cluster")
+#' }
 DimPlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
   # If NULL, use the default assay of the Seurat object
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -577,13 +799,40 @@ DimPlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
   return(plist)
 }
 
-#' Wrapper for spatial feature plots. Takes as input a Seurat v5 object, one or more image names and other parameters to 
-#' be passed on to SpatialFeaturePlot (sequencing-based) or ImageFeaturePlot (image-based).
+#' Spatial Feature Plot Wrapper
 #'
-#' @param sc Seurat v5 object.
-#' @param images One or more images. If NULL, will use all images in Seurat object.
-#' @param assay Get all images with this default assay.
-#' @return A list of ggplot2 objects.
+#' A wrapper function for creating spatial feature plots. Automatically selects
+#' between \code{SpatialFeaturePlot} (for Visium data) and \code{ImageFeaturePlot}
+#' (for Xenium data) based on the image type.
+#'
+#' @param sc A Seurat v5 object with spatial data.
+#' @param assay Character or \code{NULL}. Assay to use for selecting images.
+#'   If \code{NULL}, uses the default assay.
+#' @param images Character vector or \code{NULL}. Image names to plot.
+#'   If \code{NULL}, plots all images associated with the assay.
+#' @param ... Additional arguments passed to \code{SpatialFeaturePlot} or
+#'   \code{ImageFeaturePlot}, including \code{features} to specify which
+#'   features to visualize.
+#'
+#' @return A named list of ggplot2 objects, one per image.
+#'
+#' @importFrom Seurat SpatialFeaturePlot ImageFeaturePlot DefaultAssay
+#' @importFrom SeuratObject Images
+#' @importFrom purrr map
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Plot gene expression spatially
+#' plots <- FeaturePlotSpatial(seurat_obj, features = c("Gene1", "Gene2"))
+#'
+#' # Plot on specific images
+#' plots <- FeaturePlotSpatial(
+#'   seurat_obj,
+#'   images = "slice1",
+#'   features = "Gene1"
+#' )
+#' }
 FeaturePlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
   # If NULL, use the default assay of the Seurat object
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -608,10 +857,42 @@ FeaturePlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
   return(plist)
 }
 
-#' Transform a matrix cells (rows) x htos (cols) into a format that can be understood by feature_grid: cell class, name hto1, value hto1, name hto2, value hto2
-#' 
-#' @param x: A matrix cells (rows) x htos (cols).
-#' @param cell_classification A vector of cell classifications.
+#' Create Data Frame for HTO Scatter Plots
+#'
+#' Transforms a matrix of HTO (Hashtag Oligo) counts into a format suitable for
+#' creating pairwise scatter plots. Used for visualizing cell hashing data.
+#'
+#' @param x A matrix with cells as rows and HTOs as columns.
+#' @param cell_classification Named character vector. Cell classifications
+#'   (e.g., "Singlet", "Doublet", "Negative") with cell names as names.
+#'
+#' @return A data frame with columns:
+#'   \itemize{
+#'     \item \code{cell_classification} – classification of each cell
+#'     \item \code{name1} – name of the first HTO in the comparison
+#'     \item \code{value1} – count value for the first HTO
+#'     \item \code{name2} – name of the second HTO in the comparison
+#'     \item \code{value2} – count value for the second HTO
+#'   }
+#'
+#' @details
+#' The function generates all pairwise combinations of HTOs and orders data
+#' points so that cells of interest (matching either HTO) are plotted on top,
+#' followed by negatives, doublets, and other samples.
+#'
+#' @importFrom dplyr bind_rows group_by arrange
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Create HTO comparison data for faceted scatter plots
+#' hto_counts <- matrix(c(100, 200, 50, 150, 80, 120), nrow = 2)
+#' colnames(hto_counts) <- c("HTO1", "HTO2", "HTO3")
+#' rownames(hto_counts) <- c("cell1", "cell2")
+#'
+#' classifications <- c(cell1 = "HTO1", cell2 = "HTO2")
+#' plot_data <- DfAllColumnCombinations(hto_counts, classifications)
+#' }
 DfAllColumnCombinations = function(x, cell_classification) {
   out = combn(x, 2, simplify=FALSE)
   out = lapply(out, function(o) {
