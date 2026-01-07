@@ -48,16 +48,21 @@ Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
 
 # Hook to measure the computation time of a chunk
 # Activate with '#| timeit: true'. Deactivate with '#| timeit: null'
-knitr::knit_hooks$set(timeit = function(before, options, envir) {
-  if(before) {
-    ## code to be run before a chunk
-    tictoc::tic()
-  } else {
-    ## code to be run after a chunk
-    elapsed = tictoc::toc()$toc
-    print(paste0("Execution took ", elapsed, " seconds"))
+knitr::knit_hooks$set(timeit = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      # record the current time before each chunk
+      now <<- Sys.time()
+    } else {
+      # calculate the time difference after a chunk
+      res <- difftime(Sys.time(), now, units = "secs")
+      # return a character string to show the time
+      paste("Time for this code chunk to run:", round(res,
+        2), "seconds")
+    }
   }
-})
+}))
 
 # Set seed
 options(random_seed=11)
