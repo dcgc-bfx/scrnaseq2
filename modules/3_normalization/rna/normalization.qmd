@@ -282,6 +282,10 @@ if (normalization_method == "lognorm") {
                    conserve.memory=length(Cells(sc[[default_assay]])) >= 100000)
   Seurat::DefaultAssay(sc) = sct_assay_name
 
+  # Fix SCT model names
+  model_names = gsub(pattern="counts\\.", replacement="", x=layer_counts)
+  levels(sc[[sct_assay_name]]) = model_names
+
   CalloutBox("SCTransform normalization was applied.", type="note")
 } else if (normalization_method == "log") {
   # Run log transformation (just log, no size factors)
