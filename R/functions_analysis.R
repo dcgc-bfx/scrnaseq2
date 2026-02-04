@@ -666,7 +666,7 @@ FindVariableFeaturesScran = function(sc, assay=NULL, nfeatures=2000, combined=TR
     hvf = scran::getTopHVGs(hvf_info, n=nfeatures)
     
     # Combine hvf_info tables
-    hvf_info = purrr::map(layers, function(l) {
+    hvf_info_lst = purrr::map(layers, function(l) {
       hvfi = hvf_info[["per.block"]][[l]]
       h = scran::getTopHVGs(hvfi, n=nfeatures)
       
