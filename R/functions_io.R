@@ -485,22 +485,22 @@ ReadCounts_SmartSeq = function(path, assays, version, transpose=FALSE) {
 #' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes, features and path is attached as attributes.
 ReadCounts_10x_mtx = function(mtx_directory, strip_suffix=NULL) {
   # Determine the name of the matrix file
-  mtx_file_name = dplyr::case_when(file.exists(file.path(mtx_directory, "matrix.mtx.gz")) ~ "matrix.mtx.gz",
-                                   file.exists(file.path(mtx_directory, "matrix.mtx")) ~ "matrix.mtx")
+  mtx_file_name = dplyr::case_when(file.exists(file.path(mtx_directory, "matrix.mtx")) ~ "matrix.mtx",
+                                   .default="matrix.mtx.gz")
   
   # Determine the name of the barcodes file
   barcodes_file_name = dplyr::case_when(
-    file.exists(file.path(mtx_directory, "barcodes.tsv.gz")) ~ "barcodes.tsv.gz",
-    file.exists(file.path(mtx_directory, "barcodes.tsv")) ~ "barcodes.tsv"
+    file.exists(file.path(mtx_directory, "barcodes.tsv")) ~ "barcodes.tsv",
+    .default="barcodes.tsv.gz"
   )
   
   # Determine the name of the features file
   features_file_name = dplyr::case_when(
-    file.exists(file.path(mtx_directory, "features.tsv.gz")) ~ "features.tsv.gz",
     file.exists(file.path(mtx_directory, "features.tsv")) ~ "features.tsv",
     file.exists(file.path(mtx_directory, "genes.tsv")) ~ "genes.tsv",
     file.exists(file.path(mtx_directory, "peaks.bed")) ~ "peaks.bed",
-    file.exists(file.path(mtx_directory, "motifs.tsv")) ~ "motifs.tsv"
+    file.exists(file.path(mtx_directory, "motifs.tsv")) ~ "motifs.tsv",
+    .default="features.tsv.gz"
   )
   
   # Determine the column name of the features file
@@ -2089,8 +2089,8 @@ ExportXeniumExplorer = function(sc, assay=NULL, categories=NULL, barcodes=NULL, 
     if (dir.exists(dataset_path)) {
       # 10x market exchange format
       barcodes_file = dplyr::case_when(
-        file.exists(file.path(dataset_path, "barcodes.tsv.gz")) ~ "barcodes.tsv.gz",
-        file.exists(file.path(dataset_path, "barcodes.tsv")) ~ "barcodes.tsv"
+        file.exists(file.path(dataset_path, "barcodes.tsv")) ~ "barcodes.tsv",
+        .default="barcodes.tsv"
       )
       
       unfiltered_barcodes = readLines(file.path(dataset_path, barcodes_file))
