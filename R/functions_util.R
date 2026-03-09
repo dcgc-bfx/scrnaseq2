@@ -152,18 +152,22 @@ param = function(p=NULL) {
 #' Returns an Ensembl biomaRt for a species and Ensembl version.
 #' 
 #' @param species Latin species name in format genus_species (for example homo_sapiens or mus_musculus).
-#' @param ensembl_version Ensembl version (for example 98).
+#' @param ensembl_version Ensembl version (for example 98). Set NULL to access the current release.
 #' @return A biomaRt object.
 GetBiomaRt = function(species, ensembl_version) {
   # Check if we can find find an Ensembl database for this species and annotation version
   ensembl_archives = biomaRt::listEnsemblArchives()
   assertthat::assert_that(
-    ensembl_version %in% ensembl_archives$version,
+    is.null(ensembl_version) || ensembl_version %in% ensembl_archives$version,
     msg = FormatString("Could not find or access Ensembl version {ensembl_version}.")
   )
   
   # Get mart and check if the species is part of ensembl
-  ensembl_mart = biomaRt::useMart(biomart = "ensembl", host = ensembl_archives[match(ensembl_version, ensembl_archives$version), "url"])
+  if (!is.null(ensembl_version)) {
+    ensembl_mart = biomaRt::useMart(biomart = "ensembl", host = ensembl_archives[match(ensembl_version, ensembl_archives$version), "url"])
+  } else {
+    ensembl_mart = biomaRt::useMart(biomart = "ensembl")
+  }
   ensembl_datasets = biomaRt::listDatasets(ensembl_mart)
   
   if (species == "heterocephalus_glaber") {
@@ -192,7 +196,7 @@ GetBiomaRt = function(species, ensembl_version) {
 #' @param ids A list of Ensembl ids or - if symbols is TRUE - gene symbols.
 #' @param symbols If TRUE, ids are interpreted as gene symbols.
 #' @param species Species.
-#' @param ensembl_version Ensembl version.
+#' @param ensembl_version Ensembl version. Set NULL to access the current release.
 #' @param mart_attributes Ensembl attributes to fetch. Can be a character vector or a named character vector. Defaults to: c(ensembl_id="ensembl_gene_id, ensembl_symbol="external_gene_name", ensembl_biotype="gene_biotype", ensembl_description="description", ensembl_chr="chromosome_name", ensembl_start_position="start_position", ensembl_end_position="end_position", ensembl_strand="strand").
 #' @param useCache Use local cache for faster querying. Default is TRUE. Set to FALSE if there are problems.
 #' @return A table with gene information. Ids that were not found are included but most of the information will be NA.
@@ -242,7 +246,7 @@ EnsemblFetchGeneInfo = function(ids, symbols=FALSE, species, ensembl_version, ma
 #' @param symbols If TRUE, ids are interpreted as gene symbols.
 #' @param species1 Species 1.
 #' @param species1 Species 2.
-#' @param ensembl_version Ensembl version.
+#' @param ensembl_version Ensembl version. Set NULL to access the current release.
 #' @param mart_attributes1 Ensembl attributes to fetch fo species 1. Can be a character vector or a named character vector. Defaults to: c(ensembl_id="ensembl_gene_id, ensembl_symbol="external_gene_name"). Can be empty.
 #' @param mart_attributes1 Ensembl attributes to fetch fo species 2. Can be a character vector or a named character vector. Defaults to: c(ensembl_id="ensembl_gene_id, ensembl_symbol="external_gene_name"). Cannot be empty.
 #' @param useCache Use local cache for faster querying. Default is TRUE. Set to FALSE if there are problems.
