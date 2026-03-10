@@ -1099,7 +1099,13 @@ The following QC plots are meant to help deciding whether or not to regress out 
 #########################
 
 species = param("species")
-ensembl_version = param("ensembl")
+
+# Issue: Finding orthologues via biomaRt (getLDS) seems to be bugged failed for several versions (https://github.com/Huber-group-EMBL/biomaRt/issues/61)
+# Solution: Always use version 105 (https://dec2021.archive.ensembl.org)
+# Note: Might not work for newer species
+ensembl_version = 105
+#ensembl_version = param("ensembl")
+
 barcode_metadata = sc[[]]
 feature_metadata = sc[[default_assay]][[]]
 
@@ -1115,7 +1121,7 @@ if ("ensembl_id" %in% colnames(feature_metadata)) {
   ensembl_column = "feature_id"
 }
 
-if (!is.null(ensembl_column) & !is.null(ensembl_version)) {
+if (!is.null(ensembl_column)) {
   # Use Ensembl
   if (species != "homo_sapiens") {
     # Fetch one-to-one orthologues via Ensembl
