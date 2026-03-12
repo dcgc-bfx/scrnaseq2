@@ -410,7 +410,7 @@ CalloutBox("The {feature_selection_method} method was used to select {num_variab
 
 # Plot variable features
 
-if (feature_selection_method == "SCT") {
+if (normalization_method == "SCT") {
   plist = PlotVariableFeatures(sc, 
                      method="sct",
                      assay=paste0(default_assay, "sct"),
