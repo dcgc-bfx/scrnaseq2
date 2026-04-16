@@ -225,13 +225,19 @@ xist_vals = ifelse(is.nan(xist_vals), 0, xist_vals)
 sc = Seurat::AddMetaData(sc, xist_vals, col.name=paste("pXIST", default_assay, sep="_"))
 
 # Calculate percentage of counts in chrY genes
-if ("ensembl_chr" %in% colnames(feature_metadata)) {
-  chrY_features = which(feature_metadata$ensembl_chr %in% c("chrY", "Y"))
+chr_column_names = c("ensembl_chr", "ensembl_chromosome", "chr", "chromosome", "chrom")
+chr_column_names = chr_column_names[chr_column_names %in% tolower(colnames(feature_metadata))]
+if (length(chr_column_names) > 0) {
+  chr_column_name = chr_column_names[1]
+  chrY_features_idx = which(feature_metadata[[chr_column_name]] %in% c("chrY", "Y"))
+  chrY_features = rownames(feature_metadata)[chrY_features_idx]
+  
+  chrY_vals = Seurat::PercentageFeatureSet(sc, features=chrY_features)
+  chrY_vals = ifelse(is.nan(chrY_vals), 0, chrY_vals)
 } else {
  chrY_features = c()
+ chrY_vals = 0
 }
-chrY_vals = Seurat::PercentageFeatureSet(sc, features=chrY_features, pattern="^$")
-chrY_vals = ifelse(is.nan(chrY_vals), 0, chrY_vals)
 sc = Seurat::AddMetaData(sc, chrY_vals, col.name=paste("pChrY", default_assay, sep="_"))
 
 # FEATURES
@@ -1098,14 +1104,11 @@ The following QC plots are meant to help deciding whether or not to regress out 
 # Find cell-cycle genes #
 #########################
 
+# Species, Ensembl version (if used)
 species = param("species")
+ensembl_version = param("ensembl")
 
-# Issue: Finding orthologues via biomaRt (getLDS) seems to be bugged failed for several versions (https://github.com/Huber-group-EMBL/biomaRt/issues/61)
-# Solution: Always use version 105 (https://dec2021.archive.ensembl.org)
-# Note: Might not work for newer species
-ensembl_version = 105
-#ensembl_version = param("ensembl")
-
+# Barcode and feature metadata
 barcode_metadata = sc[[]]
 feature_metadata = sc[[default_assay]][[]]
 
@@ -1113,12 +1116,17 @@ feature_metadata = sc[[default_assay]][[]]
 seurat_s_genes = Seurat::cc.genes.updated.2019[["s.genes"]]
 seurat_g2m_genes = Seurat::cc.genes.updated.2019[["g2m.genes"]]
 
-# Find the correct features
-ensembl_column = NULL
-if ("ensembl_id" %in% colnames(feature_metadata)) {
-  ensembl_column = "ensembl_id"
-} else if (any(grepl("^ENS", feature_metadata[["feature_id"]]))) {
-  ensembl_column = "feature_id"
+# Find the column with ensembl ids and keep if it contains ensembl ids
+ensembl_id_columns = c("ensembl_id", "ensembl_gene_id", "gene_id", "feature_id")
+ensembl_id_columns = ensembl_id_columns[ensembl_id_columns %in% tolower(colnames(feature_metadata))]
+ensembl_id_columns = purrr::keep(ensembl_id_columns, function(c) {
+  any(grepl("^ENS[A-Z]+[0-9]+$", feature_metadata[[c]]))
+})
+
+if (length(ensembl_id_columns) > 0) {
+  ensembl_column = ensembl_id_columns[1]
+} else {
+  ensembl_column = NULL
 }
 
 if (!is.null(ensembl_column)) {
