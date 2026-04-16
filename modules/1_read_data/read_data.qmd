@@ -405,6 +405,10 @@ for (i in 1:nrow(datasets)) {
                                                                       ensembl_chr="chromosome_name",ensembl_start_position="start_position", 
                                                                       ensembl_end_position="end_position", ensembl_strand="strand"),
                                                   useCache=TRUE)
+        # Use id if there is no symbol available
+        ensembl_annotation$ensembl_symbol = ifelse(is.na(ensembl_annotation$ensembl_symbol) | nchar(ensembl_annotation$ensembl_symbol)==0, ensembl_annotation$ensembl_id, ensembl_annotation$ensembl_symbol)
+          
+        # Merge to existing metadata
         feature_metadata = dplyr::bind_cols(feature_metadata, ensembl_annotation, .name_repair="minimal")
         attr(counts_lst[[i]][[j]], "feature_metadata") = feature_metadata
         
@@ -427,9 +431,11 @@ for (i in 1:nrow(datasets)) {
                                   msg=FormatString("Column {feature_name_column} cannot be found in the feature metadata available for dataset {path}, assay {assay}."))
       }
       new_feature_names = feature_metadata[, feature_name_column, drop=TRUE]
-
-      # Use id if there is no symbol available
-      new_feature_names = ifelse(is.na(new_feature_names) | nchar(new_feature_names)==0, rownames(feature_metadata), new_feature_names)
+  
+      # Make sure that values are not NA or empty. If so, raise error
+      if (any(is.na(new_feature_names) | nchar(new_feature_names)==0)) {
+        stop(FormatString("New feature names contain NA values or are empty for dataset {path}, assay {assay}. Please make sure that the selected feature metadata column contains valid values."))
+      }
     }
 
     # Now make new feature names Seurat-compatible
