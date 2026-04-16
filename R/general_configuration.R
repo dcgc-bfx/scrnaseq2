@@ -80,6 +80,9 @@ options(bitmapType='cairo')
 # ggrepel: maximum number of overlaps
 options(ggrepel.max.overlaps=100)
 
+# Increase timeout to be patient with Ensembl
+options(timeout = 3600)
+
 ###################
 # Colour palettes #
 ###################
