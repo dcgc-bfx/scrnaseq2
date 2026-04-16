@@ -253,8 +253,11 @@ EnsemblFetchGeneInfo = function(ids, symbols=FALSE, species, ensembl_version, ma
 #' @return A table with orthologues between species 1 and species 2. Ids that were not found are included but most of the information will be NA.
 EnsemblFetchOrthologues = function(ids, symbols=FALSE, species1, species2, ensembl_version, mart_attributes1=c(ensembl_id1="ensembl_gene_id", ensembl_symbol1="external_gene_name"), mart_attributes2=c(ensembl_id2="ensembl_gene_id", ensembl_symbol2="external_gene_name"), useCache=TRUE) {
   # Get species marts
-  species1_mart = GetBiomaRt(species1, ensembl_version)
-  species2_mart = GetBiomaRt(species2, ensembl_version)
+  # Hard-coded, because biomaRt keeps crashing; the problem is on Ensembl:
+  # https://github.com/Huber-group-EMBL/biomaRt/issues/61
+  species1_mart = GetBiomaRt(species1, "105")
+  species2_mart = GetBiomaRt(species2, "105")
+
   
   # Check that we have Ensembl ids
   if (!symbols) {
