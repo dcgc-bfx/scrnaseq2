@@ -158,7 +158,7 @@ ReadMetadata_rds = function(rds_file) {
 
 #' Reads metadata.
 #' 
-#' @param file Path to a character-separated file (csv, tsv, csv.gz, tsv.gz), an Excel file (xls, xslx) or an R rds file containing a table (preserves factor levels). First column must contain the respective barcode or feature id. For Excel files, a sheet can be specified by appending ':<sheet_number>'.
+#' @param file Path to a character-separated file (csv, tsv, txt, csv.gz, tsv.gz), an Excel file (xls, xslx) or an R rds file containing a table (preserves factor levels). First column must contain the respective barcode or feature id. For Excel files, a sheet can be specified by appending ':<sheet_number>'.
 #' @return Metadata (data.frame format)
 ReadMetadata = function(file) {
   # Sheet number appended?
@@ -170,12 +170,12 @@ ReadMetadata = function(file) {
   
   # Checks
   extension = tools::file_ext(gsub(pattern="\\.gz$", replacement="", x=file))
-  valid_extensions = c("csv", "tsv", "xls", "xlsx", "rds")
+  valid_extensions = c("csv", "tsv", "txt", "xls", "xlsx", "rds")
   assertthat::assert_that(extension %in% valid_extensions,
                           msg=FormatString("Metadata file type must be: {valid_extensions*} (file can be gzipped)."))
   
   # Read metadata
-  if (extension %in% c("csv", "tsv")) {
+  if (extension %in% c("csv", "tsv", "txt")) {
     meta_data = ReadMetadata_csv(file)
   } else if(extension %in% c("xls", "xlsx")) {
     meta_data = ReadMetadata_excel(file, sheet=sheet)
