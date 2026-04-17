@@ -81,7 +81,7 @@ options(bitmapType='cairo')
 options(ggrepel.max.overlaps=100)
 
 # Increase timeout to be patient with Ensembl
-options(timeout = 3600)
+options(timeout = 30000)
 
 ###################
 # Colour palettes #
