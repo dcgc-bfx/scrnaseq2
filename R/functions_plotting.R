@@ -9,6 +9,12 @@
 #' @param ylab The title of the y-axis.
 #' @param font_size The base font size. Default is 11.
 #' @return None, add as theme.
+#'
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' style = AddPlotStyle(title="QC plot", xlab="Cells", ylab="Counts")
+#' length(style)
 AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, legend_position=NULL, xlab=NULL, ylab=NULL, font_size=11) {
   style = list(
     # Basic theme
@@ -70,6 +76,13 @@ AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, lege
 #' @param split If not NULL, split plot names to generate a X vs Y caption.
 #' @param capitalize If TRUE, capitalize the first letter of the caption.
 #' @return A list of captions.
+#'
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' plot_names = c("nCount_RNA", "pMito_RNA")
+#' captions = GeneratePlotCaptions(plot_names=plot_names, assay_names="RNA")
+#' captions
 GeneratePlotCaptions = function(plot_names, assay_names=NULL, split=NULL, capitalize=TRUE) {
   if (length(plot_names) == 0) return(NULL)
 
@@ -178,6 +191,14 @@ GeneratePlotCaptions = function(plot_names, assay_names=NULL, split=NULL, capita
 #' @param assay The assay of the barcodes. If NULL, defaults to default assay of the Seurat object.
 #' @param log10 If set to TRUE, show the y-axis in log10. Can also be a regular expression to apply only to specific columns. Only numeric columns will be affected.
 #' @return A list of ggplot2 objects.
+#'
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' plots = PlotBarcodeQC(sc=seurat_obj, qc=c("nCount_RNA", "SampleID"))
+#' names(plots)
+#' }
 PlotBarcodeQC = function(sc, qc, filter=NULL, assay=NULL, log10=FALSE) {
   # Get assay and barcodes
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -289,6 +310,14 @@ PlotBarcodeQC = function(sc, qc, filter=NULL, assay=NULL, log10=FALSE) {
 #' @param assay The assay of the barcodes. If NULL, defaults to default assay of the Seurat object.
 #' for character/factor columns must be character vectors with the values that should be kept.
 #' @return A list of ggplot2 objects.
+#'
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' plots = PlotBarcodeQCCor(sc=seurat_obj, qc=list(c("nCount_RNA", "nFeature_RNA")))
+#' names(plots)
+#' }
 PlotBarcodeQCCor = function(sc, qc, filter=NULL, assay=NULL) {
   # Get assay and barcodes
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -358,6 +387,14 @@ PlotBarcodeQCCor = function(sc, qc, filter=NULL, assay=NULL) {
 #' @param assay Assay. If NULL, defaults to default assay of the Seurat object.
 #' @param top The top genes that should be labeled.
 #' @return A list of ggplot2 objects.
+#'
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' plots = PlotVariableFeatures(sc=seurat_obj, method="vst", top=5)
+#' names(plots)
+#' }
 PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
 
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
@@ -460,6 +497,14 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
 #' @param nbarcodes Number of barcodes to plot.
 #' @param is_log Is the data already in log? If not, will be logged.
 #' @return A ggplot2 object.
+#'
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' p = PlotRLE(sc=seurat_obj, assay="RNA", nbarcodes=100)
+#' p
+#' }
 PlotRLE = function(sc, assay=NULL, layer="counts", nbarcodes=500, is_log=FALSE) { 
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -553,6 +598,14 @@ PlotRLE = function(sc, assay=NULL, layer="counts", nbarcodes=500, is_log=FALSE) 
 #' @param images One or more images. If NULL, will use all images in Seurat object.
 #' @param assay Get all images with this default assay.
 #' @return A list of ggplot2 objects.
+#'
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' plots = DimPlotSpatial(sc=seurat_obj)
+#' names(plots)
+#' }
 DimPlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
   # If NULL, use the default assay of the Seurat object
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -584,6 +637,14 @@ DimPlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
 #' @param images One or more images. If NULL, will use all images in Seurat object.
 #' @param assay Get all images with this default assay.
 #' @return A list of ggplot2 objects.
+#'
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' plots = FeaturePlotSpatial(sc=seurat_obj, features="MS4A1")
+#' names(plots)
+#' }
 FeaturePlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
   # If NULL, use the default assay of the Seurat object
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -612,6 +673,20 @@ FeaturePlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
 #' 
 #' @param x: A matrix cells (rows) x htos (cols).
 #' @param cell_classification A vector of cell classifications.
+#' @return A data frame with pairwise column values for each cell.
+#'
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' x = data.frame(
+#'   HTO1=c(10, 1),
+#'   HTO2=c(2, 8),
+#'   HTO3=c(0, 4),
+#'   row.names=c("cell1", "cell2")
+#' )
+#' cell_classification = c(cell1="HTO1", cell2="Doublet")
+#' pairwise = DfAllColumnCombinations(x=x, cell_classification=cell_classification)
+#' head(pairwise)
 DfAllColumnCombinations = function(x, cell_classification) {
   out = combn(x, 2, simplify=FALSE)
   out = lapply(out, function(o) {

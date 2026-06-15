@@ -8,6 +8,10 @@
 #' @param sep When a variable contains multiple values and is marked with a '*', which separator to use to collapse the values
 #' @param quote Whether to quote variables
 #' @return A function to transform the glue string
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' transformer = GlueTransformer_quote_collapse(sep=", ", quote=TRUE)
 GlueTransformer_quote_collapse = function(sep=", ", quote=TRUE, ...) {
   function(text, envir) {
     collapse = grepl("[*]$", text)
@@ -36,6 +40,11 @@ GlueTransformer_quote_collapse = function(sep=", ", quote=TRUE, ...) {
 #' @param quote Whether to quote variables
 #' @param sep When a variable contains multiple values and is marked with a '*', which separator to use to collapse the values
 #' @return The formatted message
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' name = "world"
+#' result = FormatString("Hello {name}!")
 FormatString = function(x, quote=TRUE, sep=", ") {
   return(glue::glue(x, .transformer=GlueTransformer_quote_collapse(quote=quote, sep=sep), .envir=parent.frame()))
 }
@@ -47,6 +56,12 @@ FormatString = function(x, quote=TRUE, sep=", ") {
 #' @param print Whether to print (if TRUE) or to return (FALSE) the message box
 #' @param quote Whether to quote expanded variables in the message box
 #' @return Character string to generate a message box
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' CalloutBox("Remember to review {1+1} results.", type="note", print=FALSE)
+#' }
 CalloutBox = function(x, type, print=TRUE, quote=TRUE) {
   valid_types = c("note", "tip", "important", "caution", "warning")
   assertthat::assert_that(type %in% valid_types,
@@ -67,6 +82,13 @@ CalloutBox = function(x, type, print=TRUE, quote=TRUE) {
 #' Note: The current profile must be set via the environment variable 'QUARTO_PROFILE'.
 #' 
 #' @return The content as nested list.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' Sys.setenv(QUARTO_PROFILE="dev")
+#' profile = GetProfileYaml()
+#' }
 GetProfileYaml = function() {
   profile = Sys.getenv("QUARTO_PROFILE")
   assertthat::assert_that(nchar(profile) > 0,
@@ -81,6 +103,12 @@ GetProfileYaml = function() {
 #' Note: The current profile must be set via the environment variable 'QUARTO_PROFILE'.
 #' 
 #' @return The previous module directory or NULL if there is none.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' PreviousModuleDir("modules/qc")
+#' }
 PreviousModuleDir = function(current_module_dir) {
   current_module_dir = module_dir
   
@@ -114,6 +142,12 @@ PreviousModuleDir = function(current_module_dir) {
 #' 
 #' @param p Parameter to access. If NULL, returns all parameters.
 #' @return One or more parameters as list
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' param("project_id")
+#' }
 param = function(p=NULL) {
 
   # Read module parameter (document params yaml) and get module name
@@ -154,6 +188,12 @@ param = function(p=NULL) {
 #' @param species Latin species name in format genus_species (for example homo_sapiens or mus_musculus).
 #' @param ensembl_version Ensembl version (for example 98). Set NULL to access the current release.
 #' @return A biomaRt object.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' mart = GetBiomaRt(species="homo_sapiens", ensembl_version=110)
+#' }
 GetBiomaRt = function(species, ensembl_version) {
   # Check if we can find find an Ensembl database for this species and annotation version
   ensembl_archives = biomaRt::listEnsemblArchives()
@@ -200,6 +240,12 @@ GetBiomaRt = function(species, ensembl_version) {
 #' @param mart_attributes Ensembl attributes to fetch. Can be a character vector or a named character vector. Defaults to: c(ensembl_id="ensembl_gene_id, ensembl_symbol="external_gene_name", ensembl_biotype="gene_biotype", ensembl_description="description", ensembl_chr="chromosome_name", ensembl_start_position="start_position", ensembl_end_position="end_position", ensembl_strand="strand").
 #' @param useCache Use local cache for faster querying. Default is TRUE. Set to FALSE if there are problems.
 #' @return A table with gene information. Ids that were not found are included but most of the information will be NA.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' genes = EnsemblFetchGeneInfo(ids=c("ENSG00000141510"), species="homo_sapiens", ensembl_version=110)
+#' }
 EnsemblFetchGeneInfo = function(ids, symbols=FALSE, species, ensembl_version, mart_attributes=c(ensembl_id="ensembl_gene_id", ensembl_symbol="external_gene_name", ensembl_biotype="gene_biotype", ensembl_description="description", ensembl_chr="chromosome_name", ensembl_start_position="start_position", ensembl_end_position="end_position", ensembl_strand="strand"), useCache=TRUE) {
   # Get species mart
   species_mart = GetBiomaRt(species, ensembl_version)
@@ -251,6 +297,12 @@ EnsemblFetchGeneInfo = function(ids, symbols=FALSE, species, ensembl_version, ma
 #' @param mart_attributes1 Ensembl attributes to fetch fo species 2. Can be a character vector or a named character vector. Defaults to: c(ensembl_id="ensembl_gene_id, ensembl_symbol="external_gene_name"). Cannot be empty.
 #' @param useCache Use local cache for faster querying. Default is TRUE. Set to FALSE if there are problems.
 #' @return A table with orthologues between species 1 and species 2. Ids that were not found are included but most of the information will be NA.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' orthologues = EnsemblFetchOrthologues(ids=c("ENSG00000141510"), species1="homo_sapiens", species2="mus_musculus", ensembl_version=110)
+#' }
 EnsemblFetchOrthologues = function(ids, symbols=FALSE, species1, species2, ensembl_version, mart_attributes1=c(ensembl_id1="ensembl_gene_id", ensembl_symbol1="external_gene_name"), mart_attributes2=c(ensembl_id2="ensembl_gene_id", ensembl_symbol2="external_gene_name"), useCache=TRUE) {
   # Get species marts
   # Hard-coded, because biomaRt keeps crashing; the problem is on Ensembl:
@@ -314,6 +366,10 @@ EnsemblFetchOrthologues = function(ids, symbols=FALSE, species1, species2, ensem
 #' 
 #' @param x A vector of names.
 #' @return A vector with syntactically valid names.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' MakeNamesValid(c("gene.name", "1st-gene", "my gene"))
 MakeNamesValid = function(x) {
    x = make.names(x) %>%  
         gsub("\\.\\.+", ".", .) %>% 
@@ -331,6 +387,14 @@ MakeNamesValid = function(x) {
 #' @param assay The assay to which to add the feature metadata. Will be ignored if adding to an Assay object.
 #' @param metadata A table with feature metadata with feature names being row names.
 #' @return The Seurat (v5) or Assay object with updated feature metadata.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' data("pbmc_small", package="SeuratObject")
+#' metadata = data.frame(feature_class="marker", row.names=rownames(pbmc_small[["RNA"]]))
+#' pbmc_small = AddFeatureMetadata(pbmc_small, assay="RNA", metadata=metadata)
+#' }
 AddFeatureMetadata = function(obj, assay=NULL, metadata) {
   # Checks
   valid_objs = c("Seurat", "Assay5", "Assay")
@@ -368,6 +432,12 @@ AddFeatureMetadata = function(obj, assay=NULL, metadata) {
 #' 
 #' @param x Knitr chunk code
 #' @return The last return value of the code
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' EvalKnitrChunk("```{r}\n1 + 1\n```")
+#' }
 EvalKnitrChunk = function(x) {
   chunks = unlist(stringr::str_extract_all(string=x, 
                            pattern=stringr::regex(pattern="```\\s*\\{r\\}.*?\\n```", dotall=TRUE)
@@ -384,6 +454,14 @@ EvalKnitrChunk = function(x) {
 #' @param orig_idents The samples in the analysis
 #' @param metadata The barcode metadata table
 #' @return A filter with entries for each sample
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' filter = list(percent_mt=c(0, 20))
+#' metadata = data.frame(percent_mt=c(5, 15), row.names=c("cell1", "cell2"))
+#' PrepareBarcodeFilter(filter, orig_idents=c("sample1"), metadata=metadata)
+#' }
 PrepareBarcodeFilter = function(filter, orig_idents, metadata) {
   if (is.null(filter) | length(filter) == 0) {
     return(NULL)
@@ -425,6 +503,13 @@ PrepareBarcodeFilter = function(filter, orig_idents, metadata) {
 #' @param filter Filter from yaml configuration
 #' @param orig_idents The samples in the analysis
 #' @return A filter with entries for each sample
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' filter = list(min_cells=3)
+#' PrepareFeatureFilter(filter, orig_idents=c("sample1", "sample2"))
+#' }
 PrepareFeatureFilter = function(filter, orig_idents) {
   if (is.null(filter) | length(filter) == 0) {
     return(NULL)
@@ -462,6 +547,13 @@ PrepareFeatureFilter = function(filter, orig_idents) {
 #' @param add_to_list When a list with this name already exists, add to the list instead of overwriting the list. Default is FALSE.
 #' @param make_unique Make lists unique (after they were stored in the misc slot). Default is FALSE.
 #' @return A Seurat sc object with updated list(s).
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' data("pbmc_small", package="SeuratObject")
+#' pbmc_small = ScAddLists(pbmc_small, lists=list(markers=c("MS4A1", "CD3D")))
+#' }
 ScAddLists = function(sc, lists, lists_slot='gene_lists', add_to_list=FALSE, make_unique=FALSE) {
   stored_lists = Seurat::Misc(sc, slot=lists_slot)
   if (is.null(stored_lists)) stored_lists = list()
@@ -494,6 +586,14 @@ ScAddLists = function(sc, lists, lists_slot='gene_lists', add_to_list=FALSE, mak
 #' @param lists One or more list names. If NULL, return all lists defined in the misc slot.
 #' @param lists_slot From which slot of the Seurat misc slot should the lists be pulled. If NULL, pull from the top level of the Seurat misc slot.
 #' @return Lists saved in the misc slot of the Seurat object.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' data("pbmc_small", package="SeuratObject")
+#' pbmc_small = ScAddLists(pbmc_small, lists=list(markers=c("MS4A1", "CD3D")))
+#' ScLists(pbmc_small, lists="markers", lists_slot="gene_lists")
+#' }
 ScLists = function(sc, lists=NULL, lists_slot=NULL) {
   stored_lists = Seurat::Misc(sc, slot=lists_slot)
   assertthat::assert_that(!is.null(stored_lists), 
@@ -518,6 +618,13 @@ ScLists = function(sc, lists=NULL, lists_slot=NULL) {
 #' @param add_to_list When a colour list with this name already exists, add to the colour list instead of overwriting the list. Default is FALSE.
 #' @param make_unique Make colour lists unique (after they were stored in the misc slot). Default is FALSE.
 #' @return A Seurat sc object with updated colour list(s).
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' data("pbmc_small", package="SeuratObject")
+#' pbmc_small = ScAddColours(pbmc_small, colours=list(cluster=c(A="#1b9e77", B="#d95f02")))
+#' }
 ScAddColours = function(sc, colours, colours_slot='colour_lists', add_to_list=FALSE, make_unique=FALSE) {
   return(ScAddLists(sc, colours, lists_slot=colours_slot, add_to_list=add_to_list, make_unique=make_unique))
 }
@@ -528,6 +635,14 @@ ScAddColours = function(sc, colours, colours_slot='colour_lists', add_to_list=FA
 #' @param categories One or more category names. If NULL, return all categories defined in the colours slot.
 #' @param colours_slot Name of the misc slot which stores the colours. Default is 'colour_lists'.
 #' @return Colour lists for categories.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' data("pbmc_small", package="SeuratObject")
+#' pbmc_small = ScAddColours(pbmc_small, colours=list(cluster=c(A="#1b9e77", B="#d95f02")))
+#' ScColours(pbmc_small, categories="cluster")
+#' }
 ScColours = function(sc, categories=NULL, colours_slot="colour_lists") {
   return(ScLists(sc, lists=categories, lists_slot=colours_slot))
 }
@@ -537,6 +652,13 @@ ScColours = function(sc, categories=NULL, colours_slot="colour_lists") {
 #' @param sc A Seurat sc object.
 #' @param assay The assay for which to pull the name of the dimensionality reduction. If NULL, will be the default assay.
 #' @return The name of the default dimensionality reduction for the assay.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' data("pbmc_small", package="SeuratObject")
+#' DefaultReduct(pbmc_small, assay="RNA")
+#' }
 DefaultReduct = function(sc, assay=NULL) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -548,6 +670,13 @@ DefaultReduct = function(sc, assay=NULL) {
 #' @param sc A Seurat sc object.
 #' @param assay The assay for which to set the name of the dimensionality reduction. If NULL, will be the default assay.
 #' @return A Seurat sc object with updated default dimensionality reduction for the assay.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' data("pbmc_small", package="SeuratObject")
+#' DefaultReduct(pbmc_small, assay="RNA") = "pca"
+#' }
 "DefaultReduct<-" <- function(sc, assay=NULL, value) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -560,6 +689,13 @@ DefaultReduct = function(sc, assay=NULL) {
 #' @param sc A Seurat sc object.
 #' @param assay The assay for which to pull the name of the default visualization method. If NULL, will be the default assay.
 #' @return The name of the default visualization method for the assay.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' data("pbmc_small", package="SeuratObject")
+#' DefaultVisualization(pbmc_small, assay="RNA")
+#' }
 DefaultVisualization = function(sc, assay=NULL) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -571,6 +707,13 @@ DefaultVisualization = function(sc, assay=NULL) {
 #' @param sc A Seurat sc object.
 #' @param assay The assay for which to set the name of the visualization method. If NULL, will be the default assay.
 #' @return A Seurat sc object with updated default visualization method for the assay.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' data("pbmc_small", package="SeuratObject")
+#' DefaultVisualization(pbmc_small, assay="RNA") = "umap"
+#' }
 "DefaultVisualization<-" <- function(sc, assay=NULL, value) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -578,6 +721,11 @@ DefaultVisualization = function(sc, assay=NULL) {
   return(sc)
 }
 
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' FormatChunkOption("echo", FALSE)
+#' FormatChunkOption("fig-cap", "My figure")
 FormatChunkOption = function(name, value) {
     # Convert value to correct format
     if (is.logical(value)) {
@@ -596,6 +744,13 @@ FormatChunkOption = function(name, value) {
     return(paste0("#| ", name, ": ", value))
 }
 
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' plots = list(plot=ggplot2::ggplot(mtcars, ggplot2::aes(mpg, wt)) + ggplot2::geom_point())
+#' chunks = GenerateChunks(plots, olist_name="plots")
+#' }
 GenerateChunks = function(olist, olist_name=NULL, indices=c(), chunk_label=NULL, chunk_caption=NULL, chunk_opts=NULL) {
     # Note: This function will recurse through a nested list. All arguments except for 'indices' 
     # only reflect the current recursion. The 'indices' argument is used to track the recursion process so
@@ -709,6 +864,10 @@ GenerateChunks = function(olist, olist_name=NULL, indices=c(), chunk_label=NULL,
 #' 
 #' @param x A vector with values.
 #' @return TRUE if they can be converted otherwise FALSE.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' converts_to_number(c("1", "2.5", "abc"))
 converts_to_number = function(x) {
   return(suppressWarnings(!is.na(as.numeric(na.omit(x)))))
 }
@@ -717,6 +876,10 @@ converts_to_number = function(x) {
 #' 
 #' @param x A vector with values.
 #' @return TRUE if they can be converted otherwise FALSE.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' converts_to_logical(c("TRUE", "FALSE", "yes"))
 converts_to_logical = function(x) {
   return(suppressWarnings(!is.na(as.logical(na.omit(x)))))
 }
@@ -728,6 +891,10 @@ converts_to_logical = function(x) {
 #' @param n Number of elements to report at most.
 #' @param sep Separator for string concatenation.
 #' @return A string with at most n elements to concatenated.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' first_n_elements_to_string(c("a", "b", "c", "d", "e", "f"), n=3)
 first_n_elements_to_string = function(x, n=5, sep=",") {
   s = paste(x[1:min(n,length(x))], collapse=sep)
   if (length(x) > n) s = paste(s, "...", sep=sep)
@@ -738,6 +905,12 @@ first_n_elements_to_string = function(x, n=5, sep=",") {
 #' 
 #' @param path_to_git: Path to git repository.
 #' @return The git repository version.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' GitRepositoryVersion(".")
+#' }
 GitRepositoryVersion = function(path_to_git) {
   repo = tryCatch({system(paste0("git --git-dir=", path_to_git, "/.git rev-parse HEAD"), intern=TRUE)},
                   warning = function(war) {return("NA")})
@@ -747,6 +920,10 @@ GitRepositoryVersion = function(path_to_git) {
 #' Get container information (if available)
 #' 
 #' @return A string with container git name, container git commit id and container build date.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' ContainerVersion(".")
 ContainerVersion = function(path_to_git) {#
   container_info = c(Sys.getenv("CONTAINER_GIT_NAME"), Sys.getenv("CONTAINER_VERSION"), Sys.getenv("CONTAINER_GIT_COMMIT_ID"), Sys.getenv("CONTAINER_BUILD_DATE"))
   container_info = container_info[nchar(container_info)>0]
@@ -762,6 +939,12 @@ ContainerVersion = function(path_to_git) {#
 #' 
 #' @param path_to_git: Path to git repository.
 #' @return The session info as table.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' info = ScrnaseqSessionInfo(path_to_git=".")
+#' }
 ScrnaseqSessionInfo = function(path_to_git=".") {
   out = matrix(NA, nrow=0, ncol=2)
   colnames(out) = c("Name", "Value")
@@ -797,6 +980,13 @@ ScrnaseqSessionInfo = function(path_to_git=".") {
 #' @param seed Seed for sampling. Default is 1.
 #' @param group If not NULL, sample the same number of barcodes from each group defined by this barcode metadata column. The number of barcodes per group is then the total number of barcodes divided by the number of groups. Default is NULL.
 #' @return Sampled barcodes.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' data("pbmc_small", package="SeuratObject")
+#' SubsampleSC(pbmc_small, n=20)
+#' }
 SubsampleSC = function(sc, n=500, seed=1, group=NULL) {
   barcode_metadata = sc[[]]
   barcodes = rownames(barcode_metadata)
@@ -822,6 +1012,11 @@ SubsampleSC = function(sc, n=500, seed=1, group=NULL) {
 #' 
 #' @param x A list or vector with names.
 #' @return A named vector with names as names and names as values.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' x = list(a=1, b=2, c=3)
+#' list_names(x)
 list_names = function(x) {
   return(setNames(names(x), names(x)))
 }
@@ -830,6 +1025,10 @@ list_names = function(x) {
 #' 
 #' @param x A vector.
 #' @return A vector with its values as names.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' values_to_names(c("alpha", "beta", "gamma"))
 values_to_names = function(x) {
   return(setNames(x,x))
 }
@@ -838,6 +1037,11 @@ values_to_names = function(x) {
 #' 
 #' @param x A list or vector with names.
 #' @return A named vector with names as names and indices as values.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' x = list(a=1, b=2, c=3)
+#' list_indices(x)
 list_indices = function(x) {
   return(setNames(seq(x), names(x)))
 }
@@ -850,6 +1054,12 @@ list_indices = function(x) {
 #' @param palette_options List of additional arguments (beside alpha) to pass on to the palette function.
 #' @param alphas Alpha value(s) to use. If the number of colours exceeds the palette, multiple alpha value are used to generate more colours.
 #' @return The generated colours.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' cols = GenerateColours(num_colours=5, names=c("A", "B", "C", "D", "E"))
+#' }
 GenerateColours = function(num_colours, names=NULL, palette="ggsci::pal_igv", alphas=c(1,0.7,0.3), palette_options=list()) {
   palette = tryCatch({eval(parse(text=palette))}, error=function(cond) return(NULL))
   if (is.null(palette)) stop("GenerateColours: Could not find specified palette!")
@@ -872,6 +1082,11 @@ GenerateColours = function(num_colours, names=NULL, palette="ggsci::pal_igv", al
 #' Report parameters in a table.
 #' @param params The parameter list.
 #' @return A table with parameters for printing.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' params = list(project_id="proj1", pc_n=10)
+#' ScrnaseqParamsInfo(params)
 ScrnaseqParamsInfo = function(params) { 
   
   # Initialize output table
@@ -906,6 +1121,12 @@ ScrnaseqParamsInfo = function(params) {
 #'
 #' @param param The parameter list.
 #' @return Returns a list with error messages.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' check_parameters_scrnaseq(list(project_id="proj1", path_data=data.frame(name="sample1", type="smartseq2", path="counts.tsv.gz", stats=NA)))
+#' }
 check_parameters_scrnaseq = function(param) {
   error_messages = c()
   param[["error_messages"]] = NULL
@@ -1381,6 +1602,12 @@ check_parameters_scrnaseq = function(param) {
 # Checks if python is valid.
 #'
 #' @return Returns a list with error messages.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' msgs = check_python()
+#' }
 check_python = function() {
   error_messages = c()
   
@@ -1400,6 +1627,12 @@ check_python = function() {
 # Checks if pandoc is valid.
 #'
 #' @return Returns a list with error messages.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' msgs = check_pandoc()
+#' }
 check_pandoc = function() {
   error_messages = c()
   
@@ -1414,6 +1647,12 @@ check_pandoc = function() {
 #'
 #' @param databases The enrichR databases to use.
 #' @return Returns a list with error messages.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' msgs = check_enrichr(databases="GO_Biological_Process_2023")
+#' }
 check_enrichr = function(databases, site="Enrichr") {
   if(is.null(databases) || length(databases)==0) return(c())
   
@@ -1443,6 +1682,10 @@ check_enrichr = function(databases, site="Enrichr") {
 #'
 #' @param packages A character vector with package names.
 #' @return Logical vector with TRUE for installed and FALSE for not installed
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' packages_installed(c("ggplot2", "dplyr", "nonexistentpkg123"))
 packages_installed = function(packages) {
   return(packages %in% installed.packages()[ , "Package"])
 }
@@ -1451,6 +1694,12 @@ packages_installed = function(packages) {
 #' Checks if all packages required for the scrnaseq workflow are installed.
 #'
 #' @return Returns a list with error messages.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' msgs = check_installed_packages_scrnaseq()
+#' }
 check_installed_packages_scrnaseq = function() {
   required_packages = c("Seurat", "ggplot2", "patchwork", "magrittr",
                         "reticulate", "enrichR", "future", "knitr",
@@ -1478,6 +1727,12 @@ check_installed_packages_scrnaseq = function() {
 #' @param file_annot File with existing annotation to use.
 #' @param file_cc_markers File with existing cell cycle markers to use.
 #' @return Returns a list with error messages.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' msgs = check_ensembl(biomart="homo_sapiens", dataset="hsapiens_gene_ensembl", mirror=NULL, version=110, attributes=c("ensembl_gene_id"))
+#' }
 check_ensembl = function(biomart, dataset, mirror, version, attributes, file_annot=NULL, file_cc_markers=NULL) {
   error_messages = c()
   
@@ -1513,6 +1768,10 @@ check_ensembl = function(biomart, dataset, mirror, version, attributes, file_ann
 
 #' On error, R will not start a debugger but just print a traceback. For non-interactive use.
 #' @return None.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' on_error_just_print_traceback()
 on_error_just_print_traceback = function(x) {
   options(rlang_trace_top_env = rlang::caller_env())
   options(error = function() {
@@ -1524,6 +1783,10 @@ on_error_just_print_traceback = function(x) {
 
 #' On error, R will start a debugger on the terminal. For interactive use without X11.
 #' @return None.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' on_error_start_terminal_debugger()
 on_error_start_terminal_debugger = function(x) {
   options(error = function() {
     sink()
@@ -1534,6 +1797,10 @@ on_error_start_terminal_debugger = function(x) {
 
 #' On error, R will run the default debugging process. Default.
 #' @return None.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' on_error_default_debugging()
 on_error_default_debugging = function(x) {
   return(invisible(NULL))
 }
@@ -1543,6 +1810,12 @@ on_error_default_debugging = function(x) {
 #' @param reference Argument for citep or citet.
 #' @param type Use 'citet' or 'citep'.
 #' @return Returns the output of citep or citet.
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' Cite("wickham2019")
+#' }
 Cite = function(reference, type="citet") {
   formatted = tryCatch({
     if (type=="citet") knitcitations::citet(reference) else knitcitations::citep(reference)

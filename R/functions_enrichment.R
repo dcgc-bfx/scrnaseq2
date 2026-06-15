@@ -12,7 +12,19 @@
 #' @import clusterProfiler
 #' 
 #' @return A data frame containing the results of the ORA, including the cluster identifier.
-perform_ora <- function(genes, universe, cluster=NA, term2gene) {
+#'
+#' @note AI-assisted documentation
+#'
+#' @examples
+#' \dontrun{
+#' # Load a gene set library (e.g. from msigdbr)
+#' library(msigdbr)
+#' term2gene = msigdbr(species="Homo sapiens", category="H")[, c("gs_name", "gene_symbol")]
+#' universe = unique(term2gene$gene_symbol)
+#' genes = c("BRCA1", "TP53", "MYC")
+#' result = perform_ora(genes=genes, universe=universe, cluster=1, term2gene=term2gene)
+#' }
+perform_ora = function(genes, universe, cluster=NA, term2gene) {
   if (length(genes) == 0) {
     return(NULL)
   }
