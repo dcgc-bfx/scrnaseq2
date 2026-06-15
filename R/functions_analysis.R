@@ -26,6 +26,7 @@
 #' @export
 #' 
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' library(Matrix)
 #'
@@ -201,6 +202,7 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
 #' @export
 #' 
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' library(Matrix)
 #'
@@ -247,6 +249,7 @@ CalculateColumnPerc = function(mat) {
 #' @export
 #' 
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' library(Matrix)
 #'
@@ -373,6 +376,7 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
 #' @export
 #'
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' library(Matrix)
 #'
@@ -495,6 +499,7 @@ CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
 #' @export
 #' 
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' library(Matrix)
 #' library(UCell)
@@ -624,6 +629,7 @@ CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
 #' @export
 #' 
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -725,6 +731,7 @@ CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
 #' @export
 #'
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -797,6 +804,7 @@ TransformData = function(sc, assay=NULL, layer="counts", save="data", log=FALSE)
 #' @export
 #' 
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -911,6 +919,7 @@ NormalizeDataScran = function(sc, assay=NULL, layer="counts", save="data", chunk
 #' @export
 #' 
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -1053,6 +1062,7 @@ FindVariableFeaturesScran = function(sc, assay=NULL, nfeatures=2000, combined=TR
 #' @export
 #' 
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -1119,6 +1129,7 @@ FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variabl
 #' @export
 #' 
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -1219,6 +1230,7 @@ RunDimRedWrapper = function(sc, method="pca", name=NULL, assay=NULL, dim_n=50, v
 #' @export
 #' 
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -1382,6 +1394,7 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
 #' }
 #' 
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -1479,6 +1492,7 @@ scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers
 #' @export
 #' 
 #' @note AI-assisted documentation
+#'
 #' @examples
 #' library(Seurat)
 #'
