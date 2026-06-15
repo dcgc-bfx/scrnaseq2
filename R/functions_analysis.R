@@ -30,18 +30,18 @@
 #'
 #' # Create a random sparse matrix with 100 rows (features) and 50 columns (barcodes)
 #' set.seed(123)
-#' mat <- rsparsematrix(nrow = 100, ncol = 50, density = 0.1, rand.x = function(n) rpois(n, 5))
+#' mat = rsparsematrix(nrow=100, ncol=50, density=0.1, rand.x=function(n) rpois(n, 5))
 #'
 #' # Sum top-5 entries per row (features)
-#' result_rows <- SumTopN(mat, top_n = 5, margin = 1)
+#' result_rows = SumTopN(mat, top_n=5, margin=1)
 #' head(result_rows[[1]])
 #'
 #' # Sum top-3 entries per column (barcodes)
-#' result_cols <- SumTopN(mat, top_n = 3, margin = 2)
+#' result_cols = SumTopN(mat, top_n=3, margin=2)
 #' head(result_cols[[1]])
 #'
 #' # Multiple top_n values
-#' result_multi <- SumTopN(mat, top_n = c(3, 10), margin = 1)
+#' result_multi = SumTopN(mat, top_n=c(3, 10), margin=1)
 #' str(result_multi)
 SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
     # Checks
@@ -204,10 +204,10 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
 #'
 #' # Create a random sparse matrix with 10 rows (features) and 5 columns (barcodes)
 #' set.seed(123)
-#' mat <- rsparsematrix(nrow = 10, ncol = 5, density = 0.3, rand.x = function(n) rpois(n, 5))
+#' mat = rsparsematrix(nrow=10, ncol=5, density=0.3, rand.x=function(n) rpois(n, 5))
 #'
 #' # Calculate column percentages
-#' perc_mat <- CalculateColumnPerc(mat)
+#' perc_mat = CalculateColumnPerc(mat)
 #'
 #' # Inspect the first few rows
 #' perc_mat[1:5, ]
@@ -249,18 +249,18 @@ CalculateColumnPerc = function(mat) {
 #'
 #' # Create a random sparse matrix with 20 rows (features) and 10 columns (barcodes)
 #' set.seed(123)
-#' mat <- rsparsematrix(nrow = 20, ncol = 10, density = 0.2, rand.x = function(n) rpois(n, 5))
+#' mat = rsparsematrix(nrow=20, ncol=10, density=0.2, rand.x=function(n) rpois(n, 5))
 #'
 #' # Calculate medians per row (features)
-#' medians_row <- CalculateMedians(mat, margin = 1)
+#' medians_row = CalculateMedians(mat, margin=1)
 #' head(medians_row)
 #'
 #' # Calculate medians per column (barcodes)
-#' medians_col <- CalculateMedians(mat, margin = 2)
+#' medians_col = CalculateMedians(mat, margin=2)
 #' head(medians_col)
 #'
 #' # Apply a log transformation before calculating medians
-#' medians_log <- CalculateMedians(mat, margin = 1, fun = function(x) log1p(x))
+#' medians_log = CalculateMedians(mat, margin=1, fun=function(x) log1p(x))
 #' head(medians_log)
 CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
   # Checks
@@ -374,14 +374,14 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
 #'
 #' # Create a random sparse matrix with 20 rows (features) and 10 columns (barcodes)
 #' set.seed(123)
-#' mat <- rsparsematrix(nrow = 20, ncol = 10, density = 0.3, rand.x = function(n) rpois(n, 5))
+#' mat = rsparsematrix(nrow=20, ncol=10, density=0.3, rand.x=function(n) rpois(n, 5))
 #'
 #' # Calculate boxplot statistics per row (features)
-#' stats_row <- CalculateBoxplotStats(mat, margin = 1)
+#' stats_row = CalculateBoxplotStats(mat, margin=1)
 #' head(stats_row)
 #'
 #' # Calculate boxplot statistics per column (barcodes)
-#' stats_col <- CalculateBoxplotStats(mat, margin = 2)
+#' stats_col = CalculateBoxplotStats(mat, margin=2)
 #' head(stats_col)
 CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
   # Checks
@@ -496,16 +496,16 @@ CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
 #'
 #' # Create a random sparse matrix with 20 features and 10 cells
 #' set.seed(123)
-#' mat <- rsparsematrix(nrow = 20, ncol = 10, density = 0.3, rand.x = function(n) rpois(n, 5))
+#' mat = rsparsematrix(nrow=20, ncol=10, density=0.3, rand.x=function(n) rpois(n, 5))
 #'
 #' # Define feature sets
-#' features_list <- list(
-#'   set1 = rownames(mat)[1:5],
-#'   set2 = rownames(mat)[6:10]
+#' features_list = list(
+#'   set1=rownames(mat)[1:5],
+#'   set2=rownames(mat)[6:10]
 #' )
 #'
 #' # Calculate UCell scores
-#' scores <- CalculateModuleScoreUCell(mat, features_list)
+#' scores = CalculateModuleScoreUCell(mat, features_list)
 #' head(scores)
 CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
     #matrix = Seurat::GetAssayData(sc, layer="counts", assay=assay)
@@ -624,12 +624,12 @@ CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
 #' library(furrr)
 #'
 #' # Example Seurat object with RNA assay
-#' sc <- CreateSeuratObject(matrix(rpois(200, lambda=5), nrow=20, ncol=10))
-#' genes_s <- rownames(sc)[1:10]
-#' genes_g2m <- rownames(sc)[11:20]
+#' sc = CreateSeuratObject(matrix(rpois(200, lambda=5), nrow=20, ncol=10))
+#' genes_s = rownames(sc)[1:10]
+#' genes_g2m = rownames(sc)[11:20]
 #'
 #' # Calculate cell cycle scores
-#' sc <- CCScoring(sc, genes_s, genes_g2m)
+#' sc = CCScoring(sc, genes_s, genes_g2m)
 #' head(sc[[]])
 #' }
 CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
@@ -723,10 +723,10 @@ CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
 #' library(Seurat)
 #'
 #' # Create a small Seurat object
-#' sc <- CreateSeuratObject(matrix(rpois(100, lambda=5), nrow=10, ncol=10))
+#' sc = CreateSeuratObject(matrix(rpois(100, lambda=5), nrow=10, ncol=10))
 #'
 #' # Apply log transformation to counts and save as new layers
-#' sc <- TransformData(sc, layer="counts", save="data", log=TRUE)
+#' sc = TransformData(sc, layer="counts", save="data", log=TRUE)
 #' }
 TransformData = function(sc, assay=NULL, layer="counts", save="data", log=FALSE) {
     if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
@@ -796,10 +796,10 @@ TransformData = function(sc, assay=NULL, layer="counts", save="data", log=FALSE)
 #' library(scuttle)
 #'
 #' # Create a small Seurat object
-#' sc <- CreateSeuratObject(matrix(rpois(100, lambda=5), nrow=10, ncol=10))
+#' sc = CreateSeuratObject(matrix(rpois(100, lambda=5), nrow=10, ncol=10))
 #'
 #' # Apply scran normalization to counts layer
-#' sc <- NormalizeDataScran(sc, layer="counts", save="data")
+#' sc = NormalizeDataScran(sc, layer="counts", save="data")
 #' }
 NormalizeDataScran = function(sc, assay=NULL, layer="counts", save="data", chunk_size=50000) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
@@ -908,10 +908,10 @@ NormalizeDataScran = function(sc, assay=NULL, layer="counts", save="data", chunk
 #' library(scran)
 #'
 #' # Create a small Seurat object
-#' sc <- CreateSeuratObject(matrix(rpois(100, lambda=5), nrow=10, ncol=10))
+#' sc = CreateSeuratObject(matrix(rpois(100, lambda=5), nrow=10, ncol=10))
 #'
 #' # Identify highly variable features using scran
-#' sc <- FindVariableFeaturesScran(sc, nfeatures=5)
+#' sc = FindVariableFeaturesScran(sc, nfeatures=5)
 #' VariableFeatures(sc)
 #' }
 FindVariableFeaturesScran = function(sc, assay=NULL, nfeatures=2000, combined=TRUE) {
@@ -1048,14 +1048,14 @@ FindVariableFeaturesScran = function(sc, assay=NULL, nfeatures=2000, combined=TR
 #' library(Seurat)
 #'
 #' # Create a toy Seurat object
-#' sc <- CreateSeuratObject(matrix(rpois(100, lambda=5), nrow=10, ncol=10))
+#' sc = CreateSeuratObject(matrix(rpois(100, lambda=5), nrow=10, ncol=10))
 #'
 #' # Identify HVFs using vst
-#' sc <- FindVariableFeaturesWrapper(sc, feature_selection_method="vst", num_variable_features=5)
+#' sc = FindVariableFeaturesWrapper(sc, feature_selection_method="vst", num_variable_features=5)
 #' VariableFeatures(sc)
 #'
 #' # Identify HVFs using scran
-#' sc <- FindVariableFeaturesWrapper(sc, feature_selection_method="scran", num_variable_features=5)
+#' sc = FindVariableFeaturesWrapper(sc, feature_selection_method="scran", num_variable_features=5)
 #' VariableFeatures(sc)
 #' }
 FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variable_features=2000, assay=NULL, verbose=TRUE) {
@@ -1113,10 +1113,10 @@ FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variabl
 #' library(Seurat)
 #'
 #' # Create a toy object
-#' sc <- CreateSeuratObject(matrix(rpois(100, 5), nrow=10, ncol=10))
+#' sc = CreateSeuratObject(matrix(rpois(100, 5), nrow=10, ncol=10))
 #'
 #' # Run PCA with default settings
-#' sc <- RunDimRedWrapper(sc, method="pca")
+#' sc = RunDimRedWrapper(sc, method="pca")
 #'
 #' # Access PCA results
 #' Embeddings(sc[["pca"]])[1:5, 1:3]
@@ -1212,13 +1212,13 @@ RunDimRedWrapper = function(sc, method="pca", name=NULL, assay=NULL, dim_n=50, v
 #' library(Seurat)
 #'
 #' # Toy Seurat object
-#' sc <- CreateSeuratObject(matrix(rpois(100, 5), nrow=10, ncol=10))
-#' sc <- NormalizeData(sc)
-#' sc <- FindVariableFeatures(sc)
-#' sc <- RunPCA(sc)
+#' sc = CreateSeuratObject(matrix(rpois(100, 5), nrow=10, ncol=10))
+#' sc = NormalizeData(sc)
+#' sc = FindVariableFeatures(sc)
+#' sc = RunPCA(sc)
 #'
 #' # Run Harmony integration
-#' sc <- IntegrateLayersWrapper(sc, integration_method="HarmonyIntegration")
+#' sc = IntegrateLayersWrapper(sc, integration_method="HarmonyIntegration")
 #' Reductions(sc)
 #' }
 IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduct=NULL, new_reduct=NULL, new_reduct_suffix=NULL, additional_args=NULL, verbose=TRUE) {
@@ -1374,18 +1374,18 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
 #' library(Seurat)
 #'
 #' # Load a Seurat object
-#' sc <- CreateSeuratObject(matrix(rpois(2000, 5), nrow=100, ncol=20))
+#' sc = CreateSeuratObject(matrix(rpois(2000, 5), nrow=100, ncol=20))
 #'
 #' # Run scVI integration
-#' latent_list <- scVIIntegration_Fixed(
-#'   object = sc,
-#'   conda_env = "scvi-env",
-#'   new.reduction = "scvi.latent",
-#'   ndims = 20
+#' latent_list = scVIIntegration_Fixed(
+#'   object=sc,
+#'   conda_env="scvi-env",
+#'   new.reduction="scvi.latent",
+#'   ndims=20
 #' )
 #'
 #' # Attach result back to Seurat object
-#' sc[["scvi.latent"]] <- latent_list[["scvi.latent"]]
+#' sc[["scvi.latent"]] = latent_list[["scvi.latent"]]
 #' Reductions(sc)
 #' }
 #' 
@@ -1469,12 +1469,12 @@ scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers
 #' library(Seurat)
 #'
 #' # Example Seurat object
-#' sc <- CreateSeuratObject(matrix(rpois(2000, 5), nrow = 100, ncol = 20))
-#' sc$seurat_clusters <- sample(1:3, ncol(sc), replace = TRUE)
-#' sc$orig.ident <- sample(c("SampleA", "SampleB"), ncol(sc), replace = TRUE)
+#' sc = CreateSeuratObject(matrix(rpois(2000, 5), nrow=100, ncol=20))
+#' sc$seurat_clusters = sample(1:3, ncol(sc), replace=TRUE)
+#' sc$orig.ident = sample(c("SampleA", "SampleB"), ncol(sc), replace=TRUE)
 #'
 #' # Run Fisher enrichment
-#' enrichment <- CellsFisher(sc)
+#' enrichment = CellsFisher(sc)
 #' head(enrichment)
 CellsFisher = function(sc) {
   cell_samples = sc[[]] %>% dplyr::pull(orig.ident) %>% unique() %>% sort()

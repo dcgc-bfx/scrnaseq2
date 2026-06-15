@@ -34,20 +34,20 @@
 #' 
 #' @examples
 #' library(Seurat)
-#' sc <- CreateSeuratObject(matrix(rpois(2000, 5), nrow = 100, ncol = 20))
-#' sc$orig.ident <- sample(c("SampleA", "SampleB"), ncol(sc), replace = TRUE)
-#' sc$condition <- sample(c("Control", "Treatment"), ncol(sc), replace = TRUE)
+#' sc = CreateSeuratObject(matrix(rpois(2000, 5), nrow=100, ncol=20))
+#' sc$orig.ident = sample(c("SampleA", "SampleB"), ncol(sc), replace=TRUE)
+#' sc$condition = sample(c("Control", "Treatment"), ncol(sc), replace=TRUE)
 #'
-#' contrasts <- list(
+#' contrasts = list(
 #'   list(
-#'     name = "Control_vs_Treatment",
-#'     condition_column = "condition",
-#'     condition1 = "Control",
-#'     condition2 = "Treatment"
+#'     name="Control_vs_Treatment",
+#'     condition_column="condition",
+#'     condition1="Control",
+#'     condition2="Treatment"
 #'   )
 #' )
 #'
-#' contrast_list <- NewContrastsList(sc, contrasts, type = "deg")
+#' contrast_list = NewContrastsList(sc, contrasts, type="deg")
 #' names(contrast_list)
 NewContrastsList = function(sc, contrasts_list, type='deg') {
     # If empty, return empty list
@@ -688,14 +688,14 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
 #' 
 #' @examples
 #' \dontrun{
-#' contrast <- list(
-#'   name = "Treatment_vs_Control",
-#'   condition_column = "condition",
-#'   condition1 = "Treatment",
-#'   condition2 = "Control"
+#' contrast = list(
+#'   name="Treatment_vs_Control",
+#'   condition_column="condition",
+#'   condition1="Treatment",
+#'   condition2="Control"
 #' )
-#' contrast <- NewContrastsList(sc, list(contrast))[[1]]
-#' contrast <- PrepareDegContrast(sc, contrast)
+#' contrast = NewContrastsList(sc, list(contrast))[[1]]
+#' contrast = PrepareDegContrast(sc, contrast)
 #' }
 PrepareDegContrast = function(sc, contrast, cast_to_sparse=FALSE) {
     barcode_metadata = sc[[]]
@@ -1009,16 +1009,16 @@ PrepareDegContrast = function(sc, contrast, cast_to_sparse=FALSE) {
 #' 
 #' @examples
 #' \dontrun{
-#' contrast <- list(
-#'   name = "Treatment_vs_Control",
-#'   condition_column = "condition",
-#'   compositional_column = "celltype",
-#'   condition1 = "Treatment",
-#'   condition2 = "Control",
-#'   test = "fisher"
+#' contrast = list(
+#'   name="Treatment_vs_Control",
+#'   condition_column="condition",
+#'   compositional_column="celltype",
+#'   condition1="Treatment",
+#'   condition2="Control",
+#'   test="fisher"
 #' )
-#' contrast <- NewContrastsList(sc, list(contrast))[[1]]
-#' contrast <- PrepareCompositionalContrast(sc, contrast)
+#' contrast = NewContrastsList(sc, list(contrast))[[1]]
+#' contrast = PrepareCompositionalContrast(sc, contrast)
 #' }
 PrepareCompositionalContrast = function(sc, contrast) {
   barcode_metadata = sc[[]]
@@ -1176,9 +1176,9 @@ PrepareCompositionalContrast = function(sc, contrast) {
 #' 
 #' @examples
 #' \dontrun{
-#' contrast <- PrepareDegContrast(sc, contrast)
-#' contrast[["test"]] <- "wilcox"
-#' contrast <- DegsRunTest(contrast)
+#' contrast = PrepareDegContrast(sc, contrast)
+#' contrast[["test"]] = "wilcox"
+#' contrast = DegsRunTest(contrast)
 #' head(contrast$results)
 #' }
 DegsRunTest = function(contrast) {
@@ -1373,10 +1373,10 @@ DegsRunTest = function(contrast) {
 #'
 #' @examples
 #' \dontrun{
-#' ora <- DegsRunOraTest(
-#'   deg_result = degs,
-#'   term2gene_db = term2gene_db,
-#'   genesets = c("C5:GO:BP:*", "C2:KEGG:*")
+#' ora = DegsRunOraTest(
+#'   deg_result=degs,
+#'   term2gene_db=term2gene_db,
+#'   genesets=c("C5:GO:BP:*", "C2:KEGG:*")
 #' )
 #' ora$results[["C5:GO:BP:*"]]
 #' }
@@ -1504,10 +1504,10 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
 #'
 #' @examples
 #' \dontrun{
-#' gsea <- DegsRunGseaTest(
-#'   contrast = contrast,
-#'   term2gene_db = term2gene_db,
-#'   genesets = c("C5:GO:BP:*", "C2:KEGG:*")
+#' gsea = DegsRunGseaTest(
+#'   contrast=contrast,
+#'   term2gene_db=term2gene_db,
+#'   genesets=c("C5:GO:BP:*", "C2:KEGG:*")
 #' )
 #' gsea$results[["C5:GO:BP:*"]]
 #' }
@@ -1623,10 +1623,10 @@ DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
 #' @examples
 #' \dontrun{
 #' # Download MSigDB Hallmark genesets for human
-#' gs <- DegsGetGenesets(msigdb_species="homo_sapiens")
+#' gs = DegsGetGenesets(msigdb_species="homo_sapiens")
 #'
 #' # Load user-defined genesets from Excel file
-#' gs <- DegsGetGenesets(
+#' gs = DegsGetGenesets(
 #'   msigdb_species="homo_sapiens",
 #'   geneset_files=c("custom_genesets.xlsx")
 #' )
@@ -1736,19 +1736,19 @@ DegsGetGenesets = function(msigdb_species, is_msigdb_species_name=FALSE, geneset
 #' @examples
 #' \dontrun{
 #' # Run DESeq2 Wald test
-#' degs <- DegsRunDESeq2(
-#'   object = sc_bulk,
-#'   ident_1 = "treated",
-#'   ident_2 = "control"
+#' degs = DegsRunDESeq2(
+#'   object=sc_bulk,
+#'   ident_1="treated",
+#'   ident_2="control"
 #' )
 #'
 #' # Run DESeq2 LRT with reduced model
-#' degs <- DegsRunDESeq2(
-#'   object = sc_bulk,
-#'   assay = "RNA",
-#'   test = "LRT",
-#'   design = "~ condition_groups + batch",
-#'   reduced = "~ batch"
+#' degs = DegsRunDESeq2(
+#'   object=sc_bulk,
+#'   assay="RNA",
+#'   test="LRT",
+#'   design="~ condition_groups + batch",
+#'   reduced="~ batch"
 #' )
 #' }
 DegsRunDESeq2 = function(object, ident_1, ident_2, assay=NULL, test="Wald", design="~condition_groups", reduced=NULL, random_seed=1, results_args=NULL) {
@@ -1848,10 +1848,10 @@ DegsRunDESeq2 = function(object, ident_1, ident_2, assay=NULL, test="Wald", desi
 #' @examples
 #' \dontrun{
 #' # Sort standard DEG results
-#' degs_sorted <- DegsSort(degs)
+#' degs_sorted = DegsSort(degs)
 #'
 #' # Sort by cluster first, then within cluster
-#' degs_sorted <- DegsSort(degs, group = "cluster")
+#' degs_sorted = DegsSort(degs, group="cluster")
 #' }
 DegsSort = function(degs, group=NULL) { 
   # Group first (if requested)
@@ -1902,13 +1902,13 @@ DegsSort = function(degs, group=NULL) {
 #' @examples
 #' \dontrun{
 #' # Filter DEGs with log2FC >= 0.5
-#' degs_filtered <- DegsFilter(degs, cut_log2FC = 0.5)
+#' degs_filtered = DegsFilter(degs, cut_log2FC=0.5)
 #'
 #' # Filter with log2FC >= 1 and adjusted p-value <= 0.05
-#' degs_filtered <- DegsFilter(degs, cut_log2FC = 1, cut_padj = 0.05)
+#' degs_filtered = DegsFilter(degs, cut_log2FC=1, cut_padj=0.05)
 #'
 #' # Return a single filtered table instead of split by direction
-#' degs_filtered <- DegsFilter(degs, cut_log2FC = 0.25, split_by_dir = FALSE)
+#' degs_filtered = DegsFilter(degs, cut_log2FC=0.25, split_by_dir=FALSE)
 #' }
 DegsFilter = function(degs, cut_log2FC, cut_padj=NULL, split_by_dir=TRUE) { 
   
@@ -1967,12 +1967,12 @@ DegsFilter = function(degs, cut_log2FC, cut_padj=NULL, split_by_dir=TRUE) {
 #' @examples
 #' \dontrun{
 #' # Show top 5 markers per cluster by adjusted p-value score and percent diff
-#' top_markers <- DegsUpDisplayTop(degs, n = 5)
+#' top_markers = DegsUpDisplayTop(degs, n=5)
 #'
 #' # Rank instead by log2FC and percent difference
-#' top_markers <- DegsUpDisplayTop(degs, n = 10,
-#'                                 column_1 = "avg_log2FC",
-#'                                 column_2 = "pct.diff")
+#' top_markers = DegsUpDisplayTop(degs, n=10,
+#'                                 column_1="avg_log2FC",
+#'                                 column_2="pct.diff")
 #' }
 DegsUpDisplayTop = function(degs, n=5, column_1="p_val_adj_score", column_2="pct.diff") { 
   
@@ -2030,9 +2030,9 @@ DegsUpDisplayTop = function(degs, n=5, column_1="p_val_adj_score", column_2="pct
 #' @examples
 #' \dontrun{
 #' # Run a DEG test and plot scatterplot with top 10 genes labeled
-#' contrast <- PrepareContrast(...)
-#' deg_result <- DegsRunTest(contrast)
-#' DegsScatterPlot(deg_result, n_label = 10, font_size = 12)
+#' contrast = PrepareContrast(...)
+#' deg_result = DegsRunTest(contrast)
+#' DegsScatterPlot(deg_result, n_label=10, font_size=12)
 #' }
 DegsScatterPlot = function(deg_result, n_label=5, font_size=11) {
     # Get condition names. If multiple, join by '+'.
@@ -2121,8 +2121,8 @@ DegsScatterPlot = function(deg_result, n_label=5, font_size=11) {
 #'
 #' @examples
 #' \dontrun{
-#' deg_result <- DegsRunTest(contrast)
-#' DegsVolcanoPlot(deg_result, n_label = 10, font_size = 12)
+#' deg_result = DegsRunTest(contrast)
+#' DegsVolcanoPlot(deg_result, n_label=10, font_size=12)
 #' }
 DegsVolcanoPlot = function(deg_result, n_label=5, font_size=11) {
     # Get condition names. If multiple, join by '+'.
@@ -2221,14 +2221,14 @@ DegsVolcanoPlot = function(deg_result, n_label=5, font_size=11) {
 #' @examples
 #' \dontrun{
 #' # Average counts per cluster
-#' avg_counts <- AverageCounts(sc, group_by = "seurat_clusters")
+#' avg_counts = AverageCounts(sc, group_by="seurat_clusters")
 #'
 #' # Average counts using active identities
-#' avg_counts <- AverageCounts(sc)
+#' avg_counts = AverageCounts(sc)
 #'
 #' # Average counts using a custom list of barcode groups
-#' groups_list <- list(group1 = c("cell1","cell2"), group2 = c("cell3","cell4"))
-#' avg_counts <- AverageCounts(sc, group_by = groups_list)
+#' groups_list = list(group1=c("cell1","cell2"), group2=c("cell3","cell4"))
+#' avg_counts = AverageCounts(sc, group_by=groups_list)
 #' }
 AverageCounts = function(sc, group_by=NULL, assay=NULL, layer=NULL) {
   # If assay is NULL, use default assay
@@ -2312,8 +2312,8 @@ AverageCounts = function(sc, group_by=NULL, assay=NULL, layer=NULL) {
 #'
 #' @examples
 #' \dontrun{
-#' genes_of_interest <- c("GeneA", "GeneB", "GeneC")
-#' avg_expression <- DegsAvgDataPerIdentity(sc, genes_of_interest)
+#' genes_of_interest = c("GeneA", "GeneB", "GeneC")
+#' avg_expression = DegsAvgDataPerIdentity(sc, genes_of_interest)
 #' }
 DegsAvgDataPerIdentity = function(sc, genes, assay="RNA") { 
   # The standard average log FC is derived from assay and layer="data"
@@ -2379,7 +2379,7 @@ DegsAvgDataPerIdentity = function(sc, genes, assay="RNA") {
 #'
 #' @examples
 #' \dontrun{
-#' avg_expr <- DegsAvgData(sc[["RNA"]], cells=c("cell1", "cell2"), genes=c("GeneA", "GeneB"), slot=c("counts","data"))
+#' avg_expr = DegsAvgData(sc[["RNA"]], cells=c("cell1", "cell2"), genes=c("GeneA", "GeneB"), slot=c("counts","data"))
 #' }
 DegsAvgData = function(object, cells=NULL, genes=NULL, slot="data") {
   if ("data" %in% slot) avg_data = as.numeric() else avg_data = NULL
@@ -2640,7 +2640,7 @@ DegsWriteGseaToFile = function(gsea_lst, file, parameter=NULL) {
 #'
 #' @examples
 #' \dontrun{
-#' degs <- Seurat::FindAllMarkers(seurat_obj)
+#' degs = Seurat::FindAllMarkers(seurat_obj)
 #' DegsPlotNumbers(degs, group="cluster", title="Number of DEGs per Cluster")
 #' }
 DegsPlotNumbers = function(degs, group=NULL, title=NULL) {
@@ -2822,7 +2822,7 @@ EnrichrWriteResults = function(enrichr_results, file) {
 #'
 #' @examples
 #' \dontrun{
-#' flat_results <- FlattenEnrichr(enrichr_results)
+#' flat_results = FlattenEnrichr(enrichr_results)
 #' }
 FlattenEnrichr = function(enrichr_results) {
   enrichr_results_flat = purrr::map(names(enrichr_results), function(n) {
