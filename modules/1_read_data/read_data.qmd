@@ -101,6 +101,7 @@ library(Seurat)
 library(BPCells)
 library(ggplot2)
 library(future)
+library(BiocParallel)
 
 # Get module directory (needed to access files within the module directory)
 module_dir = params$module_dir
@@ -123,8 +124,15 @@ source("R/functions_analysis.R")
 # Be verbose or not
 verbose = param("verbose")
 
-# Parallelisation plan for all functions that support future
+# Parallelisation config for all functions that use the future framework
 plan(multisession, workers=param("cores"))
+
+# Parallelisation config for all functions that use the BiocParallel framework
+register(SnowParam(workers=param("cores"), type="SOCK", RNGseed=getOption("random_seed"))) 
+
+# Parallelisation config for BLAS threading. Currently set to 1 because there does not seem to be a performance gain
+# but may be relevant for very large projects.
+RhpcBLASctl::blas_set_num_threads(1)
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
@@ -397,6 +405,10 @@ for (i in 1:nrow(datasets)) {
                                                                       ensembl_chr="chromosome_name",ensembl_start_position="start_position", 
                                                                       ensembl_end_position="end_position", ensembl_strand="strand"),
                                                   useCache=TRUE)
+        # Use id if there is no symbol available
+        ensembl_annotation$ensembl_symbol = ifelse(is.na(ensembl_annotation$ensembl_symbol) | nchar(ensembl_annotation$ensembl_symbol)==0, ensembl_annotation$ensembl_id, ensembl_annotation$ensembl_symbol)
+          
+        # Merge to existing metadata
         feature_metadata = dplyr::bind_cols(feature_metadata, ensembl_annotation, .name_repair="minimal")
         attr(counts_lst[[i]][[j]], "feature_metadata") = feature_metadata
         
@@ -419,9 +431,11 @@ for (i in 1:nrow(datasets)) {
                                   msg=FormatString("Column {feature_name_column} cannot be found in the feature metadata available for dataset {path}, assay {assay}."))
       }
       new_feature_names = feature_metadata[, feature_name_column, drop=TRUE]
-
-      # Use id if there is no symbol available
-      new_feature_names = ifelse(is.na(new_feature_names) | nchar(new_feature_names)==0, rownames(feature_metadata), new_feature_names)
+  
+      # Make sure that values are not NA or empty. If so, raise error
+      if (any(is.na(new_feature_names) | nchar(new_feature_names)==0)) {
+        stop(FormatString("New feature names contain NA values or are empty for dataset {path}, assay {assay}. Please make sure that the selected feature metadata column contains valid values."))
+      }
     }
 
     # Now make new feature names Seurat-compatible
@@ -561,11 +575,11 @@ if (!is.null(downsample_barcodes_n) | downsample_barcodes_equally) {
       
       # Subset counts
       keep = colnames(counts_lst[[i]][[j]]) %in% barcodes_per_dataset[[i]]
-      counts_lst[[i]][[j]] = counts_lst[[i]][[j]][, keep]
+      counts_lst[[i]][[j]] = counts_lst[[i]][[j]][, keep, drop=FALSE]
       
       # Subset barcode metadata
       keep = rownames(barcode_metadata) %in% barcodes_per_dataset[[i]]
-      barcode_metadata = barcode_metadata[keep,]
+      barcode_metadata = barcode_metadata[keep,, drop=FALSE]
 
       # Restore metadata
       attr(counts_lst[[i]][[j]], "feature_metadata") = feature_metadata
@@ -601,10 +615,10 @@ if (!is.null(downsample_features_n)) {
       rows = sample(seq(nrow(counts_lst[[i]][[j]])), downsample_features_n)
       
       # Subset counts
-      counts_lst[[i]][[j]] = counts_lst[[i]][[j]][rows, ]
+      counts_lst[[i]][[j]] = counts_lst[[i]][[j]][rows,, drop=FALSE]
       
       # Subset feature metadata
-      feature_metadata = feature_metadata[rows,]
+      feature_metadata = feature_metadata[rows,, drop=FALSE]
 
       # Restore metadata
       attr(counts_lst[[i]][[j]], "feature_metadata") = feature_metadata
@@ -884,11 +898,27 @@ sc
 
 # Add colours
 set.seed(1)
+
+orig_ident_levels = levels(sc$orig.ident)
+orig_ident_cols = c(sample(zeileis_28, length(zeileis_28)), sample(godsnot_102, length(godsnot_102)))
+orig_ident_cols = orig_ident_cols[1:length(orig_ident_levels)]
+
+sample_levels = levels(sc$sample)
+sample_cols = c(sample(zeileis_28, length(zeileis_28)), sample(godsnot_102, length(godsnot_102)))
+sample_cols = sample_cols[1:length(sample_levels)]
+
+technology_levels =  levels(sc$technology)
+technology_cols = c(sample(zeileis_28, length(zeileis_28)), sample(godsnot_102, length(godsnot_102)))
+technology_cols = technology_cols[1:length(technology_levels)]
+
+seurat_clusters_cols = c(sample(godsnot_102, length(godsnot_102)), sample(zeileis_28, length(zeileis_28)))
+seurat_clusters_levels = 1:length(seurat_clusters_cols)
+
 sc = ScAddColours(sc, colours=list(
-  orig.ident=setNames(zeileis_28 %>% sample(size=length(levels(sc$orig.ident))), levels(sc$orig.ident)),
-  sample=setNames(zeileis_28 %>% sample(size=length(levels(sc$sample))), levels(sc$sample)),
-  technology=setNames(zeileis_28 %>% sample(size=length(levels(sc$technology))), levels(sc$technology)),
-  seurat_clusters=setNames(godsnot_102 %>% sample(size=length(godsnot_102)), 1:length(godsnot_102)),
+  orig.ident=setNames(orig_ident_cols, orig_ident_levels),
+  sample=setNames(sample_cols, sample_levels),
+  technology=setNames(technology_cols, technology_levels),
+  seurat_clusters=setNames(seurat_clusters_cols, seurat_clusters_levels),
   Phase=c(G1="#FDD086", S="#9FD7E1", G2M="#FF8DA1")
 ))
 ```
@@ -917,7 +947,7 @@ for (i in 1:nrow(datasets)) {
     dplyr::filter(orig.ident==orig_ident) %>%
     dplyr::select(orig_barcode)
   barcodes = setNames(rownames(barcodes), barcodes$orig_barcode)
-  j = match(barcodes, SeuratObject::Cells(sc))
+  j = match(barcodes, SeuratSObject::Cells(sc))
   barcodes = barcodes[order(j)]
 
   # Image directorie(s) and default assays associated to the images
@@ -930,7 +960,7 @@ for (i in 1:nrow(datasets)) {
     default_image_assay = paste0(gsub("\\d+$", "", default_assay), visiumhd_bin_sizes)
     image_key = paste0("image", ".", orig_ident, visiumhd_bin_sizes)
   } else if (technology == "10x_visium") {
-    image_dir = file.path(path, "spatial")
+    image_dir = file.path(dirname(path), "spatial")
     default_image_assay = default_assay
     image_key = paste0("image", ".", orig_ident)
   } else if (technology == "10x_xenium") {
@@ -1000,14 +1030,14 @@ for (a in Seurat::Assays(sc)) {
   for (l in SeuratObject::Layers(sc[[a]], "^counts")) {
 
     # Get data for layer (sample)
-    counts = sc[[a]][l]
+    counts = SeuratObject::GetAssayData(sc, assay=a, layer=l)
     bcs = counts %>% colnames()
     total_counts = sc[[]][bcs, paste0("nCount_", a), drop=TRUE]
     names(total_counts) = bcs
     
     # Get counts of the top 50 features per barcode
     with_progress({
-      top_n_counts = SumTopN(counts, top_n=top_n, margin=2, chunk_size=10000)
+      top_n_counts = SumTopN(matrix=counts, top_n=top_n, margin=2, chunk_size=10000)
     }, enable=verbose)
     
     # Then calculate percentages for topn
@@ -1035,7 +1065,7 @@ for (a in Seurat::Assays(sc)) {
   # And each layer (dataset)
   for (l in SeuratObject::Layers(sc[[a]], search="^counts\\.")) {
     # Get data for layer (sample)
-    counts = sc[[a]][l]
+    counts = SeuratObject::GetAssayData(sc, assay=a, layer=l)
     
     # Calculate feature filters
     num_bcs_expr = rowSums(counts >= 1)
@@ -1044,7 +1074,7 @@ for (a in Seurat::Assays(sc)) {
     # Then for each batch calculate the percentage of counts for each feature per barcode. 
     # Then return the median for each feature.
     with_progress({
-      counts_median = CalculateMedians(counts, margin=1, chunk_size=2000, fun=CalculateColumnPerc)
+      counts_median = CalculateMedians(matrix=counts, margin=1, chunk_size=2000, fun=CalculateColumnPerc)
     }, enable=verbose)
     
     # Add to metadata

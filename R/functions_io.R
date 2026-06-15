@@ -158,7 +158,7 @@ ReadMetadata_rds = function(rds_file) {
 
 #' Reads metadata.
 #' 
-#' @param file Path to a character-separated file (csv, tsv, csv.gz, tsv.gz), an Excel file (xls, xslx) or an R rds file containing a table (preserves factor levels). First column must contain the respective barcode or feature id. For Excel files, a sheet can be specified by appending ':<sheet_number>'.
+#' @param file Path to a character-separated file (csv, tsv, txt, csv.gz, tsv.gz), an Excel file (xls, xslx) or an R rds file containing a table (preserves factor levels). First column must contain the respective barcode or feature id. For Excel files, a sheet can be specified by appending ':<sheet_number>'.
 #' @return Metadata (data.frame format)
 ReadMetadata = function(file) {
   # Sheet number appended?
@@ -170,12 +170,12 @@ ReadMetadata = function(file) {
   
   # Checks
   extension = tools::file_ext(gsub(pattern="\\.gz$", replacement="", x=file))
-  valid_extensions = c("csv", "tsv", "xls", "xlsx", "rds")
+  valid_extensions = c("csv", "tsv", "txt", "xls", "xlsx", "rds")
   assertthat::assert_that(extension %in% valid_extensions,
                           msg=FormatString("Metadata file type must be: {valid_extensions*} (file can be gzipped)."))
   
   # Read metadata
-  if (extension %in% c("csv", "tsv")) {
+  if (extension %in% c("csv", "tsv", "txt")) {
     meta_data = ReadMetadata_csv(file)
   } else if(extension %in% c("xls", "xlsx")) {
     meta_data = ReadMetadata_excel(file, sheet=sheet)
@@ -485,22 +485,22 @@ ReadCounts_SmartSeq = function(path, assays, version, transpose=FALSE) {
 #' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes, features and path is attached as attributes.
 ReadCounts_10x_mtx = function(mtx_directory, strip_suffix=NULL) {
   # Determine the name of the matrix file
-  mtx_file_name = dplyr::case_when(file.exists(file.path(mtx_directory, "matrix.mtx.gz")) ~ "matrix.mtx.gz",
-                                   file.exists(file.path(mtx_directory, "matrix.mtx")) ~ "matrix.mtx")
+  mtx_file_name = dplyr::case_when(file.exists(file.path(mtx_directory, "matrix.mtx")) ~ "matrix.mtx",
+                                   .default="matrix.mtx.gz")
   
   # Determine the name of the barcodes file
   barcodes_file_name = dplyr::case_when(
-    file.exists(file.path(mtx_directory, "barcodes.tsv.gz")) ~ "barcodes.tsv.gz",
-    file.exists(file.path(mtx_directory, "barcodes.tsv")) ~ "barcodes.tsv"
+    file.exists(file.path(mtx_directory, "barcodes.tsv")) ~ "barcodes.tsv",
+    .default="barcodes.tsv.gz"
   )
   
   # Determine the name of the features file
   features_file_name = dplyr::case_when(
-    file.exists(file.path(mtx_directory, "features.tsv.gz")) ~ "features.tsv.gz",
     file.exists(file.path(mtx_directory, "features.tsv")) ~ "features.tsv",
     file.exists(file.path(mtx_directory, "genes.tsv")) ~ "genes.tsv",
     file.exists(file.path(mtx_directory, "peaks.bed")) ~ "peaks.bed",
-    file.exists(file.path(mtx_directory, "motifs.tsv")) ~ "motifs.tsv"
+    file.exists(file.path(mtx_directory, "motifs.tsv")) ~ "motifs.tsv",
+    .default="features.tsv.gz"
   )
   
   # Determine the column name of the features file
@@ -829,18 +829,27 @@ ReadCounts_10xXenium = function(path, assays=NULL, strip_suffix=NULL) {
 
 #' Reads Parse Biosciences counts that are in market exchange format.
 #' 
-#' @param mtx_directory Path to Parse Biosciences counts directory in market exchange format. Typically contains the files count_matrix.mtx, cell_metadata.csv and all_genes.csv.
+#' @param mtx_directory Path to Parse Biosciences counts directory in market exchange format. Typically contains the files count_matrix.mtx(.gz), cell_metadata.csv(.gz) and all_genes.csv(.gz).
 #' @param strip_suffix String that needs to be removed from the end of the barcodes (default: NULL).
 #' @return One sparse counts matrix per feature type (dgCMatrix format). Additional information on barcodes and features is attached as attributes barcode_metadata and feature_metadata. Additional information on barcodes, features and path is attached as attributes.
 ReadCounts_ParseBio_mtx = function(mtx_directory, strip_suffix=NULL) {
   # Determine the name of the matrix file
   mtx_file_name = "count_matrix.mtx"
+  if (!file.exists(file.path(mtx_directory, mtx_file_name))) {
+    mtx_file_name = "count_matrix.mtx.gz"
+  }
   
   # Determine the name of the barcodes file
   barcodes_file_name = "cell_metadata.csv"
-  
+  if (!file.exists(file.path(mtx_directory, barcodes_file_name))) {
+    barcodes_file_name = "cell_metadata.csv.gz"
+  }
+
   # Determine the name of the features file
   features_file_name = "all_genes.csv"
+  if (!file.exists(file.path(mtx_directory, features_file_name))) {
+    features_file_name = "all_genes.csv.gz"
+  }
   
   # Use more generic function to data in market exchange format
   counts_lst = ReadCounts_mtx(
@@ -2080,8 +2089,8 @@ ExportXeniumExplorer = function(sc, assay=NULL, categories=NULL, barcodes=NULL, 
     if (dir.exists(dataset_path)) {
       # 10x market exchange format
       barcodes_file = dplyr::case_when(
-        file.exists(file.path(dataset_path, "barcodes.tsv.gz")) ~ "barcodes.tsv.gz",
-        file.exists(file.path(dataset_path, "barcodes.tsv")) ~ "barcodes.tsv"
+        file.exists(file.path(dataset_path, "barcodes.tsv")) ~ "barcodes.tsv",
+        .default="barcodes.tsv"
       )
       
       unfiltered_barcodes = readLines(file.path(dataset_path, barcodes_file))

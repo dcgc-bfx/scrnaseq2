@@ -126,7 +126,7 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
                 })
             }
             return(top_n_cts)
-        }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("margin", "top_n")))
+        }, .options = furrr::furrr_options(seed=getOption("random_seed")))
         progr(type='finish')
         
         # Now combine chunk results: each chunk has values for the top n sum where n can have multiple values
@@ -326,7 +326,7 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
         mds = sparseMatrixStats::colMedians(counts)
       }
       return(mds)
-    }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("margin", "fun"))) %>% 
+    }, .options = furrr::furrr_options(seed=getOption("random_seed"))) %>% 
       purrr::flatten_dbl()
     progr(type='finish')
   } else {
@@ -432,7 +432,7 @@ CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
         mds = sparseMatrixStats::colQuantiles(mt)
       }
       return(as.data.frame(mds))
-    }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("margin")))
+    }, .options = furrr::furrr_options(seed=getOption("random_seed")))
     progr(type='finish')
   } else {
     # Convert to sparse matrix
@@ -563,10 +563,16 @@ CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
                                     storeRanks=FALSE,
                                     force.gc=FALSE,
                                     name = "")
-            ucell = as.data.frame(ucell[[1]])
+            if ("cells_AUC" %in% names(ucell[[1]])) {
+              ucell = as.data.frame(ucell[[1]][["cells_AUC"]])
+            } else if ("cells_U" %in% names(ucell[[1]])) {
+              ucell = as.data.frame(ucell[[1]][["cells_U"]])
+            } else {
+              stop("The name of the UCell:::calculate_Uscore function (in functions_analysis.R/CalculateModuleScoreUCell) has changed - please check!")
+            }
             rownames(ucell) = colnames(counts)
             return(ucell)
-        }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c("features")))
+        }, .options = furrr::furrr_options(seed=getOption("random_seed")))
         progr(type='finish')
     } else {
         # Convert to sparse matrix
@@ -860,7 +866,7 @@ NormalizeDataScran = function(sc, assay=NULL, layer="counts", save="data", chunk
         sf = scuttle::pooledSizeFactors(counts, clusters=clusters)
         sf = setNames(sf, colnames(counts))
         return(sf)
-      }, .options = furrr::furrr_options(seed=getOption("random_seed"), globals=c()))
+      }, .options = furrr::furrr_options(seed=getOption("random_seed")))
       size_factors = purrr::flatten(size_factors) %>% unlist()
       progr(type='finish')
     } else {
@@ -966,7 +972,7 @@ FindVariableFeaturesScran = function(sc, assay=NULL, nfeatures=2000, combined=TR
     hvf = scran::getTopHVGs(hvf_info, n=nfeatures)
     
     # Combine hvf_info tables
-    hvf_info = purrr::map(layers, function(l) {
+    hvf_info_lst = purrr::map(layers, function(l) {
       hvfi = hvf_info[["per.block"]][[l]]
       h = scran::getTopHVGs(hvfi, n=nfeatures)
       

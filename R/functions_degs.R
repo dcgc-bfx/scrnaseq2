@@ -1149,6 +1149,59 @@ PrepareCompositionalContrast = function(sc, contrast) {
   
   return(contrast)
 }
+                  
+#' Given a contrast configuration, prepares a table with the configuration values.
+#' 
+#' @param contrast A contrast configuration. Must have been set up with NewContrastsList.
+#' @param config_names The configuration entries to include
+#'
+#' @return A table with the configuration values
+#'
+#' @importFrom purrr map_chr
+#' @importFrom assertthat assert_that
+#' @export
+#'
+#' @note AI-assisted documentation
+ContrastConfigurationTable = function(contrast, config_names) {
+  
+  # Lists all possible contrast config entries and their descriptions
+  config_descriptions = c("condition_column" = "condition column",
+                          "condition1" = "condition group 1",
+                          "condition2" = "condition group 2",
+                          "subset_column" = "subset column",
+                          "subset_groups" = "subset groups",
+                          "bulk_by" = "bulk cells by",
+                          "pseudobulk_samples" = "create this number of pseudobulk samples",
+                          "assay" = "assay",
+                          "layer" = "data type",
+                          "test" = "test",
+                          "padj" = "adjusted p-value",
+                          "log2FC" = "minimum absolute log2 foldchange",
+                          "min_pct" = "minimum percentage of expressing cells",
+                          "downsample_n" = "downsample cells",
+                          "covariate" = "confounding factor",
+                          "design" = "design formula for test",
+                          "deseq2_results_args" = "DESeq2 results arguments",
+                          "ora_genesets" = "gene sets used for overrepresentation analysis",
+                          "gsea_genesets" = "gene sets used for gene set enrichment analysis")
+  
+  # Test that all config names have descriptions
+  assertthat::assert_that(all(config_names %in% names(config_descriptions)),
+                          msg=FormatString("Config names not found in ContrastConfigurationTable function!"))
+  
+  # Collect the values
+  config_values = purrr::map_chr(config_names, function(n) {
+    v = as.character(contrast[[n]] %||% "-")
+    if (n %in% c("condition1", "condition2")) v = paste(v, collapse="+")
+    return(paste(v, collapse=","))
+  })
+  
+  # Create a table
+  configuration_table = data.frame(Config=config_names, Desc=unname(config_descriptions[config_names]), Value=config_values)
+  rownames(configuration_table) = NULL
+  
+  return(configuration_table)
+}
 
 #' Run a Differential Expression (DEG) Test
 #'
@@ -1465,9 +1518,9 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
     })
     
     # Add some additional information
-    ora_result = list(results=ora_result, name=deg_result[["name"]])
-    if ("subset_column" %in% names(deg_result)) ora_result[["subset_column"]] = deg_result[["subset_column"]]
-    if ("subset_group" %in% names(deg_result)) ora_result[["subset_group"]] = deg_result[["subset_group"]]
+    deg_result$results = NULL
+    ora_result = c(deg_result, list(results=ora_result))
+    ora_result[["ora_genesets"]] = genesets
     
     return(ora_result)
 }
@@ -1525,7 +1578,7 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
 #' }
 DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
   # Calculate fold changes
-  if (FALSE) {
+  if (contrast[["gsea_deseq2"]]) {
     # Calculate fold change by running DESeq2
     
     # Arguments design and reduced formula
@@ -1564,6 +1617,11 @@ DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
   }
   fold_changes = fold_changes[order(fold_changes, decreasing=TRUE)]
   
+  # Dump entries that are not used anymore
+  contrast[["log2FC"]] = NULL
+  contrast[["min_pct"]] = NULL
+  contrast[["sc_subset"]] = NULL
+  
   # Search the genesets specified by the genesets argument
   search_vector = paste(term2gene_db$gs_cat, term2gene_db$gs_subcat, term2gene_db$gs_name, sep=":")
   term2gene = purrr::map(genesets, function(term) {
@@ -1584,9 +1642,12 @@ DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
   })
   
   # Add some additional information
-  gsea_result = list(results=gsea_result, name=contrast[["name"]])
-  if ("subset_column" %in% names(contrast)) gsea_result[["subset_column"]] = contrast[["subset_column"]]
-  if ("subset_group" %in% names(contrast)) gsea_result[["subset_group"]] = contrast[["subset_group"]]
+  gsea_result = c(contrast, results=list(gsea_result))
+  
+  # Set test-related entries
+  gsea_result[["test"]] = "fgsea"
+  gsea_result[["padj"]] = 0.05
+  gsea_result[["gsea_genesets"]] = genesets
   
   return(gsea_result)
 }
@@ -2097,19 +2158,19 @@ DegsScatterPlot = function(deg_result, n_label=5, font_size=11) {
     # Ggplot2 provided '.pt' as conversion factor: mm = pt / .pt OR pt = mm * .pt
     # https://ggplot2.tidyverse.org/articles/ggplot2-specs.html#text
     p = ggplot(deg_table, aes(x=condition1, y=condition2, col=deg_status)) + 
-        geom_abline(slope=1, intercept=0, col="lightgrey") +
         geom_point() +
         ggrepel::geom_text_repel(data=top_deg_table, aes(x=condition1, y=condition2, col=deg_status, label=gene), size=font_size / .pt, colour="black") +
         scale_color_manual("Gene status", values=c(none="grey", up="darkgoldenrod1", down="steelblue"), 
                            labels=c(none='none', up='up', down='down')) +
         xlim(lims) + 
         ylim(lims) +
-        AddPlotStyle(ylab=group1, xlab=group2, legend_position="none", font_size=font_size)
+        AddPlotStyle(xlab=group1, ylab=group2, legend_position="none", font_size=font_size) +
+        ggtitle(FormatString("{group1} vs {group2}", quote=FALSE))
     
     # If there is a log2 threshold > 0, add lines
-    if (log2FC > 0) {
-        p = p + geom_abline(slope=1, intercept=c(-log2FC, log2FC), col="lightgrey", lty=2)
-    }
+    #if (log2FC > 0) {
+    #    p = p + geom_abline(slope=1, intercept=c(-log2FC, log2FC), col="grey10", lty=2)
+    #}
     
     return(p)
 }
@@ -2203,11 +2264,12 @@ DegsVolcanoPlot = function(deg_result, n_label=5, font_size=11) {
                            labels=c(none='none', up='up', down='down')) +
         AddPlotStyle(xlab=ifelse(fc_col == "avg_log2FC", expression(log[2]~"foldchange"), "condition1 - condition2"),
                      ylab=expression("-"~log[10]~"p-value"), 
-                     legend_position="none", font_size=font_size)
+                     legend_position="none", font_size=font_size) +
+        ggtitle(FormatString("{group1} vs {group2}", quote=FALSE))
     
     # If there is a log2 threshold > 0, add vertical lines
     if (log2FC > 0) {
-        p = p + geom_vline(xintercept=c(-log2FC, log2FC), linetype="dashed", color="grey")
+        p = p + geom_vline(xintercept=c(-log2FC, log2FC), linetype="dashed", color="grey10")
     }
     
     return(p)
@@ -2303,8 +2365,8 @@ AverageCounts = function(sc, group_by=NULL, assay=NULL, layer=NULL) {
       means = rowMeans(ldat[, group, drop=FALSE])
     } else if (layer == "data") {
       # Data: calculate the mean of the exponentiated data, then log again
-      means = (rowSums(expm1(ldat[, group, drop=FALSE])) + 1) / NCOL(ldat[, group, drop=FALSE])
-      means = log(means)
+      means = (rowSums(expm1(ldat[, group, drop=FALSE]))) / NCOL(ldat[, group, drop=FALSE])
+      means = log1p(means)
     }
   })
   group_means = as.data.frame(group_means)

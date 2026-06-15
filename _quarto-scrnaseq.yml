@@ -22,7 +22,7 @@ book:
   - "modules/7_cluster_annotation/cluster_annotation.qmd"
   - "modules/8_cluster_composition/cluster_composition.qmd"
   - "modules/10_deg_analysis/deg_analysis.qmd"
-  #- "modules/9_export/export.qmd"
+  - "modules/9_export/export.qmd"
   - "references.qmd"
 
 ####################
@@ -94,7 +94,7 @@ params:
       feature_filter: !expr list(
         min_counts = 1,
         min_cells = 3)
-      samples_to_drop: null
+      samples_to_remove: null
       samples_min_cells: 10
 
     normalization_rna:

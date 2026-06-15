@@ -400,7 +400,7 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
     } else if (method == "scran") {
       hvf_info = SeuratObject::HVFInfo(sc[[assay]],
                                        method="scran",
-                                       layer=paste("counts", n, sep="."),
+                                       layer=paste("data", n, sep="."),
                                        status=TRUE)
       if (is.null(hvf_info)) {
         hvf_info = SeuratObject::HVFInfo(sc[[assay]],

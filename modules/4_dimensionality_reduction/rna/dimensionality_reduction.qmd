@@ -79,6 +79,7 @@ library(Seurat)
 library(SeuratWrappers)
 library(ggplot2)
 library(future)
+library(BiocParallel)
 library(patchwork)
 
 # Get module directory (needed to access files within the module directory)
@@ -101,8 +102,15 @@ source("R/functions_analysis.R")
 # Be verbose or not
 verbose = param("verbose")
 
-# Parallelisation plan for all functions that support future
+# Parallelisation config for all functions that use the future framework
 plan(multisession, workers=param("cores"))
+
+# Parallelisation config for all functions that use the BiocParallel framework
+register(SnowParam(workers=param("cores"), type="SOCK", RNGseed=getOption("random_seed"))) 
+
+# Parallelisation config for BLAS threading. Currently set to 1 because there does not seem to be a performance gain
+# but may be relevant for very large projects.
+RhpcBLASctl::blas_set_num_threads(1)
 
 # DIRECTORIES
 # Module directory 'results' contains all output that should be provided together with the final report of the project
@@ -202,6 +210,7 @@ sc = RunDimRedWrapper(sc,
                       assay=assay,
                       dim_n=dim_n_compute, 
                       verbose=verbose)
+
 # Set default reduction for assay
 DefaultReduct(sc, assay=assay) = reduct_name
 
