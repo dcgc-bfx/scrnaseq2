@@ -1,13 +1,10 @@
-#' Sum Top N Values
+#' Sums up the top n barcodes (per feature) or features (per barcode) of a sparse (dgCMatrix) or iterable (IterableMatrix) matrix. 
 #'
-#' Summarize the cumulative counts of the top `n` entries for each feature or barcode in a sparse or iterable matrix.
-#'
-#' @param matrix Sparse (`dgCMatrix`) or iterable (`IterableMatrix`) matrix.
-#' @param top_n Integer vector of top-`n` cutoffs to sum for each row or column. Default: 50.
-#' @param margin Dimension along which to compute top-`n` sums: `1` for rows (top barcodes per feature) or `2` for columns (top features per barcode). Default: 1.
-#' @param chunk_size Number of rows or columns to process at once for iterable matrices to limit memory use. Default: NULL.
-#' @return A list of named numeric vectors, one per requested `top_n` value, containing summed counts for each row or column.
-#' @note AI-assisted documentation
+#' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
+#' @param top_n Top n barcodes or features. Can be multiple values. Default is 50.
+#' @param margin Margin. Can be: 1 - rows (top n barcodes per feature), 2 - columns (top n features per barcode). Default is 1.
+#' @param chunk_size Iterable matrices will be converted into sparse matrics. To avoid storing the entire matrix in memory, only process this number of rows/columns at once. Default is no chunks.
+#' @return A list of vectors with sums for each top n.
 SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
     # Checks
     assertthat::assert_that(margin %in% c("1", "2"),
@@ -150,29 +147,23 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
     return(top_n_counts)
 }
 
-#' Calculate Column Percentages
+#' Calculate percentage per column in a matrix.
 #'
-#' Convert each column of a matrix to percentages of its column total while protecting against zero totals.
-#'
-#' @param mat Sparse matrix whose columns should be scaled to percentages.
-#' @return A matrix with the same dimensions as `mat`, where each column is expressed as percentages of its original column total.
-#' @note AI-assisted documentation
+#' @param matrix Sparse (dgCMatrix)
+#' @return A matrix with percentages
 CalculateColumnPerc = function(mat) {
   totals = colSums(mat)
   totals = ifelse(totals>0, totals, 1)
   return(t(t(mat) / totals) * 100)
 }
 
-#' Calculate Sparse Matrix Medians
+#' Calculates the median of rows or columns of a sparse (dgCMatrix) or iterable (IterableMatrix) matrix. 
 #'
-#' Compute row-wise or column-wise medians for sparse or iterable matrices, optionally after applying a transformation function.
-#'
-#' @param matrix Sparse (`dgCMatrix`) or iterable (`IterableMatrix`) matrix.
-#' @param margin Dimension for which to calculate medians: `1` for rows or `2` for columns. Default: 1.
-#' @param chunk_size Number of rows or columns to process at once for iterable matrices to limit memory use. Default: NULL.
-#' @param fun Optional function applied to each full matrix or chunk before medians are calculated. Default: NULL.
-#' @return A named numeric vector containing row or column medians.
-#' @note AI-assisted documentation
+#' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
+#' @param margin Margin for which to calculate median. Can be: 1 - rows, 2 - columns. Default is 1.
+#' @param chunk_size Iterable matrices will be converted into sparse matrics. To avoid storing the entire matrix in memory, only process this number of rows/columns at once. Default is no chunks.
+#' @param fun Function to apply to the matrix (chunk) before calculating the median. The function's only argument is the matrix itself. Can be NULL.
+#' @return A named vector with medians.
 CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
@@ -251,16 +242,13 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
   return(medians)
 }
 
-#' Calculate Boxplot Statistics
+#' Calculates the boxplot statistics for rows or columns of a sparse (dgCMatrix) or iterable (IterableMatrix) matrix. 
+#' These are: min, q25, q50, q75, max, IQR (q75-q25), uppper whisker (q50 + 1.5 IQR), lower whisker (q50 - 1.5 IQR)
 #'
-#' Compute row-wise or column-wise quantiles and derived boxplot statistics for sparse or iterable matrices.
-#' Reported values include `min`, `q25`, `q50`, `q75`, `max`, `IQR`, `lower_whisker`, and `upper_whisker`.
-#'
-#' @param matrix Sparse (`dgCMatrix`) or iterable (`IterableMatrix`) matrix.
-#' @param margin Dimension for which to calculate boxplot statistics: `1` for rows or `2` for columns. Default: 1.
-#' @param chunk_size Number of rows or columns to process at once for iterable matrices to limit memory use. Default: NULL.
-#' @return A data frame containing quantiles and derived boxplot statistics for each row or column.
-#' @note AI-assisted documentation
+#' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
+#' @param margin Margin for which to calculate median. Can be: 1 - rows, 2 - columns. Default is 1.
+#' @param chunk_size Iterable matrices will be converted into sparse matrics. To avoid storing the entire matrix in memory, only process this number of rows/columns at once. Default is no chunks.
+#' @return A named vector with medians.
 CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
   # Checks
   assertthat::assert_that(margin %in% c("1", "2"),
@@ -344,15 +332,12 @@ CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
   return(boxplot_stats)
 }
 
-#' Calculate UCell Module Scores
+#' Calculates scores for feature sets per cell using UCell.
 #'
-#' Calculate per-cell UCell scores for one or more named feature sets from a sparse or iterable expression matrix.
-#'
-#' @param matrix Sparse (`dgCMatrix`) or iterable (`IterableMatrix`) matrix.
-#' @param features Named list of feature vectors to score for each cell.
-#' @param chunk_size Number of columns to process at once for iterable matrices to limit memory use. Default: NULL.
-#' @return A data frame of UCell scores with cells in rows and feature sets in columns.
-#' @note AI-assisted documentation
+#' @param matrix Sparse (dgCMatrix) or iterable (IterableMatrix) matrix
+#' @param features Named list of feature vectors to use for scoring.
+#' @param chunk_size Iterable matrices will be converted into sparse matrics. To avoid storing the entire matrix in memory, only process this number of rows/columns at once. Default is no chunks.
+#' @return A named vector with medians.
 CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
     #matrix = Seurat::GetAssayData(sc, layer="counts", assay=assay)
     #features = known_markers_list
@@ -443,17 +428,14 @@ CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
 
 
 
-#' Score Cell Cycle Phases
-#'
-#' Compute cell-cycle phase assignments and S/G2M scores across assay layers, then append the results to Seurat cell metadata.
-#'
-#' @param sc Seurat v5 object.
-#' @param genes_s Character vector of gene names characteristic of S phase.
-#' @param genes_g2m Character vector of gene names characteristic of G2/M phase.
-#' @param assay Assay to score. Default: NULL.
-#' @param verbose Whether to print progress messages from Seurat. Default: TRUE.
-#' @return The input Seurat object with `Phase`, `S.Score`, `G2M.Score`, and `CC.Difference` added to cell metadata.
-#' @note AI-assisted documentation
+#' Calculate cell cycle scores.
+#' 
+#' @param sc Seurat v5 object
+#' @param genes_s Vector of gene names characteristic for S-phase
+#' @param genes_g2m Vector of gene names characteristic for G2M-phase
+#' @param assay Assay to use
+#' @param verbose Be verbose
+#' @return Updated Seurat object with cell cycle phase as well as scores.
 CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -519,17 +501,14 @@ CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
   return(sc)
 }
 
-#' Transform Assay Layers
-#'
-#' Copy one or more assay layers to new data layers, optionally applying `log1p` transformation to each layer.
-#'
+#' Apply identity or log transformation to the data and save it as data layers ("normalised data").
+#' 
 #' @param sc Seurat v5 object.
-#' @param assay Assay to transform. Default: NULL.
-#' @param layer Layer pattern or layer name to transform. Default: "counts".
-#' @param save Base name or names for the new layers. Default: "data".
-#' @param log Whether to apply `log1p` instead of leaving values unchanged. Default: FALSE.
-#' @return The Seurat object with transformed layers saved under the requested layer names.
-#' @note AI-assisted documentation
+#' @param assay Assay to apply transformation to. If NULL, will be default assay of the Seurat object.
+#' @param layer Layer to apply transformation to. Default is "counts" meaning all raw counts layers.
+#' @param save Name of the new layers. Default is "data" meaning new layers will be named data.X, data.Y, ...
+#' @param log Apply log transformation instead of just identity transformation.
+#' @return Seurat v5 object with new layers data.X, data.Y, ...
 TransformData = function(sc, assay=NULL, layer="counts", save="data", log=FALSE) {
     if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
     
@@ -562,17 +541,14 @@ TransformData = function(sc, assay=NULL, layer="counts", save="data", log=FALSE)
     return(sc)
 }
 
-#' Normalize Assay Layers with scran
-#'
-#' Estimate pooled size factors with scran for selected counts layers and store log-normalized values in new data layers.
-#'
+#' Apply scran normalization (using pooled size factors) to counts data.
+#' 
 #' @param sc Seurat v5 object.
-#' @param assay Assay to normalize. Default: NULL.
-#' @param layer Layer pattern or layer name to normalize. Default: "counts".
-#' @param save Base name or names for the new normalized layers. Default: "data".
-#' @param chunk_size Maximum number of barcodes to process at once when computing size factors. Default: 50000.
-#' @return The Seurat object with scran-normalized layers saved under the requested layer names.
-#' @note AI-assisted documentation
+#' @param assay Assay to normalize. If NULL, will be default assay of the Seurat object.
+#' @param layer Layer to normalize. Default is "counts" meaning all raw counts layers.
+#' @param save Name of the new layers. Default is "data" meaning new layers will be named data.X, data.Y, ...
+#' @param chunk_size Maximum number of barcodes for which to compute size factors at once. Large counts matrices will be split into chunks to save memory.
+#' @return Seurat v5 object with new layers data.X, data.Y, ...
 NormalizeDataScran = function(sc, assay=NULL, layer="counts", save="data", chunk_size=50000) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -649,16 +625,13 @@ NormalizeDataScran = function(sc, assay=NULL, layer="counts", save="data", chunk
   return(sc)
 }
 
-#' Find Variable Features with scran
-#'
-#' Identify highly variable features from normalized assay layers using scran mean-variance modelling and store the results in assay metadata.
-#'
+#' Identify highly variable features with the scran method (mean - var analysis).
+#' 
 #' @param sc Seurat v5 object.
-#' @param assay Assay to analyze. Default: NULL.
-#' @param nfeatures Number of features to identify. Default: 2000.
-#' @param combined Whether to analyse all normalized layers together instead of per layer. Default: TRUE.
-#' @return The Seurat object with variable features set for the selected assay and scran statistics added to feature metadata.
-#' @note AI-assisted documentation
+#' @param assay Assay to analyze. If NULL, will be default assay of the Seurat object.
+#' @param nfeatures Number of features to identify. Default is 2000.
+#' @param combined If TRUE, analyze all data together. Recommended but requires more memory. If FALSE, features will be identified by dataset and sets will then be combined.
+#' @return Seurat v5 object with highly variable features for assay.
 FindVariableFeaturesScran = function(sc, assay=NULL, nfeatures=2000, combined=TRUE) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -763,17 +736,14 @@ FindVariableFeaturesScran = function(sc, assay=NULL, nfeatures=2000, combined=TR
   return(sc)
 }
 
-#' Find Variable Features
-#'
-#' Dispatch highly variable feature selection to the requested method and return the updated Seurat object.
-#'
+#' Wrapper for finding highly variable features.
+#' 
 #' @param sc Seurat v5 object.
-#' @param feature_selection_method Method for identifying highly variable features. Supported values: `"vst"` and `"scran"`.
-#' @param num_variable_features Number of features to identify. Default: 2000.
-#' @param assay Assay to analyze. Default: NULL.
-#' @param verbose Whether to print progress messages from Seurat. Default: TRUE.
-#' @return The Seurat object with variable features identified for the selected assay.
-#' @note AI-assisted documentation
+#' @param feature_selection_method Method for identifying highly variable features. Can be: vst, scran.
+#' @param num_variable_features Number of features to identify. Default is 2000.
+#' @param assay Assay to analyze. If NULL, will be default assay of the Seurat object.
+#' @param verbose Be verbose.
+#' @return Seurat v5 object with highly variable features for assay.
 FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variable_features=2000, assay=NULL, verbose=TRUE) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -799,18 +769,15 @@ FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variabl
   return(sc)
 }
 
-#' Run Dimensionality Reduction
-#'
-#' Run a supported dimensionality reduction method on an assay and register the resulting reduction in the Seurat object.
-#'
+#' Wrapper for running a dimensionality reduction.
+#' 
 #' @param sc Seurat v5 object.
-#' @param method Dimensionality reduction method to run. Supported values: `"pca"`. Default: "pca".
-#' @param name Name of the reduction to create in the Seurat object. Default: NULL.
-#' @param assay Assay to analyze. Default: NULL.
-#' @param dim_n Number of dimensions to compute. Default: 50.
-#' @param verbose Whether to print progress messages from Seurat. Default: TRUE.
-#' @return The Seurat object with the new dimensionality reduction added and activated.
-#' @note AI-assisted documentation
+#' @param method Dimensionality reduction method. Can be: pca.
+#' @param name Name of the reduction in the Seurat object. If NULL, will be the method name in lowercase letters.
+#' @param assay Assay to analyze. If NULL, will be default assay of the Seurat object.
+#' @param dim_n Number of dimensions to compute. Default is 50.
+#' @param verbose Be verbose.
+#' @return Seurat v5 object with a new (integrated) reduction.
 RunDimRedWrapper = function(sc, method="pca", name=NULL, assay=NULL, dim_n=50, verbose=TRUE) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
     
@@ -855,20 +822,17 @@ RunDimRedWrapper = function(sc, method="pca", name=NULL, assay=NULL, dim_n=50, v
   return(sc)
 }
 
-#' Integrate Assay Layers
-#'
-#' Create an integrated dimensional reduction from assay layers using one of the supported Seurat integration backends.
-#'
+#' Wrapper for integrating the layers of an assay. Does not touch the data but converts an original reduction into an integrated reduction based on the data.
+#' 
 #' @param sc Seurat v5 object.
-#' @param integration_method Integration backend to run. Supported values: `"CCAIntegration"`, `"RPCAIntegration"`, `"HarmonyIntegration"`, `"FastMNNIntegration"`, and `"scVIIntegration"`.
-#' @param assay Assay to analyze. Default: NULL.
-#' @param orig_reduct Existing reduction to use as the integration input. Default: NULL.
-#' @param new_reduct Name of the new integrated reduction. Default: NULL.
-#' @param new_reduct_suffix Optional suffix appended to the generated reduction name. Default: NULL.
-#' @param additional_args Named list of additional arguments passed to the integration backend. Default: NULL.
-#' @param verbose Whether to print progress messages from Seurat. Default: TRUE.
-#' @return The Seurat object with a new integrated dimensional reduction and updated reduction metadata.
-#' @note AI-assisted documentation
+#' @param integration_method Method for identifying highly variable features. Can be: CCAIntegration, RPCAIntegration, HarmonyIntegration, FastMNNIntegration, scVIIntegration.
+#' @param assay Assay to analyze. If NULL, will be default assay of the Seurat object.
+#' @param orig_reduct Original reduction to be used for integration. Default is 'pca'. If NULL, will be default reduction.
+#' @param new_reduct Name of the new (integrated) reduction. Default is 'pca'. If NULL, will be based on the name of the integration method.
+#' @param new_reduct_suffix Additional suffix to append to the name of the new (integrated) reduction. Can be NULL.
+#' @param additional_args List of additional arguments to be passed to the integration method.
+#' @param verbose Be verbose.
+#' @return Seurat v5 object with a new (integrated) reduction.
 IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduct=NULL, new_reduct=NULL, new_reduct_suffix=NULL, additional_args=NULL, verbose=TRUE) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   if (is.null(orig_reduct)) orig_reduct = SeuratObject::DefaultDimReduc(sc)
@@ -1062,13 +1026,10 @@ scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers
 }
 
 
-#' Test Cell Enrichment by Sample and Cluster
-#'
-#' Perform one-sided Fisher's exact tests for enrichment of each cluster within each sample using Seurat metadata.
-#'
+#' Calculate enrichment of cells per sample per cluster.
+#' 
 #' @param sc Seurat object.
-#' @return A data frame of odds ratios and p-values for each sample-cluster combination.
-#' @note AI-assisted documentation
+#' @return A table with counts, odd ratios and p-values.
 CellsFisher = function(sc) {
   cell_samples = sc[[]] %>% dplyr::pull(orig.ident) %>% unique() %>% sort()
   cell_clusters = sc[[]] %>% dplyr::pull(seurat_clusters) %>% unique() %>% sort()
@@ -1092,25 +1053,24 @@ CellsFisher = function(sc) {
   return(out)
 }
 
-#' Integrate Seurat Objects
-#'
-#' Integrate a list of Seurat objects with Seurat anchor-based workflows, optionally using reference datasets or reciprocal PCA.
-#' The function supports both RNA and SCT integration strategies and tunes anchor parameters when they are not supplied.
-#'
-#' @param sc List of Seurat objects with variable features already identified.
-#' @param ndims Number of dimensions to use for integration. Default: 30.
-#' @param reference Comma-separated dataset indices or names to use as references. Default: NULL.
-#' @param use_reciprocal_pca Whether to use reciprocal PCA for anchor finding. Default: FALSE.
-#' @param verbose Whether to print progress messages from Seurat. Default: FALSE.
-#' @param assay Assay to integrate. Supported values: `"RNA"` and `"SCT"`. Default: "RNA".
-#' @param k_filter Number of neighbours to use when filtering anchors. Default: NULL.
-#' @param k_weight Number of neighbours to use when weighting anchors. Default: NULL.
-#' @param k_anchor Number of neighbours to use when selecting anchors. Default: NULL.
-#' @param k_score Number of neighbours to use when scoring anchors. Default: NULL.
-#' @param vars_to_regress Variables to regress during scaling when reciprocal PCA is used. Default: NULL.
-#' @param min_cells Minimum number of cells in which a gene must be expressed during SCT reciprocal PCA scaling. Default: 1.
-#' @return A Seurat object containing the merged data and the integrated assay produced for the requested workflow.
-#' @note AI-assisted documentation
+#' Integrate multiple samples using Seurat's integration strategy. In short, a set of features (e.g. genes) is used to anchor cells that are in a matched biological state. Within these anchored set of cells, technical effects are then removed. There are three possible ways to run the integration process:
+#' - Default: Anchors are computed for all pairs of datasets. This will give all datasets the same weight during dataset integration but can be computationally intensive.
+#' - Provide a reference: One dataset is used as reference and anchors are computed for all other datasets. This approach is computational faster but less accurate.
+#' - Use reciprocal PCA: Anchors are not computed based on features (e.g. genes) but in PCA space which reduces the complexity. This approach is much faster and recommended for large datasets (>50000 cells). However, it is also less accurate.
+#' 
+#' @param sc List of seurat objects with variable features
+#' @param ndims Number of dimensions used for integration (Default: min(30, minimum number of cells in a sample - 1))
+#' @param reference Use one or more datasets as reference. Separate multiple datasets by comma (Default: NULL)
+#' @param use_reciprocal_pca Use reciprocal PCA for cell anchoring (Default: FALSE)
+#' @param verbose Be verbose (Default: FALSE)
+#' @param assay Can be 'RNA' or 'SCT' (Default: RNA)
+#' @param k_filter How many neighbors to use when filtering anchors. If NULL, automatically set to min(200, minimum number of cells in a sample)).
+#' @param k_weight Number of neighbors to consider when weighting anchors. If NULL, automatically set to min(100, minimum number of cells in a sample)).
+#' @param k_anchor How many neighbors to use when picking anchors. If NULL, automatically set to min(5, minimum number of cells in a sample)).
+#' @param k_score How many neighbors for calculating scores. If NULL, automatically set to min(30, minimum number of cells in a sample)).
+#' @param vars_to_regress For reciprocal PCA: when doing the scaling, which variables should be regressed out when doing the scaling
+#' @param min_cells For reciprocal PCA: when doing the scaling for SCT, the minimum number of cells a gene should be expressed
+#' @return A Seurat object with an integrated assay (RNAintegrated or SCTintegrated) and a merged assay (RNA or SCT)
 RunIntegration = function(sc, ndims=30, reference=NULL, use_reciprocal_pca=FALSE, verbose=FALSE, assay="RNA", k_filter=NULL, k_weight=NULL, k_anchor=NULL, k_score=NULL, vars_to_regress=NULL, min_cells=1) {
   # THIS FUNCTION NEEDS TO BE REVIEWED
   
@@ -1250,19 +1210,18 @@ RunIntegration = function(sc, ndims=30, reference=NULL, use_reciprocal_pca=FALSE
   return(sc)
 }
 
-#' Log-Normalize Assay Data
-#'
-#' Apply Seurat-style log normalization with optional exclusion of highly expressed genes or specific features when computing size factors.
-#' This implementation writes normalized values to the assay `data` slot and offers more control than the default Seurat helper.
-#'
+#' R implementation of the Seurat LogNormalize strategy but with additional options.
+#' Normalisation: Counts for each cell are divided by the total counts for that cell and multiplied by a scale factor followed by natural-log transformation.
+#' Note: It is likely slower than the C++ implementation of Seurat.
+#' 
 #' @param sc Seurat object.
-#' @param assay Assay to normalize. Default: "RNA".
-#' @param exclude_highly_expressed Whether to exclude highly expressed genes when computing size factors. Default: FALSE.
-#' @param max_fraction Maximum per-cell count fraction allowed before a gene is treated as highly expressed. Default: 0.05.
-#' @param exclude_genes Character vector of genes to always exclude from size factor computation. Default: NULL.
-#' @param scale_factor Multiplicative scaling factor applied before `log1p` transformation. Default: 10000.
-#' @return The Seurat object with normalized values written to the `data` slot of the selected assay.
-#' @note AI-assisted documentation
+#' @param assay The assay to normalize. Default is RNA.
+#' @param slot The assay slot to use for normalization. Default is counts.
+#' @param exclude_highly_expressed Whether to exclude highly expressed genes from size factor computation. Default is FALSE.
+#' @param max_fraction Maximum fraction of counts for a gene not to be considered highly expressed. Default is 0.05.
+#' @param exclude_genes A list of genes to exclude by default. Default is empty.
+#' @param scale_factor The scale factor. Default is 10000.
+#' @return A seurat object with normalized counts in the data slot of the assay.
 LogNormalizeCustom = function(sc, assay="RNA", exclude_highly_expressed=FALSE, max_fraction=0.05, exclude_genes=NULL, scale_factor=10000) {
   # Get assay data
   counts = Seurat::GetAssayData(sc, slot="counts", assay=assay)
