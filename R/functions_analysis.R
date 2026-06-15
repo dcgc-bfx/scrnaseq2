@@ -25,6 +25,7 @@
 #' @importFrom progressr progressor
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' library(Matrix)
 #'
@@ -199,6 +200,7 @@ SumTopN = function(matrix, top_n=50, margin=1, chunk_size=NULL){
 #' @import Matrix
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' library(Matrix)
 #'
@@ -244,6 +246,7 @@ CalculateColumnPerc = function(mat) {
 #' @importFrom sparseMatrixStats rowMedians colMedians
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' library(Matrix)
 #'
@@ -369,6 +372,7 @@ CalculateMedians = function(matrix, margin=1, chunk_size=NULL, fun=NULL){
 #' @importFrom sparseMatrixStats rowQuantiles colQuantiles
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' library(Matrix)
 #'
@@ -490,6 +494,7 @@ CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
 #' @import UCell
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' library(Matrix)
 #' library(UCell)
@@ -618,6 +623,7 @@ CalculateModuleScoreUCell = function(matrix, features, chunk_size=NULL){
 #' @importFrom furrr future_map_dfr furrr_options
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -718,6 +724,7 @@ CCScoring = function(sc, genes_s, genes_g2m, assay=NULL, verbose=TRUE){
 #' @import SeuratObject
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -789,6 +796,7 @@ TransformData = function(sc, assay=NULL, layer="counts", save="data", log=FALSE)
 #' @import Matrix
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -902,6 +910,7 @@ NormalizeDataScran = function(sc, assay=NULL, layer="counts", save="data", chunk
 #' @import scran
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -1043,6 +1052,7 @@ FindVariableFeaturesScran = function(sc, assay=NULL, nfeatures=2000, combined=TR
 #' @importFrom assertthat assert_that
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -1108,6 +1118,7 @@ FindVariableFeaturesWrapper = function(sc, feature_selection_method, num_variabl
 #' @importFrom stringr str_to_title
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -1207,6 +1218,7 @@ RunDimRedWrapper = function(sc, method="pca", name=NULL, assay=NULL, dim_n=50, v
 #' @importFrom purrr exec
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -1369,6 +1381,7 @@ IntegrateLayersWrapper = function(sc, integration_method, assay=NULL, orig_reduc
 #'         `dgCMatrix` before creating the `AnnData` object.
 #' }
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' library(Seurat)
@@ -1465,6 +1478,7 @@ scVIIntegration_Fixed = function (object, groups = NULL, features = NULL, layers
 #' @importFrom stats fisher.test
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' library(Seurat)
 #'

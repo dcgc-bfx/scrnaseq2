@@ -32,6 +32,7 @@
 #' @importFrom SeuratObject Cells
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' library(Seurat)
 #' sc = CreateSeuratObject(matrix(rpois(2000, 5), nrow=100, ncol=20))
@@ -686,6 +687,7 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
 #' @importFrom assertthat assert_that
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' contrast = list(
@@ -1007,6 +1009,7 @@ PrepareDegContrast = function(sc, contrast, cast_to_sparse=FALSE) {
 #' @importFrom assertthat assert_that
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' contrast = list(
@@ -1174,6 +1177,7 @@ PrepareCompositionalContrast = function(sc, contrast) {
 #' @importFrom assertthat assert_that
 #' @export
 #' 
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' contrast = PrepareDegContrast(sc, contrast)
@@ -1371,6 +1375,7 @@ DegsRunTest = function(contrast) {
 #' @importFrom purrr map map_dbl
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' ora = DegsRunOraTest(
@@ -1502,6 +1507,7 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
 #' @importFrom purrr map
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' gsea = DegsRunGseaTest(
@@ -1620,6 +1626,7 @@ DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
 #' @importFrom assertthat assert_that
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' # Download MSigDB Hallmark genesets for human
@@ -1733,6 +1740,7 @@ DegsGetGenesets = function(msigdb_species, is_msigdb_species_name=FALSE, geneset
 #' @importFrom dplyr select
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' # Run DESeq2 Wald test
@@ -1845,6 +1853,7 @@ DegsRunDESeq2 = function(object, ident_1, ident_2, assay=NULL, test="Wald", desi
 #' @importFrom dplyr group_by across all_of arrange
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' # Sort standard DEG results
@@ -1899,6 +1908,7 @@ DegsSort = function(degs, group=NULL) {
 #' @importFrom dplyr filter
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' # Filter DEGs with log2FC >= 0.5
@@ -1964,6 +1974,7 @@ DegsFilter = function(degs, cut_log2FC, cut_padj=NULL, split_by_dir=TRUE) {
 #' @importFrom dplyr mutate group_by top_n ungroup transmute
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' # Show top 5 markers per cluster by adjusted p-value score and percent diff
@@ -2027,6 +2038,7 @@ DegsUpDisplayTop = function(degs, n=5, column_1="p_val_adj_score", column_2="pct
 #' @importFrom dplyr filter group_by slice_min
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' # Run a DEG test and plot scatterplot with top 10 genes labeled
@@ -2119,6 +2131,7 @@ DegsScatterPlot = function(deg_result, n_label=5, font_size=11) {
 #' @importFrom dplyr filter group_by slice_min
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' deg_result = DegsRunTest(contrast)
@@ -2218,6 +2231,7 @@ DegsVolcanoPlot = function(deg_result, n_label=5, font_size=11) {
 #' @importFrom assertthat assert_that
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' # Average counts per cluster
@@ -2310,6 +2324,7 @@ AverageCounts = function(sc, group_by=NULL, assay=NULL, layer=NULL) {
 #' @importFrom Matrix rowMeans as dgCMatrix
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' genes_of_interest = c("GeneA", "GeneB", "GeneC")
@@ -2377,6 +2392,7 @@ DegsAvgDataPerIdentity = function(sc, genes, assay="RNA") {
 #' @importFrom Matrix rowMeans
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' avg_expr = DegsAvgData(sc[["RNA"]], cells=c("cell1", "cell2"), genes=c("GeneA", "GeneB"), slot=c("counts","data"))
@@ -2444,6 +2460,7 @@ DegsAvgData = function(object, cells=NULL, genes=NULL, slot="data") {
 #' @importFrom openxlsx write.xlsx
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' DegsWriteToFile(degs_lst=my_deg_list, file="DEGs.xlsx", annotation=gene_annot, parameter=test_params)
@@ -2514,6 +2531,7 @@ DegsWriteToFile = function(degs_lst, file, annotation=NULL, parameter=NULL) {
 #' @importFrom openxlsx write.xlsx
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' DegsWriteOraToFile(ora_lst=my_ora_list, file="ORA_results.xlsx", parameter=test_params)
@@ -2575,6 +2593,7 @@ DegsWriteOraToFile = function(ora_lst, file, parameter=NULL) {
 #' @importFrom openxlsx write.xlsx
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' DegsWriteGseaToFile(gsea_lst=my_gsea_list, file="GSEA_results.xlsx", parameter=test_params)
@@ -2638,6 +2657,7 @@ DegsWriteGseaToFile = function(gsea_lst, file, parameter=NULL) {
 #' @importFrom dplyr filter group_by summarise
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' degs = Seurat::FindAllMarkers(seurat_obj)
@@ -2820,6 +2840,7 @@ EnrichrWriteResults = function(enrichr_results, file) {
 #' @importFrom dplyr bind_rows
 #' @export
 #'
+#' @note AI-assisted documentation
 #' @examples
 #' \dontrun{
 #' flat_results = FlattenEnrichr(enrichr_results)
