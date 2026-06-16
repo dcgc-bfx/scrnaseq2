@@ -55,7 +55,7 @@ FormatString = function(x, quote=TRUE, sep=", ") {
 CalloutBox = function(x, type, print=TRUE, quote=TRUE) {
   valid_types = c("note", "tip", "important", "caution", "warning")
   assertthat::assert_that(type %in% valid_types,
-                          msg=FormatString("Callout box typ {type} but must be one of: {valid_types*}."))
+                          msg=FormatString("Callout box type {type} but must be one of: {valid_types*}."))
   
   
   
