@@ -1,11 +1,13 @@
-#' Sets up a list with contrasts for analysis. Makes sure that all required information is available. Sets default and does basic checks. 
-#' Each contrast entry is a list either of length 1 (if there is only one comparison) or of length >1 (if the comparison is done for multiple subsets).
-#' 
-#' @param sc A Seurat single cell object.
-#' @param contrasts_list A list of contrasts. Must at least contain 'name', condition_column', 'condition1' and 'condition2'.
-#' @param type Type of contrast. Can be 'deg' (for changes in gene expression) or 'compositional' (for changes in cell composition). Default is 'deg'.
-#' @return A list with contrasts. Each list entry is a list either of length 1 (if there is only one comparison per contrast) or of length >1 
-#' (if comparisons are done for multiple subsets for a contrast)
+#' Prepare contrast definitions.
+#'
+#' @description Validates contrast configuration entries and expands them into analysis-ready contrast definitions.
+#'
+#' @param sc Seurat object.
+#' @param contrasts_list List of contrast definitions.
+#' @param type Type of analysis or output to create. Default is 'deg'.
+#' @return A list of normalized contrast configurations.
+#'
+#' @note AI-assisted documentation.
 NewContrastsList = function(sc, contrasts_list, type='deg') {
     # If empty, return empty list
     if (length(contrasts_list) == 0) return(list())
@@ -612,13 +614,16 @@ NewContrastsList = function(sc, contrasts_list, type='deg') {
     return(contrasts_list)
 }
 
-#' Given a contrast configuration, prepares a Seurat object for DEG analysis. The function extracts all relevant 
-#' data and if requested bulk-aggregates and downsamples barcodes. Note that if a contrast has multiple comparisons (for each subset), this function needs to be run on each of them separately.
-#' 
-#' @param sc A Seurat single cell object.
-#' @param contrast A contrast configuration. Must have been set up with NewContrastsList.
-#' @param cast_to_sparse Convert on-disk matrices to in-memory sparse matrices (default: FALSE). May help with the performance but might result in much higher memory usage. 
-#' @return A contrast configuration with an 'object' entry for the Seurat object.
+#' Prepare a DEG contrast.
+#'
+#' @description Builds the Seurat object and metadata needed to run a differential-expression contrast.
+#'
+#' @param sc Seurat object.
+#' @param contrast Prepared contrast configuration.
+#' @param cast_to_sparse Whether to convert on-disk matrices to sparse matrices in memory. Default is FALSE.
+#' @return A contrast configuration with prepared analysis objects attached.
+#'
+#' @note AI-assisted documentation.
 PrepareDegContrast = function(sc, contrast, cast_to_sparse=FALSE) {
     barcode_metadata = sc[[]]
     name = contrast[["name"]]
@@ -895,11 +900,15 @@ PrepareDegContrast = function(sc, contrast, cast_to_sparse=FALSE) {
     return(contrast)
 }
 
-#' Given a contrast configuration, prepares a Seurat object for compositional analysis.
-#' 
-#' @param sc A Seurat single cell object.
-#' @param contrast A contrast configuration. Must have been set up with NewContrastsList.
-#' @return A contrast configuration with an 'object' entry for the Seurat object.
+#' Prepare a compositional contrast.
+#'
+#' @description Builds count and metadata inputs needed to test compositional changes between conditions.
+#'
+#' @param sc Seurat object.
+#' @param contrast Prepared contrast configuration.
+#' @return A contrast configuration with compositional-analysis inputs attached.
+#'
+#' @note AI-assisted documentation.
 PrepareCompositionalContrast = function(sc, contrast) {
   barcode_metadata = sc[[]]
   name = contrast[["name"]]
@@ -1024,11 +1033,15 @@ PrepareCompositionalContrast = function(sc, contrast) {
   return(contrast)
 }
 
-#' Given a contrast configuration, prepares a table with the configuration values.
-#' 
-#' @param contrast A contrast configuration. Must have been set up with NewContrastsList.
-#' @param config_names The configuration entries to include
-#' @return A table with the configuration values
+#' Tabulate contrast configuration.
+#'
+#' @description Extracts selected configuration fields from a prepared contrast into a compact table.
+#'
+#' @param contrast Prepared contrast configuration.
+#' @param config_names Configuration fields to include.
+#' @return A data frame with the requested contrast configuration values.
+#'
+#' @note AI-assisted documentation.
 ContrastConfigurationTable = function(contrast, config_names) {
   
   # Lists all possible contrast config entries and their descriptions
@@ -1070,11 +1083,14 @@ ContrastConfigurationTable = function(contrast, config_names) {
   return(configuration_table)
 }
 
-#' Given a contrast configuration, runs a DEG test.
-#' Note that if a contrast has multiple comparisons (for each subset), this function needs to be run on each of them separately.
-#' 
-#' @param contrast A contrast configuration. Must have been set up with NewContrastsList followed by PrepareContrast.
-#' @return A contrast with DEG results.
+#' Run a DEG test.
+#'
+#' @description Runs the configured differential-expression test for a prepared contrast.
+#'
+#' @param contrast Prepared contrast configuration.
+#' @return A contrast configuration containing differential-expression results.
+#'
+#' @note AI-assisted documentation.
 DegsRunTest = function(contrast) {
     # When running FindMarkers, do not calculate nCounts and nFeatures (not needed); restore default on exit
     op = options(Seurat.object.assay.calcn=FALSE)
@@ -1226,13 +1242,16 @@ DegsRunTest = function(contrast) {
 }
 
 
-#' Runs an over-representation analysis (ORA) for an DEG result produced by DegsRunTest.
-#' Note that if there are multiple results (e.g. for each subset), this function needs to be run on each of them separately.
-#' 
-#' @param deg_result A DEG result produced by DegsRunTest.
-#' @param term2gene_db A data frame with genesets to be used for ORA. Must contain the columns 'gs_cat' (category of the geneset), 'gs_subcat' (sub-category of the geneset), 'gs_name' (name of the geneset), 'gene_symbol' (symbol of the gene in the geneset). See clusterProfiler documentation for more information.
-#' @param genesets A character vector specifying the genesets to be used for the ORA. Each entry specifies one analysis. Entries should have the form gs_cat:gs_subcat:gs_name and can contain wildcards (e.g. C5:GO:BP:*).
-#' @return A list with one or more ORA results.
+#' Run ORA for DEG results.
+#'
+#' @description Runs over-representation analysis for genes selected from a DEG result.
+#'
+#' @param deg_result Differential-expression result object.
+#' @param term2gene_db Gene set mapping table used for enrichment.
+#' @param genesets Gene sets to include.
+#' @return A list of ORA result tables.
+#'
+#' @note AI-assisted documentation.
 DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
     library(clusterProfiler)
   
@@ -1315,13 +1334,16 @@ DegsRunOraTest = function(deg_result, term2gene_db, genesets) {
     return(ora_result)
 }
 
-#' Runs a geneset enrichment analysis (GSEA) for a constrast produced by PrepareContrast.
-#' Note that if there are multiple contrasts (e.g. for each subset), this function needs to be run on each of them separately.
-#' 
-#' @param contrast A contrast produced by PrepareContrast.
-#' @param term2gene_db A data frame with genesets to be used for GSEA. Must contain the columns 'gs_cat' (category of the geneset), 'gs_subcat' (sub-category of the geneset), 'gs_name' (name of the geneset), 'gene_symbol' (symbol of the gene in the geneset). See clusterProfiler documentation for more information.
-#' @param genesets A character vector specifying the genesets to be used for the GSEA. Each entry specifies one analysis. Entries should have the form gs_cat:gs_subcat:gs_name and can contain wildcards (e.g. C5:GO:BP:*).
-#' @return A list with one or more GSEA results.
+#' Run GSEA for a contrast.
+#'
+#' @description Runs gene set enrichment analysis for ranked genes from a prepared contrast.
+#'
+#' @param contrast Prepared contrast configuration.
+#' @param term2gene_db Gene set mapping table used for enrichment.
+#' @param genesets Gene sets to include.
+#' @return A list of GSEA result tables.
+#'
+#' @note AI-assisted documentation.
 DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
   # Calculate fold changes
   if (contrast[["gsea_deseq2"]]) {
@@ -1398,12 +1420,16 @@ DegsRunGseaTest = function(contrast, term2gene_db, genesets) {
   return(gsea_result)
 }
 
-#' Obtains genesets from MSigDB or user-defined input files.
-#' 
-#' @param msigdb_species Species name for MSigDB.
-#' @param is_msigdb_species_name Is the species name a name used by MSigDB? Default is FALSE. If not, try to make it compatible with MSigDB. This will do the following: homo_sapiens => Homo sapiens.
-#' @param geneset_files User-defined genesets in Excel or CSV file(s) to use instead of MSigDB. The files should have these columns: gs_cat (category), gs_subcat (subcategory), gs_name (geneset name), gene_id, gene_symbol.
-#' @return A table with genesets and the following columns: gs_cat, gs_subcat, gs_name, gene_id, gene_symbol.
+#' Load DEG genesets.
+#'
+#' @description Loads gene sets from MSigDB or user-supplied files for DEG enrichment analyses.
+#'
+#' @param msigdb_species Species name used for MSigDB.
+#' @param is_msigdb_species_name Whether the species name already matches MSigDB naming. Default is FALSE.
+#' @param geneset_files User-supplied gene set files. Default is NULL.
+#' @return A data frame with gene set category, name and gene columns.
+#'
+#' @note AI-assisted documentation.
 DegsGetGenesets = function(msigdb_species, is_msigdb_species_name=FALSE, geneset_files=NULL) {
   if (is.null(geneset_files)) {
     # No user input - get MSigDB
@@ -1456,20 +1482,22 @@ DegsGetGenesets = function(msigdb_species, is_msigdb_species_name=FALSE, geneset
   return(term2gene_db)
 }
 
-#' Run DESeq2 on bulk-aggregated single-cell dataset. Operates on raw counts and does not do pre-filtering of genes.
-#' 
-#' By default it compares two conditions (Wald test). Alternatively, it can do a log ratio test where it compares a full model to a reduced model to see which fits better. This is done for all levels of the condition_groups column together.
+#' Run DESeq2 on aggregated counts.
 #'
-#' @param object Seurat object. Single-cell counts must have been aggregated into bulk samples. Object must have a 'condition_groups' column. 
-#' @param ident_1 Condition 1. Must be part of the 'condition_groups' column. Ignored for LRT tests.
-#' @param ident_2 Condition 2. Must be part of the 'condition_groups' column. Ignored for LRT tests.
-#' @param assay Assay to use for the analysis (default: default assay of Seurat object)
-#' @param test Use Wald or LRT test (default: Wald)
-#' @param design Design formula of the full model to test (default: ~condition_groups).
-#' @param reduced When doing an LRT test, design of the reduced model to compare (default: null).
-#' @param random_seed Random seed for reproducibility (default: 1)
-#' @param results_args Additional arguments that are passed to the results function of DESeq2.
-#' @return A data frame with DESeq2 results. Contains columns gene, p_val, p_val_adj, avg_log2FC, pct.1, pct.2.
+#' @description Runs DESeq2 on bulk-aggregated single-cell counts using Wald or likelihood-ratio testing.
+#'
+#' @param object Input object used by the analysis.
+#' @param ident_1 First condition or identity.
+#' @param ident_2 Second condition or identity.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is NULL.
+#' @param test DESeq2 test type. Default is "Wald".
+#' @param design Full model design formula. Default is "~condition_groups".
+#' @param reduced Reduced model design formula for likelihood-ratio tests. Default is NULL.
+#' @param random_seed Random seed used for reproducibility. Default is 1.
+#' @param results_args Additional arguments passed to DESeq2 results extraction. Default is NULL.
+#' @return A data frame of DESeq2-compatible DEG results.
+#'
+#' @note AI-assisted documentation.
 DegsRunDESeq2 = function(object, ident_1, ident_2, assay=NULL, test="Wald", design="~condition_groups", reduced=NULL, random_seed=1, results_args=NULL) {
   
   # Need these packages preloaded
@@ -1537,12 +1565,15 @@ DegsRunDESeq2 = function(object, ident_1, ident_2, assay=NULL, test="Wald", desi
   return(dds_results)
 }
 
-#' Sorts table of differentially expressed genes per performed test. Introduces a signed p-value score calculated as follows:
-#' p_val_adj_score = -log10(p_val_adj) * sign(avg_log2FC).
-#' 
-#' @param degs Result table of the "Seurat::FindAllMarkers" function or the "Seurat::FindMarkers" function.
-#' @param group Group results first by column(s) before sorting.
-#' @return Sorted table with differentially expressed genes. 
+#' Sort DEG results.
+#'
+#' @description Adds a signed adjusted-p-value score and sorts DEG results, optionally within groups.
+#'
+#' @param degs Differential-expression result table.
+#' @param group Grouping column or grouping definition. Default is NULL.
+#' @return A sorted DEG result table.
+#'
+#' @note AI-assisted documentation.
 DegsSort = function(degs, group=NULL) { 
   # Group first (if requested)
   if (!is.null(group)) degs = degs %>% dplyr::group_by(dplyr::across(dplyr::all_of(group)))
@@ -1561,13 +1592,17 @@ DegsSort = function(degs, group=NULL) {
   return(degs)
 }
 
-#' Filter table of differentially expressed genes.
-#' 
-#' @param degs Result table of the "Seurat::FindAllMarkers" or the "Seurat::FindMarkers" functions.
-#' @param cut_log2FC Log2 fold change threshold.
-#' @param cut_padj Adjusted p-value threshold; not advised for filtering markers
-#' @param split_by_dir Split filtered table into a table with all degs, a table with up-regulated degs and a table down-regulated degs.
-#' @return If split_by_dir is set to FALSE filtered table else list of filtered tables with all, up-regulated and down-regulated degs.
+#' Filter DEG results.
+#'
+#' @description Filters DEG results by log fold-change and adjusted p-value thresholds and can split by direction.
+#'
+#' @param degs Differential-expression result table.
+#' @param cut_log2FC Absolute log2 fold-change threshold.
+#' @param cut_padj Adjusted p-value threshold. Default is NULL.
+#' @param split_by_dir Whether to split filtered genes by regulation direction. Default is TRUE.
+#' @return A filtered DEG table or a list of filtered up, down and combined DEG tables.
+#'
+#' @note AI-assisted documentation.
 DegsFilter = function(degs, cut_log2FC, cut_padj=NULL, split_by_dir=TRUE) { 
   
   # Filter differentially expressed genes based on fold change 
@@ -1593,13 +1628,17 @@ DegsFilter = function(degs, cut_log2FC, cut_padj=NULL, split_by_dir=TRUE) {
   return(filt)
 }
 
-#' Display top marker genes (=up-regulated genes).
-#' 
-#' @param degs Result table of the "Seurat::FindAllMarkers" function (requires column "cluster")
-#' @param n Number of top genes to show
-#' @param column_1 First column to sort genes on
-#' @param column_2 Second column to sort genes on
-#' @return Data.frame of top genes 
+#' Select top up-regulated markers.
+#'
+#' @description Returns the top up-regulated marker genes per cluster or group for display.
+#'
+#' @param degs Differential-expression result table.
+#' @param n Maximum number of entries to use. Default is 5.
+#' @param column_1 Primary sorting column. Default is "p_val_adj_score".
+#' @param column_2 Secondary sorting column. Default is "pct.diff".
+#' @return A data frame with selected top marker genes.
+#'
+#' @note AI-assisted documentation.
 DegsUpDisplayTop = function(degs, n=5, column_1="p_val_adj_score", column_2="pct.diff") { 
   
   # Calculate difference in percentage of cells that express the gene
@@ -1622,11 +1661,15 @@ DegsUpDisplayTop = function(degs, n=5, column_1="p_val_adj_score", column_2="pct
   return(top)
 }
 
-#' Creates a DEG scatterplot.
-#' 
-#' @param deg_result A list entry with DEG results obtained with RunDEGTests
-#' @param font_size The base font size. Default is 11.
-#' @return A ggplot scatterplot
+#' Plot DEG scatter results.
+#'
+#' @description Creates a scatter plot summarizing differential-expression results.
+#'
+#' @param deg_result Differential-expression result object.
+#' @param font_size Base font size. Default is 11.
+#' @return A ggplot object.
+#'
+#' @note AI-assisted documentation.
 DegsScatterPlot = function(deg_result, font_size=11) {
     # Get condition names. If multiple, join by '+'.
     group1 = paste(deg_result[["condition1"]], collapse="+")
@@ -1683,11 +1726,15 @@ DegsScatterPlot = function(deg_result, font_size=11) {
     return(p)
 }
 
-#' Creates a DEG volcano plot
-#' 
-#' @param deg_result A list entry with DEG results obtained with RunDEGTests
-#' @param font_size The base font size. Default is 11.
-#' @return A ggplot volcano plot
+#' Plot DEG volcano results.
+#'
+#' @description Creates a volcano plot from differential-expression results.
+#'
+#' @param deg_result Differential-expression result object.
+#' @param font_size Base font size. Default is 11.
+#' @return A ggplot object.
+#'
+#' @note AI-assisted documentation.
 DegsVolcanoPlot = function(deg_result, font_size=11) {
     # Get condition names. If multiple, join by '+'.
     group1 = paste(deg_result[["condition1"]], collapse="+")
@@ -1752,13 +1799,17 @@ DegsVolcanoPlot = function(deg_result, font_size=11) {
     return(p)
 }
 
-#' Calculate the average gene expression data for groups of cell barcodes.
-#' 
+#' Average expression by group.
+#'
+#' @description Calculates average expression values for barcode groups from a selected assay layer.
+#'
 #' @param sc Seurat object.
-#' @param group_by How to group the barcodes. Can be a column of the barcode metadata with character or factor data or a list with groups. If NULL, the active identity will be used.
-#' @param assay Assay to be used. If NULL, the default assay will be used.
-#' @param layer Layer to be used. If NULL, the default layer of the assay will be used.
-#' @return A table with average gene expression data per group.
+#' @param group_by Metadata column or list defining barcode groups. Default is NULL.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is NULL.
+#' @param layer Assay layer to use. Default is NULL.
+#' @return A data frame with average expression per group.
+#'
+#' @note AI-assisted documentation.
 AverageCounts = function(sc, group_by=NULL, assay=NULL, layer=NULL) {
   # If assay is NULL, use default assay
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -1813,11 +1864,16 @@ AverageCounts = function(sc, group_by=NULL, assay=NULL, layer=NULL) {
 }
 
 
-#' Compute average gene expression data per identity class for a set of genes.
-#' 
+#' Average DEG data by identity.
+#'
+#' @description Computes average count and normalized expression values for genes across Seurat identity classes.
+#'
 #' @param sc Seurat object.
-#' @param genes Gene list for which average data are to be extracted.
-#' @return A table with average RNA counts and data per identity class for each gene.
+#' @param genes Gene identifiers or symbols to analyze.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is "RNA".
+#' @return A table with average expression metrics per identity.
+#'
+#' @note AI-assisted documentation.
 DegsAvgDataPerIdentity = function(sc, genes, assay="RNA") { 
   # The standard average log FC is derived from assay and layer="data"
   # Add average scaled data per cluster for default assay
@@ -1852,13 +1908,17 @@ DegsAvgDataPerIdentity = function(sc, genes, assay="RNA") {
   return(avg_data)
 }
 
-#' Compute average gene expression data for a set of cells and a set of genes.
-#' 
-#' @param object Seurat assay object.
-#' @param cells Cells to be used. NULL if all cells should be used.
-#' @param genes Gene list for which average data are to be extracted. Can be NULL where all genes will be calculated.
-#' @param slot Slot to be used (data). Can be 'counts' or 'data' or both (vector).
-#' @return A table with average data for each gene.
+#' Average assay data for cells and genes.
+#'
+#' @description Calculates average assay values for selected cells, genes and assay slots.
+#'
+#' @param object Input object used by the analysis.
+#' @param cells Cells to include. Default is NULL.
+#' @param genes Gene identifiers or symbols to analyze. Default is NULL.
+#' @param slot Assay slot or slots to use. Default is "data".
+#' @return A data frame with average values per gene.
+#'
+#' @note AI-assisted documentation.
 DegsAvgData = function(object, cells=NULL, genes=NULL, slot="data") {
   if ("data" %in% slot) avg_data = as.numeric() else avg_data = NULL
   if ("counts" %in% slot) avg_counts = as.numeric() else avg_counts = NULL
@@ -1894,13 +1954,17 @@ DegsAvgData = function(object, cells=NULL, genes=NULL, slot="data") {
 }
 
 
-#' Write differentially expressed genes or markers to an Excel file.
-#' 
-#' @param degs Table with DEG analysis results. Can also be a list of tables so that each table is written into an extra Excel tab.
-#' @param file Output file name.
-#' @param annotation Gene annotation to include in the tables. Will be merged using the rownames. Can be NULL.
-#' @param parameter A data.frame for describing test parameter. Can be NULL.
-#' @return Output file name.
+#' Write DEG results to Excel.
+#'
+#' @description Writes one or more differential-expression result tables and optional annotations to an Excel workbook.
+#'
+#' @param degs_lst DEG result table or named list of DEG result tables.
+#' @param file Input or output file path.
+#' @param annotation Optional gene annotation table. Default is NULL.
+#' @param parameter Optional parameter table written with results. Default is NULL.
+#' @return The output file path.
+#'
+#' @note AI-assisted documentation.
 DegsWriteToFile = function(degs_lst, file, annotation=NULL, parameter=NULL) {
     # Convert to list if not already
     if (is.data.frame(degs_lst)) degs_lst = list(degs_lst)
@@ -1945,12 +2009,16 @@ DegsWriteToFile = function(degs_lst, file, annotation=NULL, parameter=NULL) {
     return(file)
 }
 
-#' Write ORA (over-representation analysis) results to an Excel file.
-#' 
-#' @param degs Table with ORA results. Can also be a list of tables so that each table is written into an extra Excel tab.
-#' @param file Output file name.
-#' @param parameter A data.frame for describing test parameter. Can be NULL.
-#' @return Output file name.
+#' Write ORA results to Excel.
+#'
+#' @description Writes one or more ORA result tables and optional parameters to an Excel workbook.
+#'
+#' @param ora_lst ORA result table or named list of ORA result tables.
+#' @param file Input or output file path.
+#' @param parameter Optional parameter table written with results. Default is NULL.
+#' @return The output file path.
+#'
+#' @note AI-assisted documentation.
 DegsWriteOraToFile = function(ora_lst, file, parameter=NULL) {
   # Convert to list if not already
   if (is.data.frame(ora_lst)) ora_lst = list(ora_lst)
@@ -1986,12 +2054,16 @@ DegsWriteOraToFile = function(ora_lst, file, parameter=NULL) {
   return(file)
 }
 
-#' Write geneset enrichment analysis (GSEA) results to an Excel file.
-#' 
-#' @param gsea_lst Table with GSEA results. Can also be a list of tables so that each table is written into an extra Excel tab.
-#' @param file Output file name.
-#' @param parameter A data.frame for describing test parameter. Can be NULL.
-#' @return Output file name.
+#' Write GSEA results to Excel.
+#'
+#' @description Writes one or more GSEA result tables and optional parameters to an Excel workbook.
+#'
+#' @param gsea_lst GSEA result table or named list of GSEA result tables.
+#' @param file Input or output file path.
+#' @param parameter Optional parameter table written with results. Default is NULL.
+#' @return The output file path.
+#'
+#' @note AI-assisted documentation.
 DegsWriteGseaToFile = function(gsea_lst, file, parameter=NULL) {
   # Convert to list if not already
   if (is.data.frame(gsea_lst)) ora_lst = list(gsea_lst)
@@ -2025,12 +2097,16 @@ DegsWriteGseaToFile = function(gsea_lst, file, parameter=NULL) {
 }
 
 
-#' Plot the number of DEGs per test.
-#' 
-#' @param markers Result table of the "Seurat::FindAllMarkers" function.
-#' @param group Group results by column for plotting.
-#' @param title Plot title.
-#' @return A ggplot object.
+#' Plot DEG counts.
+#'
+#' @description Plots the number of up- and down-regulated genes per group.
+#'
+#' @param degs Differential-expression result table.
+#' @param group Grouping column or grouping definition. Default is NULL.
+#' @param title Plot title. Default is NULL.
+#' @return A ggplot object, or NULL when there are no genes to plot.
+#'
+#' @note AI-assisted documentation.
 DegsPlotNumbers = function(degs, group=NULL, title=NULL) {
   
   degs_up = degs %>% dplyr::filter(avg_log2FC > 0)
@@ -2056,30 +2132,40 @@ DegsPlotNumbers = function(degs, group=NULL, title=NULL) {
   }
 }
 
-#' Returns an empty deg test table with the columns 'p_val', 'avg_log2FC', 'pct.1', 'pct.2', 'p_val_adj' and 'gene'.
-#' 
-#' @param col_def Additional columns.
-#' @return An R data.frame with the columns 'p_val', 'avg_log2FC', 'pct.1', 'pct.2', 'p_val_adj' and 'gene'.
+#' Create an empty DEG result table.
+#'
+#' @description Creates an empty DEG result table with the standard columns used by this workflow.
+#'
+#' @return An empty data frame with standard DEG columns.
+#'
+#' @note AI-assisted documentation.
 DegsEmptyResultsTable = function() {
   empty_table = data.frame(p_val=as.numeric(), avg_log2FC=as.numeric(), pct.1=as.numeric(), pct.2=as.numeric(), p_val_adj=as.numeric(), gene=as.character())
   return(empty_table)
 }
 
-#' Returns an empty deg marker test table with the columns 'p_val', 'avg_log2FC', 'pct.1', 'pct.2', 'p_val_adj', 'cluster' and 'gene'.
-#' 
-#' @param clusters: Cluster names to set factor levels of empty 'cluster' column.
-#' @return An R data.frame with the columns 'p_val', 'avg_log2FC', 'pct.1', 'pct.2', 'p_val_adj', 'cluster' and 'gene'.
+#' Create an empty marker result table.
+#'
+#' @description Creates an empty marker result table with cluster levels and standard DEG columns.
+#'
+#' @param clusters Cluster names used as factor levels.
+#' @return An empty data frame with standard marker columns.
+#'
+#' @note AI-assisted documentation.
 DegsEmptyMarkerResultsTable = function(clusters) {
   empty_table = DegsEmptyResultsTable()
   empty_table$cluster = factor(as.character(), levels=clusters)
   return(empty_table[ c('p_val','avg_log2FC','pct.1','pct.2','p_val_adj','cluster','gene')])
 }
 
-#' Returns an empty Enrichr results table.
-# '
-# '
-#' @param overlap_split: If TRUE, then table will contain the two columns 'In.List' and 'In.Annotation' (which result from splitting 'Overlap') instead of the column 'Overlap'.
-#' @return An empty Enrichr results dataframe.
+#' Create an empty Enrichr result table.
+#'
+#' @description Creates an empty Enrichr-compatible result table with either raw or split overlap columns.
+#'
+#' @param overlap_split Whether to split the Enrichr overlap column. Default is FALSE.
+#' @return An empty Enrichr result data frame.
+#'
+#' @note AI-assisted documentation.
 EmptyEnrichrDf = function(overlap_split=FALSE) {
   if (overlap_split) {
     return(data.frame(Term=as.character(), In.List=as.numeric(), In.Annotation=as.numeric(), P.value=as.numeric(), Adjusted.P.value=as.numeric(), Odds.Ratio=as.numeric(), Combined.Score=as.numeric(), Genes=as.character())) 
@@ -2088,13 +2174,16 @@ EmptyEnrichrDf = function(overlap_split=FALSE) {
   }
 }
 
-# this enrichr function is not used anymore
-#' Tests a list of entrez gene symbols for functional enrichment via Enrichr.
-# '
-#' @param genes: A vector of entrez gene symbols.
-#' @param databases: A vector of Enrichr databases with functional annotation.
-#' @param padj: Maximum adjusted p-value (0.05).
-#' @return The path to the data directory.
+#' Run Enrichr enrichment tests.
+#'
+#' @description Runs Enrichr enrichment analysis for a gene vector and filters results by adjusted p-value.
+#'
+#' @param genes Gene identifiers or symbols to analyze.
+#' @param databases Enrichr database names.
+#' @param padj Maximum adjusted p-value. Default is 0.05.
+#' @return A named list of Enrichr result tables.
+#'
+#' @note AI-assisted documentation.
 EnrichrTest = function(genes, databases, padj=0.05) {
   empty_enrichr_df = EmptyEnrichrDf()
   
@@ -2165,11 +2254,15 @@ EnrichrTest = function(genes, databases, padj=0.05) {
   return(enrichr_results)
 }
 
-#' Writes the enrichr results to an Excel file(s). Includes a README.
-# '
-#' @param enrichr_results: A list with enrichr results.
-#' @param file: A file path.
-#' @return The path to the file.
+#' Write Enrichr results to Excel.
+#'
+#' @description Writes Enrichr result tables to an Excel workbook with a README sheet.
+#'
+#' @param enrichr_results Named list of Enrichr result tables.
+#' @param file Input or output file path.
+#' @return The output file path.
+#'
+#' @note AI-assisted documentation.
 EnrichrWriteResults = function(enrichr_results, file) {
   
   # README
@@ -2194,10 +2287,14 @@ EnrichrWriteResults = function(enrichr_results, file) {
 }
 
 
-#' Flattens the list of Enrichr results into one data.frame.
-# '
-#' @param enrichr_results: A list with enrichr results.
-#' @return A data.frame with the columns reported by Enrichr as well as the db
+#' Flatten Enrichr result tables.
+#'
+#' @description Combines a named list of Enrichr result tables into one data frame with database labels.
+#'
+#' @param enrichr_results Named list of Enrichr result tables.
+#' @return A data frame containing all Enrichr rows and their database names.
+#'
+#' @note AI-assisted documentation.
 FlattenEnrichr = function(enrichr_results) {
   enrichr_results_flat = purrr::map(names(enrichr_results), function(n) {
     return(data.frame(Database=rep(n, nrow(enrichr_results[[n]])), enrichr_results[[n]]))
