@@ -2163,11 +2163,11 @@ ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, barcode
 #' @param categories Categorical metadata columns to include. Default is NULL.
 #' @param barcodes Optional barcode vector used to filter, order or rename cells. Default is NULL.
 #' @param output_dir Output directory. Default is ".".
-#' @param output_name Output file name. Default is "analysis.zar.zip".
-#' @return The path to the generated Xenium Explorer archive.
+#' @param output_name Output file name. Default is "analysis.zarr.zip".
+#' @return Invisibly returns NULL.
 #'
 #' @note AI-assisted documentation.
-ExportXeniumExplorer = function(sc, assay=NULL, categories=NULL, barcodes=NULL, output_dir=".", output_name="analysis.zar.zip") {
+ExportXeniumExplorer = function(sc, assay=NULL, categories=NULL, barcodes=NULL, output_dir=".", output_name="analysis.zarr.zip") {
   # For this function, we need a datasets table in the misc slot (to get all barcodes present in the dataset)
   assertthat::assert_that("datasets" %in% names(sc@misc),
                           msg="This function requires the Seurat object to have a 'datasets' table in the misc slot with columns 'experiment' for orig.ident and 'path' for the path to the dataset.")
