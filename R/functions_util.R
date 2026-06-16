@@ -92,7 +92,7 @@ GetProfileYaml = function() {
 #'
 #' @note AI-assisted documentation.
 PreviousModuleDir = function(current_module_dir) {
-  current_module_dir = module_dir
+  # current_module_dir is provided as an argument
   
   # Get profile yaml parameter 'chapters' in section 'book'
   profile_yml = GetProfileYaml()
