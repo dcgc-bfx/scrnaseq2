@@ -1,13 +1,14 @@
 
-#' Transformer for the glue package:
-#' - if quote=TRUE, quotes all variables in the glue string
-#' - if a variable has multiple values and its glue string contains a '*' (e.g. {variable*}, include all values separated by sep. If quote=TRUE, they will be quoted as well.
-#' 
-#' https://glue.tidyverse.org/articles/transformers.html
-#' 
-#' @param sep When a variable contains multiple values and is marked with a '*', which separator to use to collapse the values
-#' @param quote Whether to quote variables
-#' @return A function to transform the glue string
+#' Create a glue transformer.
+#'
+#' @description Creates a glue transformer that quotes values and collapses vector inputs marked with an asterisk.
+#'
+#' @param sep Separator used when collapsing values. Default is ", ".
+#' @param quote Whether to quote inserted values. Default is TRUE.
+#' @param ... Additional arguments passed to downstream functions.
+#' @return A transformer function for use with glue.
+#'
+#' @note AI-assisted documentation.
 GlueTransformer_quote_collapse = function(sep=", ", quote=TRUE, ...) {
   function(text, envir) {
     collapse = grepl("[*]$", text)
@@ -26,31 +27,35 @@ GlueTransformer_quote_collapse = function(sep=", ", quote=TRUE, ...) {
   }
 }
 
-#' Formats strings
-#' 
-#' - Variables can be automatically inserted with '{variable}'.
-#' - If quote=TRUE, quotes all variables.
-#' - If a variable has multiple values, use {variable*} to include all values separated by sep. If quote=TRUE, they will be quoted as well.
-#' 
-#' @param x Character string
-#' @param quote Whether to quote variables
-#' @param sep When a variable contains multiple values and is marked with a '*', which separator to use to collapse the values
-#' @return The formatted message
+#' Format a workflow string.
+#'
+#' @description Interpolates variables into a string using the workflow glue transformer.
+#'
+#' @param x Input object or vector.
+#' @param quote Whether to quote inserted values. Default is TRUE.
+#' @param sep Separator used when collapsing values. Default is ", ".
+#' @return A formatted character string.
+#'
+#' @note AI-assisted documentation.
 FormatString = function(x, quote=TRUE, sep=", ") {
   return(glue::glue(x, .transformer=GlueTransformer_quote_collapse(quote=quote, sep=sep), .envir=parent.frame()))
 }
 
-#' Generates a callout box for showing notes, tips or warnings
-#' 
-#' @param x Character string that will be formatted by the FormatString function
-#' @param type Type of callout box. Can be: 'note', 'tip', 'important', 'caution' and 'warning'.
-#' @param print Whether to print (if TRUE) or to return (FALSE) the message box
-#' @param quote Whether to quote expanded variables in the message box
-#' @return Character string to generate a message box
+#' Create a Quarto callout box.
+#'
+#' @description Formats text as a Quarto callout block and optionally prints it.
+#'
+#' @param x Input object or vector.
+#' @param type Callout type; one of "note", "tip", "important", "caution", "warning".
+#' @param print Whether to print instead of returning the generated text. Default is TRUE.
+#' @param quote Whether to quote inserted values. Default is TRUE.
+#' @return A character string containing the callout box markup, or printed output when requested.
+#'
+#' @note AI-assisted documentation.
 CalloutBox = function(x, type, print=TRUE, quote=TRUE) {
   valid_types = c("note", "tip", "important", "caution", "warning")
   assertthat::assert_that(type %in% valid_types,
-                          msg=FormatString("Callout box typ {type} but must be one of: {valid_types*}."))
+                          msg=FormatString("Callout box type {type} but must be one of: {valid_types*}."))
   
   
   
@@ -62,11 +67,13 @@ CalloutBox = function(x, type, print=TRUE, quote=TRUE) {
   }
 }
 
-#' Returns the content of the profile yaml.
-#' 
-#' Note: The current profile must be set via the environment variable 'QUARTO_PROFILE'.
-#' 
-#' @return The content as nested list.
+#' Read the active profile YAML.
+#'
+#' @description Loads the Quarto profile YAML indicated by the QUARTO_PROFILE environment variable.
+#'
+#' @return A nested list containing profile configuration.
+#'
+#' @note AI-assisted documentation.
 GetProfileYaml = function() {
   profile = Sys.getenv("QUARTO_PROFILE")
   assertthat::assert_that(nchar(profile) > 0,
@@ -76,13 +83,16 @@ GetProfileYaml = function() {
   return(profile_yml)
 }
 
-#' Given a module directory, returns the module directory that was run before this module according to the workflow ('chapters') defined in the current profile.
-#' 
-#' Note: The current profile must be set via the environment variable 'QUARTO_PROFILE'.
-#' 
-#' @return The previous module directory or NULL if there is none.
+#' Find the previous module directory.
+#'
+#' @description Finds the module that precedes the current module in the configured Quarto workflow.
+#'
+#' @param current_module_dir current module dir argument.
+#' @return The previous module directory, or NULL when there is no previous module.
+#'
+#' @note AI-assisted documentation.
 PreviousModuleDir = function(current_module_dir) {
-  current_module_dir = module_dir
+  # current_module_dir is provided as an argument
   
   # Get profile yaml parameter 'chapters' in section 'book'
   profile_yml = GetProfileYaml()
@@ -105,15 +115,14 @@ PreviousModuleDir = function(current_module_dir) {
   }
 }
 
-#' Access a workflow parameters set in the profile and the module yaml.
-#' 
-#' This function merged parameters defined in the module yaml head general with general and module-specific parameters from the profile yaml (in this order). This is currently the only way to work with profile and module 
-#' parameters a) interactively in rstudio as well as b) during rendering by quarto.
-#' 
-#' Note: The current profile must be set via the environment variable 'QUARTO_PROFILE'.
-#' 
-#' @param p Parameter to access. If NULL, returns all parameters.
-#' @return One or more parameters as list
+#' Read workflow parameters.
+#'
+#' @description Merges module YAML parameters with active profile parameters and returns all or one requested parameter.
+#'
+#' @param p Parameter name to retrieve. Default is NULL.
+#' @return A list of parameters or a selected parameter value.
+#'
+#' @note AI-assisted documentation.
 param = function(p=NULL) {
 
   # Read module parameter (document params yaml) and get module name
@@ -149,11 +158,15 @@ param = function(p=NULL) {
   }
 }
 
-#' Returns an Ensembl biomaRt for a species and Ensembl version.
-#' 
-#' @param species Latin species name in format genus_species (for example homo_sapiens or mus_musculus).
-#' @param ensembl_version Ensembl version (for example 98). Set NULL to access the current release.
-#' @return A biomaRt object.
+#' Connect to an Ensembl BioMart.
+#'
+#' @description Creates a BioMart connection for a species and Ensembl release.
+#'
+#' @param species Species name.
+#' @param ensembl_version Ensembl release version; NULL uses the current release when supported.
+#' @return A BioMart object.
+#'
+#' @note AI-assisted documentation.
 GetBiomaRt = function(species, ensembl_version) {
   # Check if we can find find an Ensembl database for this species and annotation version
   ensembl_archives = biomaRt::listEnsemblArchives()
@@ -191,15 +204,19 @@ GetBiomaRt = function(species, ensembl_version) {
   return(ensembl_mart)
 }
 
-#' Fetches gene information from Ensembl using biomaRt.
-#' 
-#' @param ids A list of Ensembl ids or - if symbols is TRUE - gene symbols.
-#' @param symbols If TRUE, ids are interpreted as gene symbols.
-#' @param species Species.
-#' @param ensembl_version Ensembl version. Set NULL to access the current release.
-#' @param mart_attributes Ensembl attributes to fetch. Can be a character vector or a named character vector. Defaults to: c(ensembl_id="ensembl_gene_id, ensembl_symbol="external_gene_name", ensembl_biotype="gene_biotype", ensembl_description="description", ensembl_chr="chromosome_name", ensembl_start_position="start_position", ensembl_end_position="end_position", ensembl_strand="strand").
-#' @param useCache Use local cache for faster querying. Default is TRUE. Set to FALSE if there are problems.
-#' @return A table with gene information. Ids that were not found are included but most of the information will be NA.
+#' Fetch Ensembl gene annotation.
+#'
+#' @description Retrieves gene annotation for Ensembl ids or symbols using biomaRt.
+#'
+#' @param ids Gene ids or symbols.
+#' @param symbols Whether ids are gene symbols. Default is FALSE.
+#' @param species Species name.
+#' @param ensembl_version Ensembl release version; NULL uses the current release when supported.
+#' @param mart_attributes BioMart attributes to retrieve. Default is c(ensembl_id="ensembl_gene_id", ensembl_symbol="external_gene_name", ensembl_biotype="gene_biotype", ensembl_description="description", ensembl_chr="chromosome_name", ensembl_start_position="start_position", ensembl_end_position="end_position", ensembl_strand="strand").
+#' @param useCache Whether BioMart may use its local cache. Default is TRUE.
+#' @return A data frame with gene annotation and rows for missing ids.
+#'
+#' @note AI-assisted documentation.
 EnsemblFetchGeneInfo = function(ids, symbols=FALSE, species, ensembl_version, mart_attributes=c(ensembl_id="ensembl_gene_id", ensembl_symbol="external_gene_name", ensembl_biotype="gene_biotype", ensembl_description="description", ensembl_chr="chromosome_name", ensembl_start_position="start_position", ensembl_end_position="end_position", ensembl_strand="strand"), useCache=TRUE) {
   # Get species mart
   species_mart = GetBiomaRt(species, ensembl_version)
@@ -240,17 +257,21 @@ EnsemblFetchGeneInfo = function(ids, symbols=FALSE, species, ensembl_version, ma
   return(annotation_ensembl)
 }
 
-#' Fetches orthologues information between two species from Ensembl using biomaRt.
-#' 
-#' @param ids A list of Ensembl ids or - if symbols is TRUE - gene symbols.
-#' @param symbols If TRUE, ids are interpreted as gene symbols.
-#' @param species1 Species 1.
-#' @param species1 Species 2.
-#' @param ensembl_version Ensembl version. Set NULL to access the current release.
-#' @param mart_attributes1 Ensembl attributes to fetch fo species 1. Can be a character vector or a named character vector. Defaults to: c(ensembl_id="ensembl_gene_id, ensembl_symbol="external_gene_name"). Can be empty.
-#' @param mart_attributes1 Ensembl attributes to fetch fo species 2. Can be a character vector or a named character vector. Defaults to: c(ensembl_id="ensembl_gene_id, ensembl_symbol="external_gene_name"). Cannot be empty.
-#' @param useCache Use local cache for faster querying. Default is TRUE. Set to FALSE if there are problems.
-#' @return A table with orthologues between species 1 and species 2. Ids that were not found are included but most of the information will be NA.
+#' Fetch Ensembl orthologues.
+#'
+#' @description Retrieves orthologue mappings between two species using biomaRt.
+#'
+#' @param ids Gene ids or symbols.
+#' @param symbols Whether ids are gene symbols. Default is FALSE.
+#' @param species1 First species name.
+#' @param species2 Second species name.
+#' @param ensembl_version Ensembl release version; NULL uses the current release when supported.
+#' @param mart_attributes1 BioMart attributes to retrieve for the first species. Default is c(ensembl_id1="ensembl_gene_id", ensembl_symbol1="external_gene_name").
+#' @param mart_attributes2 BioMart attributes to retrieve for the second species. Default is c(ensembl_id2="ensembl_gene_id", ensembl_symbol2="external_gene_name").
+#' @param useCache Whether BioMart may use its local cache. Default is TRUE.
+#' @return A data frame with orthologue annotations.
+#'
+#' @note AI-assisted documentation.
 EnsemblFetchOrthologues = function(ids, symbols=FALSE, species1, species2, ensembl_version, mart_attributes1=c(ensembl_id1="ensembl_gene_id", ensembl_symbol1="external_gene_name"), mart_attributes2=c(ensembl_id2="ensembl_gene_id", ensembl_symbol2="external_gene_name"), useCache=TRUE) {
   # Get species marts
   # Hard-coded, because biomaRt keeps crashing; the problem is on Ensembl:
@@ -310,10 +331,14 @@ EnsemblFetchOrthologues = function(ids, symbols=FALSE, species1, species2, ensem
   
 }  
 
-#' Makes names syntactically valid, i.e., it replaces all invalid characters with underscores.
-#' 
-#' @param x A vector of names.
-#' @return A vector with syntactically valid names.
+#' Make syntactically valid names.
+#'
+#' @description Converts arbitrary names into valid and compact R names.
+#'
+#' @param x Input object or vector.
+#' @return A character vector of valid names.
+#'
+#' @note AI-assisted documentation.
 MakeNamesValid = function(x) {
    x = make.names(x) %>%  
         gsub("\\.\\.+", ".", .) %>% 
@@ -323,14 +348,16 @@ MakeNamesValid = function(x) {
    return(x)
 }
 
-#' Adds feature metadata to an Seurat object or an Assay object.
-#' 
-#' Note: Seurat::AddMetaData does not seem to work for features in Seurat v5.
-#' 
-#' @param obj A Seurat or Assay object.
-#' @param assay The assay to which to add the feature metadata. Will be ignored if adding to an Assay object.
-#' @param metadata A table with feature metadata with feature names being row names.
-#' @return The Seurat (v5) or Assay object with updated feature metadata.
+#' Add feature metadata.
+#'
+#' @description Adds feature-level metadata to a Seurat object or assay object.
+#'
+#' @param obj Seurat object or assay object.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is NULL.
+#' @param metadata Metadata table.
+#' @return The updated Seurat or assay object.
+#'
+#' @note AI-assisted documentation.
 AddFeatureMetadata = function(obj, assay=NULL, metadata) {
   # Checks
   valid_objs = c("Seurat", "Assay5", "Assay")
@@ -364,10 +391,14 @@ AddFeatureMetadata = function(obj, assay=NULL, metadata) {
   return(obj)
 }
 
-#' Evaluates a knitr chunk as R code.
-#' 
-#' @param x Knitr chunk code
-#' @return The last return value of the code
+#' Evaluate knitr chunk code.
+#'
+#' @description Extracts and evaluates R code from a knitr chunk.
+#'
+#' @param x Input object or vector.
+#' @return The last value produced by the evaluated code.
+#'
+#' @note AI-assisted documentation.
 EvalKnitrChunk = function(x) {
   chunks = unlist(stringr::str_extract_all(string=x, 
                            pattern=stringr::regex(pattern="```\\s*\\{r\\}.*?\\n```", dotall=TRUE)
@@ -378,12 +409,16 @@ EvalKnitrChunk = function(x) {
   return(eval(r_code))
 }
 
-#' Prepares the barcode filter.
-#' 
-#' @param filter Filter from yaml configuration
-#' @param orig_idents The samples in the analysis
-#' @param metadata The barcode metadata table
-#' @return A filter with entries for each sample
+#' Prepare barcode filters.
+#'
+#' @description Expands barcode filter settings from configuration into sample-specific filters.
+#'
+#' @param filter Filter settings applied before plotting or analysis.
+#' @param orig_idents Original sample identities.
+#' @param metadata Metadata table.
+#' @return A nested list of barcode filters by sample, or NULL when no filters are set.
+#'
+#' @note AI-assisted documentation.
 PrepareBarcodeFilter = function(filter, orig_idents, metadata) {
   if (is.null(filter) | length(filter) == 0) {
     return(NULL)
@@ -420,11 +455,15 @@ PrepareBarcodeFilter = function(filter, orig_idents, metadata) {
   return(filter)
 }
 
-#' Prepares the feature filter.
-#' 
-#' @param filter Filter from yaml configuration
-#' @param orig_idents The samples in the analysis
-#' @return A filter with entries for each sample
+#' Prepare feature filters.
+#'
+#' @description Expands feature filter settings from configuration into sample-specific filters.
+#'
+#' @param filter Filter settings applied before plotting or analysis.
+#' @param orig_idents Original sample identities.
+#' @return A nested list of feature filters by sample, or NULL when no filters are set.
+#'
+#' @note AI-assisted documentation.
 PrepareFeatureFilter = function(filter, orig_idents) {
   if (is.null(filter) | length(filter) == 0) {
     return(NULL)
@@ -454,14 +493,18 @@ PrepareFeatureFilter = function(filter, orig_idents) {
   return(filter)
 }
 
-#' Adds one or more lists to the misc slot of the Seurat object.
-#' 
-#' @param sc A Seurat sc object.
-#' @param lists A named list with one or more lists (named or unnamed vectors only).
-#' @param lists_slot In which slot of the Seurat misc slot should the list(s) be stored.
-#' @param add_to_list When a list with this name already exists, add to the list instead of overwriting the list. Default is FALSE.
-#' @param make_unique Make lists unique (after they were stored in the misc slot). Default is FALSE.
-#' @return A Seurat sc object with updated list(s).
+#' Store lists in a Seurat object.
+#'
+#' @description Adds named lists to a selected slot in the Seurat misc field.
+#'
+#' @param sc Seurat object.
+#' @param lists Named lists to store.
+#' @param lists_slot Slot inside misc used to store lists. Default is 'gene_lists'.
+#' @param add_to_list Whether to append to existing lists. Default is FALSE.
+#' @param make_unique Whether to keep stored list values unique. Default is FALSE.
+#' @return A Seurat object with updated misc lists.
+#'
+#' @note AI-assisted documentation.
 ScAddLists = function(sc, lists, lists_slot='gene_lists', add_to_list=FALSE, make_unique=FALSE) {
   stored_lists = Seurat::Misc(sc, slot=lists_slot)
   if (is.null(stored_lists)) stored_lists = list()
@@ -488,12 +531,16 @@ ScAddLists = function(sc, lists, lists_slot='gene_lists', add_to_list=FALSE, mak
   return(sc)
 }
 
-#' Get one or more lists from the misc slot of the Seurat object.
-#' 
-#' @param sc A Seurat sc object.
-#' @param lists One or more list names. If NULL, return all lists defined in the misc slot.
-#' @param lists_slot From which slot of the Seurat misc slot should the lists be pulled. If NULL, pull from the top level of the Seurat misc slot.
-#' @return Lists saved in the misc slot of the Seurat object.
+#' Retrieve lists from a Seurat object.
+#'
+#' @description Retrieves named lists from a selected Seurat misc slot.
+#'
+#' @param sc Seurat object.
+#' @param lists Named lists to store. Default is NULL.
+#' @param lists_slot Slot inside misc used to store lists. Default is NULL.
+#' @return A list of stored values from the Seurat misc field.
+#'
+#' @note AI-assisted documentation.
 ScLists = function(sc, lists=NULL, lists_slot=NULL) {
   stored_lists = Seurat::Misc(sc, slot=lists_slot)
   assertthat::assert_that(!is.null(stored_lists), 
@@ -510,44 +557,61 @@ ScLists = function(sc, lists=NULL, lists_slot=NULL) {
   }
 }
 
-#' Adds colours for one or more categories to the misc slot of the Seurat object.
-#' 
-#' @param sc A Seurat sc object.
-#' @param colours A named list with one or more lists with colours for categories (named or unnamed vectors only).
-#' @param colours_slot Name of the misc slot which stores the colours. Default is 'colour_lists'.
-#' @param add_to_list When a colour list with this name already exists, add to the colour list instead of overwriting the list. Default is FALSE.
-#' @param make_unique Make colour lists unique (after they were stored in the misc slot). Default is FALSE.
-#' @return A Seurat sc object with updated colour list(s).
+#' Store colour lists in a Seurat object.
+#'
+#' @description Adds named colour vectors to the Seurat misc field.
+#'
+#' @param sc Seurat object.
+#' @param colours Named colour lists to store.
+#' @param colours_slot Slot inside misc used to store colour lists. Default is 'colour_lists'.
+#' @param add_to_list Whether to append to existing lists. Default is FALSE.
+#' @param make_unique Whether to keep stored list values unique. Default is FALSE.
+#' @return A Seurat object with updated colour lists.
+#'
+#' @note AI-assisted documentation.
 ScAddColours = function(sc, colours, colours_slot='colour_lists', add_to_list=FALSE, make_unique=FALSE) {
   return(ScAddLists(sc, colours, lists_slot=colours_slot, add_to_list=add_to_list, make_unique=make_unique))
 }
 
-#' Gets colours for one or more categories from the misc slot of the Seurat object.
-#' 
-#' @param sc A Seurat sc object.
-#' @param categories One or more category names. If NULL, return all categories defined in the colours slot.
-#' @param colours_slot Name of the misc slot which stores the colours. Default is 'colour_lists'.
-#' @return Colour lists for categories.
+#' Retrieve colours from a Seurat object.
+#'
+#' @description Retrieves colour vectors for selected categories from the Seurat misc field.
+#'
+#' @param sc Seurat object.
+#' @param categories Categorical metadata columns to include. Default is NULL.
+#' @param colours_slot Slot inside misc used to store colour lists. Default is "colour_lists".
+#' @return A list of colour vectors.
+#'
+#' @note AI-assisted documentation.
 ScColours = function(sc, categories=NULL, colours_slot="colour_lists") {
   return(ScLists(sc, lists=categories, lists_slot=colours_slot))
 }
 
-#' Gets the name of the default dimensionality reduction for an assay.
-#' 
-#' @param sc A Seurat sc object.
-#' @param assay The assay for which to pull the name of the dimensionality reduction. If NULL, will be the default assay.
-#' @return The name of the default dimensionality reduction for the assay.
+#' Get the default reduction.
+#'
+#' @description Reads the default dimensionality reduction name stored for an assay.
+#'
+#' @param sc Seurat object.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is NULL.
+#' @return A character string with the default reduction name.
+#'
+#' @note AI-assisted documentation.
 DefaultReduct = function(sc, assay=NULL) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
   return(SeuratObject::Misc(sc[[assay]], slot="default.dimred"))
 }
 
-#' Sets the name of the default dimensionality reduction for an assay.
-#' 
-#' @param sc A Seurat sc object.
-#' @param assay The assay for which to set the name of the dimensionality reduction. If NULL, will be the default assay.
-#' @return A Seurat sc object with updated default dimensionality reduction for the assay.
+#' Set the default reduction.
+#'
+#' @description Stores the default dimensionality reduction name for an assay.
+#'
+#' @param sc Seurat object.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is NULL.
+#' @param value Replacement value to store.
+#' @return A Seurat object with updated assay metadata.
+#'
+#' @note AI-assisted documentation.
 "DefaultReduct<-" <- function(sc, assay=NULL, value) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -555,22 +619,31 @@ DefaultReduct = function(sc, assay=NULL) {
   return(sc)
 }
 
-#' Gets the name of the default visualization method for an assay.
-#' 
-#' @param sc A Seurat sc object.
-#' @param assay The assay for which to pull the name of the default visualization method. If NULL, will be the default assay.
-#' @return The name of the default visualization method for the assay.
+#' Get the default visualization.
+#'
+#' @description Reads the default visualization method stored for an assay.
+#'
+#' @param sc Seurat object.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is NULL.
+#' @return A character string with the default visualization method.
+#'
+#' @note AI-assisted documentation.
 DefaultVisualization = function(sc, assay=NULL) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
   return(SeuratObject::Misc(sc[[assay]], slot="default.visualization"))
 }
 
-#' Sets the name of the default visualization method for an assay.
-#' 
-#' @param sc A Seurat sc object.
-#' @param assay The assay for which to set the name of the visualization method. If NULL, will be the default assay.
-#' @return A Seurat sc object with updated default visualization method for the assay.
+#' Set the default visualization.
+#'
+#' @description Stores the default visualization method for an assay.
+#'
+#' @param sc Seurat object.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is NULL.
+#' @param value Replacement value to store.
+#' @return A Seurat object with updated assay metadata.
+#'
+#' @note AI-assisted documentation.
 "DefaultVisualization<-" <- function(sc, assay=NULL, value) {
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -578,6 +651,15 @@ DefaultVisualization = function(sc, assay=NULL) {
   return(sc)
 }
 
+#' Format a Quarto chunk option.
+#'
+#' @description Formats a name-value pair as a Quarto chunk option line.
+#'
+#' @param name Name to assign to the generated result.
+#' @param value Replacement value to store.
+#' @return A character string containing the formatted option.
+#'
+#' @note AI-assisted documentation.
 FormatChunkOption = function(name, value) {
     # Convert value to correct format
     if (is.logical(value)) {
@@ -596,6 +678,19 @@ FormatChunkOption = function(name, value) {
     return(paste0("#| ", name, ": ", value))
 }
 
+#' Generate Quarto chunks.
+#'
+#' @description Recursively generates Quarto R chunks for plots or tables stored in nested lists.
+#'
+#' @param olist Object or nested list of objects.
+#' @param olist_name Name used for generated object references. Default is NULL.
+#' @param indices Internal recursion indices. Default is c().
+#' @param chunk_label Optional chunk label. Default is NULL.
+#' @param chunk_caption Optional chunk caption. Default is NULL.
+#' @param chunk_opts Optional chunk options. Default is NULL.
+#' @return A character vector with Quarto chunk source code.
+#'
+#' @note AI-assisted documentation.
 GenerateChunks = function(olist, olist_name=NULL, indices=c(), chunk_label=NULL, chunk_caption=NULL, chunk_opts=NULL) {
     # Note: This function will recurse through a nested list. All arguments except for 'indices' 
     # only reflect the current recursion. The 'indices' argument is used to track the recursion process so
@@ -705,48 +800,69 @@ GenerateChunks = function(olist, olist_name=NULL, indices=c(), chunk_label=NULL,
 ######################
 ######################
 
-#' Tests if values can be converted to numbers.
-#' 
-#' @param x A vector with values.
-#' @return TRUE if they can be converted otherwise FALSE.
+#' Check numeric conversion.
+#'
+#' @description Checks whether non-missing values can be converted to numeric values.
+#'
+#' @param x Input object or vector.
+#' @return A logical vector indicating which non-missing values can be converted to numeric.
+#'
+#' @note AI-assisted documentation.
 converts_to_number = function(x) {
   return(suppressWarnings(!is.na(as.numeric(na.omit(x)))))
 }
 
-#' Tests if values can be converted to logical.
-#' 
-#' @param x A vector with values.
-#' @return TRUE if they can be converted otherwise FALSE.
+#' Check logical conversion.
+#'
+#' @description Checks whether non-missing values can be converted to logical values.
+#'
+#' @param x Input object or vector.
+#' @return A logical vector indicating which non-missing values can be converted to logical.
+#'
+#' @note AI-assisted documentation.
 converts_to_logical = function(x) {
   return(suppressWarnings(!is.na(as.logical(na.omit(x)))))
 }
 
 
-#' Given a vector, report at most n elements as concatenated string.
-#' 
-#' @param x A vector.
-#' @param n Number of elements to report at most.
-#' @param sep Separator for string concatenation.
-#' @return A string with at most n elements to concatenated.
+#' Format the first elements of a vector.
+#'
+#' @description Collapses at most the first n vector elements into a short display string.
+#'
+#' @param x Input object or vector.
+#' @param n Maximum number of entries to use. Default is 5.
+#' @param sep Separator used when collapsing values. Default is ",".
+#' @return A character string with the first elements and an ellipsis when truncated.
+#'
+#' @note AI-assisted documentation.
 first_n_elements_to_string = function(x, n=5, sep=",") {
   s = paste(x[1:min(n,length(x))], collapse=sep)
   if (length(x) > n) s = paste(s, "...", sep=sep)
   return(s)
 }
 
-#' Get scrnaseq git repository version
-#' 
-#' @param path_to_git: Path to git repository.
-#' @return The git repository version.
+#' Read a git repository version.
+#'
+#' @description Returns the current commit hash for a git repository.
+#'
+#' @param path_to_git Path to a git repository.
+#' @return A character vector with the commit hash, or NA when it cannot be read.
+#'
+#' @note AI-assisted documentation.
 GitRepositoryVersion = function(path_to_git) {
   repo = tryCatch({system(paste0("git --git-dir=", path_to_git, "/.git rev-parse HEAD"), intern=TRUE)},
                   warning = function(war) {return("NA")})
   return(repo)
 }
 
-#' Get container information (if available)
-#' 
-#' @return A string with container git name, container git commit id and container build date.
+#' Read container version metadata.
+#'
+#' @description Builds a version string from container-related environment variables.
+#'
+#' @param path_to_git Path to a git repository.
+#' @return A character string with container version metadata or NA.
+#'
+#' @note AI-assisted documentation.
 ContainerVersion = function(path_to_git) {#
   container_info = c(Sys.getenv("CONTAINER_GIT_NAME"), Sys.getenv("CONTAINER_VERSION"), Sys.getenv("CONTAINER_GIT_COMMIT_ID"), Sys.getenv("CONTAINER_BUILD_DATE"))
   container_info = container_info[nchar(container_info)>0]
@@ -758,10 +874,14 @@ ContainerVersion = function(path_to_git) {#
   return(container_info)
 }
 
-#' Report session info in a table
-#' 
-#' @param path_to_git: Path to git repository.
-#' @return The session info as table.
+#' Create session information.
+#'
+#' @description Builds a table with runtime, repository, container and package-session information.
+#'
+#' @param path_to_git Path to a git repository. Default is ".".
+#' @return A data frame with session information.
+#'
+#' @note AI-assisted documentation.
 ScrnaseqSessionInfo = function(path_to_git=".") {
   out = matrix(NA, nrow=0, ncol=2)
   colnames(out) = c("Name", "Value")
@@ -790,13 +910,17 @@ ScrnaseqSessionInfo = function(path_to_git=".") {
   return(out)
 }
 
-#' Subsamples barcodes of a Seurat v5 object.
-#' 
-#' @param sc A Seurat v5 object.
-#' @param n Total number of barcodes to subsample. Default is 500.
-#' @param seed Seed for sampling. Default is 1.
-#' @param group If not NULL, sample the same number of barcodes from each group defined by this barcode metadata column. The number of barcodes per group is then the total number of barcodes divided by the number of groups. Default is NULL.
-#' @return Sampled barcodes.
+#' Subsample a Seurat object.
+#'
+#' @description Randomly downsamples cells in a Seurat object, optionally within groups.
+#'
+#' @param sc Seurat object.
+#' @param n Maximum number of entries to use. Default is 500.
+#' @param seed Random seed. Default is 1.
+#' @param group Grouping column or grouping definition. Default is NULL.
+#' @return A subsetted Seurat object.
+#'
+#' @note AI-assisted documentation.
 SubsampleSC = function(sc, n=500, seed=1, group=NULL) {
   barcode_metadata = sc[[]]
   barcodes = rownames(barcode_metadata)
@@ -818,38 +942,54 @@ SubsampleSC = function(sc, n=500, seed=1, group=NULL) {
 
 
 
-#' Returns the names of an object.
-#' 
-#' @param x A list or vector with names.
-#' @return A named vector with names as names and names as values.
+#' Return list names or indices.
+#'
+#' @description Returns the names of a list-like object as a named character vector.
+#'
+#' @param x Input object or vector.
+#' @return A named character vector of names (or NULL when `x` has no names).
+#'
+#' @note AI-assisted documentation.
 list_names = function(x) {
   return(setNames(names(x), names(x)))
 }
 
-#' Returns a vector with its values as names.
-#' 
-#' @param x A vector.
-#' @return A vector with its values as names.
+#' Use values as names.
+#'
+#' @description Assigns vector values as names of the same vector.
+#'
+#' @param x Input object or vector.
+#' @return The input vector with names set to its values.
+#'
+#' @note AI-assisted documentation.
 values_to_names = function(x) {
   return(setNames(x,x))
 }
 
-#' Returns the indices of an object.
-#' 
-#' @param x A list or vector with names.
-#' @return A named vector with names as names and indices as values.
+#' Return list indices.
+#'
+#' @description Returns numeric indices for the elements of a list-like object.
+#'
+#' @param x Input object or vector.
+#' @return An integer vector of element indices.
+#'
+#' @note AI-assisted documentation.
 list_indices = function(x) {
-  return(setNames(seq(x), names(x)))
+  return(setNames(seq_along(x), names(x)))
 }
 
-#' Generate colours based on a palette. If the requested number exceeds the number of colours in the palette, then the palette is reused but with a different alpha.
-#' 
-#' @param num_colours The number of colours to generate.
-#' @param names A character vector with names to be assigned to the colour values. If NULL, no names. 
-#' @param palette A palette function for generating the colours.
-#' @param palette_options List of additional arguments (beside alpha) to pass on to the palette function.
-#' @param alphas Alpha value(s) to use. If the number of colours exceeds the palette, multiple alpha value are used to generate more colours.
-#' @return The generated colours.
+#' Generate named colours.
+#'
+#' @description Generates a colour vector from a palette and optional alpha values.
+#'
+#' @param num_colours Number of colours to generate.
+#' @param names Optional names assigned to generated values. Default is NULL.
+#' @param palette Palette function name. Default is "ggsci::pal_igv".
+#' @param alphas Alpha values applied to the palette. Default is c(1,0.7,0.3).
+#' @param palette_options Additional options passed to the palette function. Default is list().
+#' @return A character vector of colours, optionally named.
+#'
+#' @note AI-assisted documentation.
 GenerateColours = function(num_colours, names=NULL, palette="ggsci::pal_igv", alphas=c(1,0.7,0.3), palette_options=list()) {
   palette = tryCatch({eval(parse(text=palette))}, error=function(cond) return(NULL))
   if (is.null(palette)) stop("GenerateColours: Could not find specified palette!")
@@ -869,9 +1009,14 @@ GenerateColours = function(num_colours, names=NULL, palette="ggsci::pal_igv", al
   return(colours)
 }
 
-#' Report parameters in a table.
-#' @param params The parameter list.
-#' @return A table with parameters for printing.
+#' Summarize workflow parameters.
+#'
+#' @description Formats workflow parameters into a two-column table for reporting.
+#'
+#' @param params Workflow parameter list.
+#' @return A data frame with parameter names and values.
+#'
+#' @note AI-assisted documentation.
 ScrnaseqParamsInfo = function(params) { 
   
   # Initialize output table
@@ -902,10 +1047,14 @@ ScrnaseqParamsInfo = function(params) {
   return(out)
 }
 
-# Checks if the parameters of the scrnaseq workflow are valid and converts them if needed.
+#' Check scrnaseq parameters.
 #'
-#' @param param The parameter list.
-#' @return Returns a list with error messages.
+#' @description Validates and normalizes the main scrnaseq workflow parameter list.
+#'
+#' @param param Workflow parameter list.
+#' @return The parameter list with converted values and any error messages.
+#'
+#' @note AI-assisted documentation.
 check_parameters_scrnaseq = function(param) {
   error_messages = c()
   param[["error_messages"]] = NULL
@@ -1378,9 +1527,13 @@ check_parameters_scrnaseq = function(param) {
   # Check
 }
 
-# Checks if python is valid.
+#' Check Python dependencies.
 #'
-#' @return Returns a list with error messages.
+#' @description Checks whether Python and required Python modules are available.
+#'
+#' @return A character vector of error messages, empty when checks pass.
+#'
+#' @note AI-assisted documentation.
 check_python = function() {
   error_messages = c()
   
@@ -1397,9 +1550,13 @@ check_python = function() {
   return(error_messages)
 }
 
-# Checks if pandoc is valid.
+#' Check Pandoc availability.
 #'
-#' @return Returns a list with error messages.
+#' @description Checks whether Pandoc is available through rmarkdown.
+#'
+#' @return A character vector of error messages, empty when checks pass.
+#'
+#' @note AI-assisted documentation.
 check_pandoc = function() {
   error_messages = c()
   
@@ -1410,10 +1567,15 @@ check_pandoc = function() {
   return(error_messages)
 }
 
-#' Checks if enrichR is live.
+#' Check Enrichr availability.
 #'
-#' @param databases The enrichR databases to use.
-#' @return Returns a list with error messages.
+#' @description Checks whether Enrichr is reachable and the requested databases are available.
+#'
+#' @param databases Enrichr database names.
+#' @param site Enrichr site name. Default is "Enrichr".
+#' @return A character vector of error messages, empty when checks pass.
+#'
+#' @note AI-assisted documentation.
 check_enrichr = function(databases, site="Enrichr") {
   if(is.null(databases) || length(databases)==0) return(c())
   
@@ -1439,18 +1601,26 @@ check_enrichr = function(databases, site="Enrichr") {
   return(c())
 }
 
-#' Checks if packages are installed.
+#' Check installed R packages.
 #'
-#' @param packages A character vector with package names.
-#' @return Logical vector with TRUE for installed and FALSE for not installed
+#' @description Checks whether requested R packages are installed.
+#'
+#' @param packages Package names to check.
+#' @return A logical vector indicating installed packages.
+#'
+#' @note AI-assisted documentation.
 packages_installed = function(packages) {
   return(packages %in% installed.packages()[ , "Package"])
 }
 
 
-#' Checks if all packages required for the scrnaseq workflow are installed.
+#' Check scrnaseq R package dependencies.
 #'
-#' @return Returns a list with error messages.
+#' @description Checks whether the R packages required by the scrnaseq workflow are installed.
+#'
+#' @return A character vector of error messages, empty when checks pass.
+#'
+#' @note AI-assisted documentation.
 check_installed_packages_scrnaseq = function() {
   required_packages = c("Seurat", "ggplot2", "patchwork", "magrittr",
                         "reticulate", "enrichR", "future", "knitr",
@@ -1468,16 +1638,20 @@ check_installed_packages_scrnaseq = function() {
   }
 }
 
-#' Checks if Ensembl is available so that annotation and cell cycle markers can be downloaded.
+#' Check Ensembl resources.
 #'
-#' @param biomart Biomart database name.
-#' @param dataset Dataset name.
+#' @description Checks whether Ensembl annotation resources or provided annotation files contain required attributes.
+#'
+#' @param biomart BioMart database name.
+#' @param dataset BioMart dataset name.
 #' @param mirror Ensembl mirror.
-#' @param version Ensembl version.
-#' @param attributes The attributes to download.
-#' @param file_annot File with existing annotation to use.
-#' @param file_cc_markers File with existing cell cycle markers to use.
-#' @return Returns a list with error messages.
+#' @param version Input format version.
+#' @param attributes BioMart attributes to check.
+#' @param file_annot Optional existing annotation file. Default is NULL.
+#' @param file_cc_markers Optional existing cell-cycle marker file. Default is NULL.
+#' @return A character vector of error messages, empty when checks pass.
+#'
+#' @note AI-assisted documentation.
 check_ensembl = function(biomart, dataset, mirror, version, attributes, file_annot=NULL, file_cc_markers=NULL) {
   error_messages = c()
   
@@ -1511,8 +1685,14 @@ check_ensembl = function(biomart, dataset, mirror, version, attributes, file_ann
   return(error_messages)
 }
 
-#' On error, R will not start a debugger but just print a traceback. For non-interactive use.
-#' @return None.
+#' Configure traceback-only error handling.
+#'
+#' @description Sets error handling to print an rlang traceback without opening an interactive debugger.
+#'
+#' @param x Input object or vector.
+#' @return Invisibly returns NULL.
+#'
+#' @note AI-assisted documentation.
 on_error_just_print_traceback = function(x) {
   options(rlang_trace_top_env = rlang::caller_env())
   options(error = function() {
@@ -1522,8 +1702,14 @@ on_error_just_print_traceback = function(x) {
   return(invisible(NULL))
 }
 
-#' On error, R will start a debugger on the terminal. For interactive use without X11.
-#' @return None.
+#' Configure terminal debugging.
+#'
+#' @description Sets error handling to start R recovery debugging in the terminal.
+#'
+#' @param x Input object or vector.
+#' @return Invisibly returns NULL.
+#'
+#' @note AI-assisted documentation.
 on_error_start_terminal_debugger = function(x) {
   options(error = function() {
     sink()
@@ -1532,17 +1718,27 @@ on_error_start_terminal_debugger = function(x) {
   return(invisible(NULL))
 }
 
-#' On error, R will run the default debugging process. Default.
-#' @return None.
+#' Configure default error handling.
+#'
+#' @description Leaves default error handling in place for debugging.
+#'
+#' @param x Input object or vector.
+#' @return Invisibly returns NULL.
+#'
+#' @note AI-assisted documentation.
 on_error_default_debugging = function(x) {
   return(invisible(NULL))
 }
 
-#' Wrapper around citep and citet. Takes care of connection problems.
+#' Create a citation string.
 #'
-#' @param reference Argument for citep or citet.
-#' @param type Use 'citet' or 'citep'.
-#' @return Returns the output of citep or citet.
+#' @description Wraps knitcitations citation helpers and handles citation lookup problems.
+#'
+#' @param reference Citation reference or integration reference, depending on the function.
+#' @param type Citation type; either "citet" or "citep". Default is "citet".
+#' @return A formatted citation string or fallback citation output.
+#'
+#' @note AI-assisted documentation.
 Cite = function(reference, type="citet") {
   formatted = tryCatch({
     if (type=="citet") knitcitations::citet(reference) else knitcitations::citep(reference)
@@ -1554,4 +1750,3 @@ Cite = function(reference, type="citet") {
   if (is.null(formatted)) formatted = reference
   return(formatted)
 }
-

@@ -9,6 +9,14 @@
 library(magrittr)
 
 # Splits a path
+#' Split a file path into components.
+#'
+#' @description Breaks a path into its directory and file-name components from the root toward the leaf.
+#'
+#' @param x Input object or vector.
+#' @return A character vector with the path components.
+#'
+#' @note AI-assisted documentation.
 split_path = function(x) {
   if (dirname(x)==x) return(x) else return(c(split_path(dirname(x)), basename(x)))
 }
