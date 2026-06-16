@@ -817,7 +817,7 @@ converts_to_number = function(x) {
 #' @description Checks whether non-missing values can be converted to logical values.
 #'
 #' @param x Input object or vector.
-#' @return TRUE when conversion succeeds for the non-missing values, otherwise FALSE.
+#' @return A logical vector indicating which non-missing values can be converted to logical.
 #'
 #' @note AI-assisted documentation.
 converts_to_logical = function(x) {
