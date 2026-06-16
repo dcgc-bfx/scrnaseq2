@@ -1273,7 +1273,7 @@ ReadCounts = function(path, technology, assays, barcode_metadata=NULL, feature_m
 #' @param counts Count matrix to write.
 #' @param path Input or output path.
 #' @param overwrite Whether to overwrite existing output. Default is FALSE.
-#' @return Invisibly writes files to disk; no explicit return value.
+#' @return An IterableMatrix pointing to the written (or opened) BPCells matrix directory.
 #'
 #' @note AI-assisted documentation.
 WriteCounts_MatrixDir = function(counts, path, overwrite=FALSE) {
