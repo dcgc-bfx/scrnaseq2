@@ -805,7 +805,7 @@ GenerateChunks = function(olist, olist_name=NULL, indices=c(), chunk_label=NULL,
 #' @description Checks whether non-missing values can be converted to numeric values.
 #'
 #' @param x Input object or vector.
-#' @return TRUE when conversion succeeds for the non-missing values, otherwise FALSE.
+#' @return A logical vector indicating which non-missing values can be converted to numeric.
 #'
 #' @note AI-assisted documentation.
 converts_to_number = function(x) {
