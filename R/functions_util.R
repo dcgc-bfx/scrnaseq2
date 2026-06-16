@@ -975,7 +975,7 @@ values_to_names = function(x) {
 #'
 #' @note AI-assisted documentation.
 list_indices = function(x) {
-  return(setNames(seq(x), names(x)))
+  return(setNames(seq_along(x), names(x)))
 }
 
 #' Generate named colours.
