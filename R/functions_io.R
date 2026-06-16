@@ -33,7 +33,7 @@ Assays_Smartseq = list("Gene Expression" = "RNA",
 #' @description Extracts observation or feature metadata from an AnnData HDF5 file.
 #'
 #' @param h5ad_file Path to an h5ad file.
-#' @param type Type of analysis or output to create.
+#' @param type Either "obs" (barcode metadata) or "var" (feature metadata).
 #' @return A data frame with metadata rows indexed by barcode or feature id.
 #'
 #' @note AI-assisted documentation.
