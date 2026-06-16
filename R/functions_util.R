@@ -1735,7 +1735,7 @@ on_error_default_debugging = function(x) {
 #' @description Wraps knitcitations citation helpers and handles citation lookup problems.
 #'
 #' @param reference Citation reference or integration reference, depending on the function.
-#' @param type Type of analysis or output to create. Default is "citet".
+#' @param type Citation type; either "citet" or "citep". Default is "citet".
 #' @return A formatted citation string or fallback citation output.
 #'
 #' @note AI-assisted documentation.
