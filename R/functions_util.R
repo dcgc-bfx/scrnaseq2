@@ -46,7 +46,7 @@ FormatString = function(x, quote=TRUE, sep=", ") {
 #' @description Formats text as a Quarto callout block and optionally prints it.
 #'
 #' @param x Input object or vector.
-#' @param type Type of analysis or output to create.
+#' @param type Callout type; one of "note", "tip", "important", "caution", "warning".
 #' @param print Whether to print instead of returning the generated text. Default is TRUE.
 #' @param quote Whether to quote inserted values. Default is TRUE.
 #' @return A character string containing the callout box markup, or printed output when requested.
