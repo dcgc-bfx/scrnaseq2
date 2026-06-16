@@ -944,10 +944,10 @@ SubsampleSC = function(sc, n=500, seed=1, group=NULL) {
 
 #' Return list names or indices.
 #'
-#' @description Returns list names when present, otherwise returns numeric indices as names.
+#' @description Returns the names of a list-like object as a named character vector.
 #'
 #' @param x Input object or vector.
-#' @return A character vector of names or indices.
+#' @return A named character vector of names (or NULL when `x` has no names).
 #'
 #' @note AI-assisted documentation.
 list_names = function(x) {
