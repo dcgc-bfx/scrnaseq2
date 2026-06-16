@@ -4,7 +4,7 @@
 #'
 #' @param sc Seurat object.
 #' @param contrasts_list List of contrast definitions.
-#' @param type Type of analysis or output to create. Default is 'deg'.
+#' @param type Contrast type; one of "deg" or "compositional". Default is "deg".
 #' @return A list of normalized contrast configurations.
 #'
 #' @note AI-assisted documentation.
