@@ -61,6 +61,7 @@ knitr::knit_hooks$set(timeit = function(before, options, envir) {
 
 # Set seed
 options(random_seed=11)
+set.seed(getOption("random_seed"))
 
 # Number of barcodes at which to start rasterising plots
 options(raster.threshold=100000)
