@@ -60,11 +60,9 @@ params:
   # When parsing plate information, set the name of the single-cell experiment (orig.ident) for each cell to the cell name after having removed the plate information
   plate_information_update_identity: false
   
-  # For segmentation-based (i.e. non-spot/bin-based) spatial data, what to load and use: "centroids" OR "centroids" and "segmentation" (only "segmentation" is not possible). 
-  # When both are specified, the first will be used for visualization. Default is to load both but to use "centroids". 
-  spatial_coordinate_type:
-    - "centroids"
-    - "segmentation"
+  # For segmentation-based (i.e. non-spot/bin-based) spatial data, which type of segmentation to load: 'nuclei' or 'cell' segmentations, or just 'centroids' cell centers. 
+  # When loading 'nuclei' or 'cell' segmentations, 'centroids' are loaded as well as default for plotting. 
+  spatial_segmentation_type: "cell"
     
   # Number of cores to use for computations
   cores: 4
@@ -883,7 +881,7 @@ sc
 #| label: read_data_colors
 
 # Add colours
-set.seed(1)
+set.seed(getOption("random_seed"))
 sc = ScAddColours(sc, colours=list(
   orig.ident=setNames(c(zeileis_28, godsnot_102) %>% sample(size=length(levels(sc$orig.ident))), levels(sc$orig.ident)),
   sample=setNames(c(zeileis_28, godsnot_102) %>% sample(size=length(levels(sc$sample))), levels(sc$sample)),
@@ -917,30 +915,25 @@ for (i in 1:nrow(datasets)) {
     dplyr::filter(orig.ident==orig_ident) %>%
     dplyr::select(orig_barcode)
   barcodes = setNames(rownames(barcodes), barcodes$orig_barcode)
-  j = match(barcodes, SeuratSObject::Cells(sc))
+  j = match(barcodes, SeuratObject::Cells(sc))
   barcodes = barcodes[order(j)]
 
   # Image directorie(s) and default assays associated to the images
   # Image key (to access in Seurat object)
-  if (technology %in% c("10x_visium", "10x_visiumhd")) {
-    # For Visium or Visium HD, image data is in directory 'spatial'
-    image_dir = file.path(dirname(path), "spatial")
-  } else if (technology == "10x_xenium") {
-    # For Xenium, image data is in the same directory as the counts data
-    image_dir = dirname(path)
-  }
+  # Default assay for image
+  image_dir = dirname(path)
   default_image_assay = default_assay
   image_key = paste0("image", ".", orig_ident)
   
-  # For segmentation-based (not spot/bin-based), which coordinate type to load and use
-  spatial_coordinate_type = param("spatial_coordinate_type")
+  # For segmentation-based (non-spot/bin-based), whether to load cell or nuclei segmentations
+  spatial_segmentation_type = param("spatial_segmentation_type")
 
   # Read in image(s)
   image = ReadImage(image_dir=image_dir,
                         technology=technology,
                         assay=default_image_assay,
                         barcodes=barcodes,
-                        coordinate_type=spatial_coordinate_type)
+                        segmentation_type=spatial_segmentation_type)
   barcode_metadata = attr(image, "barcode_metadata")
   attr(image, "barcode_metadata") = NULL
 
