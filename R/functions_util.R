@@ -159,7 +159,7 @@ GetBiomaRt = function(species, ensembl_version) {
   ensembl_archives = biomaRt::listEnsemblArchives()
   assertthat::assert_that(
     is.null(ensembl_version) || ensembl_version %in% ensembl_archives$version,
-    msg = FormatString("Could not find or access Ensembl version {ensembl_version}.")
+    msg = FormatString("Could not find or access Ensembl version {ensembl_version} in the Ensembl archives. Available versions are: {ensembl_archives$version*}.")
   )
   
   # Get mart and check if the species is part of ensembl
