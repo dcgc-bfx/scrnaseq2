@@ -500,7 +500,7 @@ highestExpr$rank = match(highestExpr$gene, top_genes)
 highestExpr$gene = factor(highestExpr$gene, levels=top_genes)
 
 # Collect summary statistics for top 20 genes for each layer (dataset)
-highestExpr_summary = purrr::map_dfr(SeuratObject::Layers(sc, "^counts"), function(l) {
+highestExpr_summary = purrr::map_dfr(SeuratObject::Layers(sc, search="^counts\\."), function(l) {
   n = gsub(x=l, pattern="counts\\.", replacement="")
 
   # Get genes with highest median percentage
