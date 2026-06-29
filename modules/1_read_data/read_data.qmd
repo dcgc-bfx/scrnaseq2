@@ -395,6 +395,10 @@ for (i in 1:nrow(datasets)) {
                                                                       ensembl_chr="chromosome_name",ensembl_start_position="start_position", 
                                                                       ensembl_end_position="end_position", ensembl_strand="strand"),
                                                   useCache=TRUE)
+        # Use id if there is no symbol available
+        ensembl_annotation$ensembl_symbol = ifelse(is.na(ensembl_annotation$ensembl_symbol) | nchar(ensembl_annotation$ensembl_symbol)==0, ensembl_annotation$ensembl_id, ensembl_annotation$ensembl_symbol)
+          
+        # Merge to existing metadata
         feature_metadata = dplyr::bind_cols(feature_metadata, ensembl_annotation, .name_repair="minimal")
         attr(counts_lst[[i]][[j]], "feature_metadata") = feature_metadata
         
@@ -417,9 +421,11 @@ for (i in 1:nrow(datasets)) {
                                   msg=FormatString("Column {feature_name_column} cannot be found in the feature metadata available for dataset {path}, assay {assay}."))
       }
       new_feature_names = feature_metadata[, feature_name_column, drop=TRUE]
-
-      # Use id if there is no symbol available
-      new_feature_names = ifelse(is.na(new_feature_names) | nchar(new_feature_names)==0, rownames(feature_metadata), new_feature_names)
+  
+      # Make sure that values are not NA or empty. If so, raise error
+      if (any(is.na(new_feature_names) | nchar(new_feature_names)==0)) {
+        stop(FormatString("New feature names contain NA values or are empty for dataset {path}, assay {assay}. Please make sure that the selected feature metadata column contains valid values."))
+      }
     }
 
     # Now make new feature names Seurat-compatible
@@ -559,11 +565,11 @@ if (!is.null(downsample_barcodes_n) | downsample_barcodes_equally) {
       
       # Subset counts
       keep = colnames(counts_lst[[i]][[j]]) %in% barcodes_per_dataset[[i]]
-      counts_lst[[i]][[j]] = counts_lst[[i]][[j]][, keep]
+      counts_lst[[i]][[j]] = counts_lst[[i]][[j]][, keep, drop=FALSE]
       
       # Subset barcode metadata
       keep = rownames(barcode_metadata) %in% barcodes_per_dataset[[i]]
-      barcode_metadata = barcode_metadata[keep,]
+      barcode_metadata = barcode_metadata[keep,, drop=FALSE]
 
       # Restore metadata
       attr(counts_lst[[i]][[j]], "feature_metadata") = feature_metadata
@@ -599,10 +605,10 @@ if (!is.null(downsample_features_n)) {
       rows = sample(seq(nrow(counts_lst[[i]][[j]])), downsample_features_n)
       
       # Subset counts
-      counts_lst[[i]][[j]] = counts_lst[[i]][[j]][rows, ]
+      counts_lst[[i]][[j]] = counts_lst[[i]][[j]][rows,, drop=FALSE]
       
       # Subset feature metadata
-      feature_metadata = feature_metadata[rows,]
+      feature_metadata = feature_metadata[rows,, drop=FALSE]
 
       # Restore metadata
       attr(counts_lst[[i]][[j]], "feature_metadata") = feature_metadata
@@ -881,12 +887,28 @@ sc
 #| label: read_data_colors
 
 # Add colours
-set.seed(getOption("random_seed"))
+set.seed(1)
+
+orig_ident_levels = levels(sc$orig.ident)
+orig_ident_cols = c(sample(zeileis_28, length(zeileis_28)), sample(godsnot_102, length(godsnot_102)))
+orig_ident_cols = orig_ident_cols[1:length(orig_ident_levels)]
+
+sample_levels = levels(sc$sample)
+sample_cols = c(sample(zeileis_28, length(zeileis_28)), sample(godsnot_102, length(godsnot_102)))
+sample_cols = sample_cols[1:length(sample_levels)]
+
+technology_levels =  levels(sc$technology)
+technology_cols = c(sample(zeileis_28, length(zeileis_28)), sample(godsnot_102, length(godsnot_102)))
+technology_cols = technology_cols[1:length(technology_levels)]
+
+seurat_clusters_cols = c(sample(godsnot_102, length(godsnot_102)), sample(zeileis_28, length(zeileis_28)))
+seurat_clusters_levels = 1:length(seurat_clusters_cols)
+
 sc = ScAddColours(sc, colours=list(
-  orig.ident=setNames(c(zeileis_28, godsnot_102) %>% sample(size=length(levels(sc$orig.ident))), levels(sc$orig.ident)),
-  sample=setNames(c(zeileis_28, godsnot_102) %>% sample(size=length(levels(sc$sample))), levels(sc$sample)),
-  technology=setNames(c(zeileis_28, godsnot_102) %>% sample(size=length(levels(sc$technology))), levels(sc$technology)),
-  seurat_clusters=setNames(c(godsnot_102, zeileis_28) %>% sample(size=length(godsnot_102)), 1:length(godsnot_102)),
+  orig.ident=setNames(orig_ident_cols, orig_ident_levels),
+  sample=setNames(sample_cols, sample_levels),
+  technology=setNames(technology_cols, technology_levels),
+  seurat_clusters=setNames(seurat_clusters_cols, seurat_clusters_levels),
   Phase=c(G1="#FDD086", S="#9FD7E1", G2M="#FF8DA1")
 ))
 ```
