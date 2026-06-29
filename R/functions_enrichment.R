@@ -1,17 +1,14 @@
-#' Perform Over-Representation Analysis (ORA) for a single cluster
+#' Run over-representation analysis.
 #'
-#' This function performs Over-Representation Analysis (ORA) for a given set of 
-#' genes within a cluster. It uses the clusterProfiler package to identify 
-#' enriched biological processes or pathways.
+#' @description Performs clusterProfiler over-representation analysis for a gene set and optional cluster label.
 #'
-#' @param genes A vector of gene symbols to perform ORA on.
-#' @param universe A vector of all genes in the universe of interest.
-#' @param cluster The cluster identifier for which ORA is being performed. Default NA; cluster column not added
-#' @param term2gene A data frame mapping gene sets (terms) to their corresponding genes.
-#' 
-#' @import clusterProfiler
-#' 
-#' @return A data frame containing the results of the ORA, including the cluster identifier.
+#' @param genes Gene identifiers or symbols to analyze.
+#' @param universe Background gene universe.
+#' @param cluster Optional cluster label added to the output. Default is NA.
+#' @param term2gene Term-to-gene mapping table.
+#' @return A data frame with ORA results, optionally annotated with the cluster identifier.
+#'
+#' @note AI-assisted documentation.
 perform_ora <- function(genes, universe, cluster=NA, term2gene) {
   if (length(genes) == 0) {
     return(NULL)

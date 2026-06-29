@@ -1,16 +1,20 @@
-#' Our plotting style.
+#' Apply the scrnaseq plot style.
 #'
-#' @param title The plot title.
-#' @param col A vector of colours to use.
-#' @param fill A vector of fill colours to use.
-#' @param shape A vector of shapes values to use.
-#' @param alpha A vector of alpha values to use.
-#' @param legend_title The legend title. Can also be blank or a named list of titles for col, fill, shape and alpha.
-#' @param legend_position The legend position.
-#' @param xlab The title of the x-axis.
-#' @param ylab The title of the y-axis.
-#' @param font_size The base font size. Default is 11.
-#' @return None, add as theme.
+#' @description Adds common titles, labels, legend settings, colours and theme elements to a ggplot.
+#'
+#' @param title Plot title. Default is NULL.
+#' @param col Line or point colours. Default is NULL.
+#' @param fill Fill colours. Default is NULL.
+#' @param shape Shapes. Default is NULL.
+#' @param alpha Alpha values. Default is NULL.
+#' @param legend_title Legend title. Default is NULL.
+#' @param legend_position Legend position. Default is NULL.
+#' @param xlab X-axis label. Default is NULL.
+#' @param ylab Y-axis label. Default is NULL.
+#' @param font_size Base font size. Default is 11.
+#' @return A ggplot layer or theme object that can be added to a plot.
+#'
+#' @note AI-assisted documentation.
 AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, shape=NULL, alpha=NULL, legend_title=NULL, legend_position=NULL, xlab=NULL, ylab=NULL, font_size=11) {
   style = list(
     # Basic theme
@@ -95,13 +99,17 @@ AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, shape=NULL, alpha=NULL,
   return(style)
 }
 
-#' Helper function to generate plot captions.
+#' Generate plot captions.
 #'
-#' @param plot_names A list of plot names.
-#' @param assay_names A list of assay names that should be recognized in the plot names as such.
-#' @param split If not NULL, split plot names to generate a X vs Y caption.
-#' @param capitalize If TRUE, capitalize the first letter of the caption.
-#' @return A list of captions.
+#' @description Builds readable captions from plot names, assay names and optional comparison splitting.
+#'
+#' @param plot_names Plot names to convert into captions.
+#' @param assay_names Assay names recognized in plot names. Default is NULL.
+#' @param split Optional separator used to create comparison captions. Default is NULL.
+#' @param capitalize Whether to capitalize generated captions. Default is TRUE.
+#' @return A character vector or list of generated captions.
+#'
+#' @note AI-assisted documentation.
 GeneratePlotCaptions = function(plot_names, assay_names=NULL, split=NULL, capitalize=TRUE) {
   if (length(plot_names) == 0) return(NULL)
 
@@ -198,18 +206,18 @@ GeneratePlotCaptions = function(plot_names, assay_names=NULL, split=NULL, capita
   return(captions)
 }
 
-#' Plots barcode metadata for QC. Numeric columns will plotted as violin plots and non-numeric
-#' columns will be plotted as bar plots.
+#' Plot barcode quality control metrics.
 #'
-#' @param sc Seurat v5 object.
-#' @param qc Barcode metadata columns to plot.
-#' @param filter A nested list where the first level is the barcode metadata column and the second levels 
-#' contains filters per dataset. Filters for numeric columns must numeric vectors with min and max. Filter
-#' for character/factor columns must be character vectors with the values that should be kept. 
-#' level contains the filter values
-#' @param assay The assay of the barcodes. If NULL, defaults to default assay of the Seurat object.
-#' @param log10 If set to TRUE, show the y-axis in log10. Can also be a regular expression to apply only to specific columns. Only numeric columns will be affected.
-#' @return A list of ggplot2 objects.
+#' @description Creates QC plots for barcode metadata, using violin plots for numeric fields and bars for categorical fields.
+#'
+#' @param sc Seurat object.
+#' @param qc Barcode metadata columns or column pairs to plot.
+#' @param filter Filter settings applied before plotting or analysis. Default is NULL.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is NULL.
+#' @param log10 Whether to use a log10 axis or matching pattern. Default is FALSE.
+#' @return A named list of ggplot objects.
+#'
+#' @note AI-assisted documentation.
 PlotBarcodeQC = function(sc, qc, filter=NULL, assay=NULL, log10=FALSE) {
   # Get assay and barcodes
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -312,15 +320,17 @@ PlotBarcodeQC = function(sc, qc, filter=NULL, assay=NULL, log10=FALSE) {
   return(plist)
 }
 
-#' Plots two barcode metadata columns for QC. Supports only numeric columns.
+#' Plot barcode QC correlations.
 #'
-#' @param sc Seurat v5 object.
-#' @param qc Pairs of barcode metadata columns to plot.
-#' @param filter A nested list where the first level is the barcode metadata column and the second levels 
-#' contains filters per dataset. Filters for numeric columns must numeric vectors with min and max. Filter
-#' @param assay The assay of the barcodes. If NULL, defaults to default assay of the Seurat object.
-#' for character/factor columns must be character vectors with the values that should be kept.
-#' @return A list of ggplot2 objects.
+#' @description Creates pairwise scatter plots for numeric barcode QC metrics.
+#'
+#' @param sc Seurat object.
+#' @param qc Barcode metadata columns or column pairs to plot.
+#' @param filter Filter settings applied before plotting or analysis. Default is NULL.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is NULL.
+#' @return A named list of ggplot objects.
+#'
+#' @note AI-assisted documentation.
 PlotBarcodeQCCor = function(sc, qc, filter=NULL, assay=NULL) {
   # Get assay and barcodes
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -383,13 +393,17 @@ PlotBarcodeQCCor = function(sc, qc, filter=NULL, assay=NULL) {
   return(plist)
 }
 
-#' Plots the variable features for each layer (dataset).
+#' Plot variable features.
 #'
-#' @param sc Seurat v5 object.
-#' @param method Method used to find variable features. Can be: 'vst' (Seurat standard), 'sct' (SCTransform) or 'scran' (Scran).
-#' @param assay Assay. If NULL, defaults to default assay of the Seurat object.
-#' @param top The top genes that should be labeled.
-#' @return A list of ggplot2 objects.
+#' @description Plots variable-feature selection results for each layer or dataset.
+#'
+#' @param sc Seurat object.
+#' @param method Analysis method to run.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is NULL.
+#' @param top top argument. Default is 10.
+#' @return A named list of ggplot objects.
+#'
+#' @note AI-assisted documentation.
 PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
 
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
@@ -432,7 +446,7 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
     } else if (method == "scran") {
       hvf_info = SeuratObject::HVFInfo(sc[[assay]],
                                        method="scran",
-                                       layer=paste("counts", n, sep="."),
+                                       layer=paste("data", n, sep="."),
                                        status=TRUE)
       if (is.null(hvf_info)) {
         hvf_info = SeuratObject::HVFInfo(sc[[assay]],
@@ -484,14 +498,18 @@ PlotVariableFeatures = function(sc, method, assay=NULL, top=10) {
   return(plist)
 }
 
-#' Plots the relative log expression features for each layer (dataset).
+#' Plot relative log expression.
 #'
-#' @param sc Seurat v5 object.
-#' @param assay Assay. If NULL, defaults to default assay of the Seurat object.
-#' @param layer Type of layer. Can be counts or data but also a specific layer.
-#' @param nbarcodes Number of barcodes to plot.
-#' @param is_log Is the data already in log? If not, will be logged.
-#' @return A ggplot2 object.
+#' @description Creates relative-log-expression diagnostics for a selected assay layer.
+#'
+#' @param sc Seurat object.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is NULL.
+#' @param layer Assay layer to use. Default is "counts".
+#' @param nbarcodes nbarcodes argument. Default is 500.
+#' @param is_log is log argument. Default is FALSE.
+#' @return A ggplot object.
+#'
+#' @note AI-assisted documentation.
 PlotRLE = function(sc, assay=NULL, layer="counts", nbarcodes=500, is_log=FALSE) { 
   if (is.null(assay)) assay = Seurat::DefaultAssay(sc)
   
@@ -578,13 +596,17 @@ PlotRLE = function(sc, assay=NULL, layer="counts", nbarcodes=500, is_log=FALSE) 
   return(p)
 }
 
-#' Wrapper for spatial dim plots. Takes as input a Seurat v5 object, one or more image names and other parameters to 
-#' be passed on to SpatialDimPlot (sequencing-based) or ImageDimPlot (image-based).
+#' Create spatial dimension plots.
 #'
-#' @param sc Seurat v5 object.
-#' @param images One or more images. If NULL, will use all images in Seurat object.
-#' @param assay Get all images with this default assay.
-#' @return A list of ggplot2 objects.
+#' @description Wraps Seurat spatial dimension plotting for Visium-style images and Xenium fields of view.
+#'
+#' @param sc Seurat object.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is NULL.
+#' @param images Image or field-of-view names to plot. Default is NULL.
+#' @param ... Additional arguments passed to downstream functions.
+#' @return A named list of ggplot objects.
+#'
+#' @note AI-assisted documentation.
 DimPlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
   # If NULL, use the default assay of the Seurat object
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -609,13 +631,17 @@ DimPlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
   return(plist)
 }
 
-#' Wrapper for spatial feature plots. Takes as input a Seurat v5 object, one or more image names and other parameters to 
-#' be passed on to SpatialFeaturePlot (sequencing-based) or ImageFeaturePlot (image-based).
+#' Create spatial feature plots.
 #'
-#' @param sc Seurat v5 object.
-#' @param images One or more images. If NULL, will use all images in Seurat object.
-#' @param assay Get all images with this default assay.
-#' @return A list of ggplot2 objects.
+#' @description Wraps Seurat spatial feature plotting for Visium-style images and Xenium fields of view.
+#'
+#' @param sc Seurat object.
+#' @param assay Assay to use; NULL uses the default assay when supported. Default is NULL.
+#' @param images Image or field-of-view names to plot. Default is NULL.
+#' @param ... Additional arguments passed to downstream functions.
+#' @return A named list of ggplot objects.
+#'
+#' @note AI-assisted documentation.
 FeaturePlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
   # If NULL, use the default assay of the Seurat object
   if (is.null(assay)) assay = SeuratObject::DefaultAssay(sc)
@@ -640,10 +666,15 @@ FeaturePlotSpatial = function(sc, assay=NULL, images=NULL, ...) {
   return(plist)
 }
 
-#' Transform a matrix cells (rows) x htos (cols) into a format that can be understood by feature_grid: cell class, name hto1, value hto1, name hto2, value hto2
-#' 
-#' @param x: A matrix cells (rows) x htos (cols).
-#' @param cell_classification A vector of cell classifications.
+#' Create pairwise HTO plotting data.
+#'
+#' @description Converts HTO columns into all pairwise combinations for feature-grid plotting.
+#'
+#' @param x Input object or vector.
+#' @param cell_classification Cell classification labels.
+#' @return A data frame with pairwise HTO values and cell classifications.
+#'
+#' @note AI-assisted documentation.
 DfAllColumnCombinations = function(x, cell_classification) {
   out = combn(x, 2, simplify=FALSE)
   out = lapply(out, function(o) {
