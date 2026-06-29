@@ -164,7 +164,7 @@ if (length(image_names)==0) image_names = SeuratObject::Images(sc)
 
 ## Cell metadata and projections
 
-Cell metadata (sample, cluster, ...) and projections (PCA, UMAP, ...)  are exported as CSV file. These file can then be imported into other tools. Export is done per dataset (with the original cell IDs) and per aggregated analysis (`all`, where the cell IDs were made unique).
+Cell metadata (sample, cluster, ...) and projections (PCA, UMAP, ...)  are exported as `CSV` files. These files can then be imported into other tools. Export is done per dataset (with the original cell IDs) and per aggregated analysis (`all`, where the cell IDs were made unique).
 
 **Notes**: 
 
@@ -282,15 +282,15 @@ if (export_metadata) {
 
 The Loupe Cell Browser is a powerful tool to explore 10x single cell data. It allows you to visualize the data in a variety of ways. For download, please visit the [10x Genomics website](https://support.10xgenomics.com/single-cell-gene-expression/software/visualization/latest/what-is-loupe-cell-browser). There are also several tutorials available on the website.
 
-Results of the analysis are exported as cloupe file which can be read by the Loupe Cell Browser. The cloupe file includes the raw counts, categorial cell metadata and visualisations like UMAP or PCA. 
+Results of the analysis are exported as `cloupe` file which can be read by the Loupe Cell Browser. The cloupe file includes the raw counts, categorial cell metadata and visualisations like UMAP or PCA. 
 
 **Notes**: 
 
 - Due to license issues, this is only supported for 10x datasets. Non-10x datasets will not be exported.
 - Since the Loupe Cell Browser does its own internal normalization, only the raw counts are exported.
-- Spatial information is not included in the cloupe file. For 10x Visium/VisiumHD data, we recommend to use the original cloupe file provided by Spaceranger and to import the CSV cell metadata (see above for details) in Loupe.
+- Spatial information is not included in the `cloupe` file. For 10x Visium/VisiumHD data, we recommend to use the original `cloupe` file provided by Spaceranger and to import the `CSV` cell metadata (see above for details) in Loupe.
 
-For 10x Xenium, the cloupe file can be loaded into the Loupe Cell Browser to inspect the cell clustering. For spatial information, use the Xenium explorer (see below for details).
+For 10x Xenium, the `cloupe` file can be loaded into the Loupe Cell Browser to inspect the cell clustering. For spatial information, use the Xenium explorer (see below for details).
 
 ```{r}
 #| label: create_loupe_file
@@ -334,7 +334,7 @@ if (create_loupe_file & all(grepl("10x", sc$technology))) {
 
 The Xenium Explorer is a tool to explore 10x Xenium spatial data in a variety of ways. For download, please visit the [Xenium Explorer website](https://www.10xgenomics.com/support/software/xenium-explorer/latest). There are also a number of tutorials available on the [website](https://www.10xgenomics.com/support/software/xenium-explorer/latest/tutorials).
 
-For 10x Xenium data, categorial cell metadata is exported as analysis.zarr.zip file for each dataset. Replace the original analysis.zarr.zip in the respective Xenium dataset (make a backup) to include the results of this analysis in the Xenium explorer. 
+For 10x Xenium data, categorial cell metadata is exported as `analysis.zarr.zip` file for each dataset. Replace the original `analysis.zarr.zip` in the respective Xenium dataset (make a backup) to include the results of this analysis in the Xenium explorer. 
 
 ```{r}
 #| label: export_xenium_analysis_file
@@ -405,7 +405,7 @@ if (export_cellxgene) {
     is_color_name = l %in% colors()
     if (any(is_color_name)) l[is_color_name] = gplots::col2hex(l[is_color_name])
     
-    l = reticulate::np_array(unname(l), dtype="<U7")
+    #l = reticulate::np_array(unname(l), dtype="<U7")
     return(l)
   })
   names(colour_lists) = paste0(names(colour_lists), "_colors")
@@ -429,12 +429,19 @@ if (export_cellxgene) {
   }
   
   # Convert Seurat single cell object to python anndata object which will be accessible via reticulate here
-  # Add colours
-  # Write to h5ad file
-  adata = sceasy::convertFormat(adata, from="seurat", to="anndata", outFile=NULL, assay=default_assay)
+  # sceasy::convertFormat does not work anymore so we run its code here directly
+  main_layer = "data"
+  X = Seurat::GetAssayData(object=adata, assay=default_assay, layer=main_layer)
+  obs = sceasy:::.regularise_df(adata@meta.data, drop_single_values=FALSE)
+  var = sceasy:::.regularise_df(Seurat::GetAssay(adata, assay=default_assay)@meta.features, drop_single_values=TRUE)
+  reductions = names(adata@reductions) 
+  obsm = purrr::map(reductions, function(name) as.matrix(Seurat::Embeddings(adata, reduction=name)))
+  names(obsm) = paste0("X_", tolower(reductions))
+  anndata = reticulate::import("anndata", convert = FALSE)
+  adata = anndata$AnnData(X = Matrix::t(X), obs=obs, var=var, obsm=obsm, layers=NULL)
   adata$uns = reticulate::dict(colour_lists)
   adata$write(file.path(module_dir, "results", "export_cellxgene", "cellxgene.h5ad"), compression="gzip")
-
+  
   CalloutBox("The cellxgene file is: 'export_cellxgene/cellxgene.h5ad'.", type="note")
   
 } else {
@@ -444,7 +451,7 @@ if (export_cellxgene) {
 
 ## Seurat object
 
-To facilitate further analysis, the Seurat object is exported. When counts are stored on disk, they will be exported as well as separate directories that need to be in the same directory as the the Seurat object. Alternatively, they can also be included in the Seurat object.
+To facilitate further analysis, the Seurat object is exported. When counts are stored on disk, they will be exported as well as separate directories that need to be in the same directory as the Seurat object. Alternatively, they can also be included in the Seurat object.
 
 ```{r}
 #| label: export_sc
