@@ -440,7 +440,7 @@ if (export_cellxgene) {
   anndata = reticulate::import("anndata", convert = FALSE)
   adata = anndata$AnnData(X = Matrix::t(X), obs=obs, var=var, obsm=obsm, layers=NULL)
   adata$uns = reticulate::dict(colour_lists)
-  adata$write(file.path(module_dir, "results", "export_cellxgene", "cellxgene.h5ad"), compression="gzip")
+  adata$write(file.path(module_dir, "results", "export_cellxgene", "cellxgene.h5ad"))
   
   CalloutBox("The cellxgene file is: 'export_cellxgene/cellxgene.h5ad'.", type="note")
   
