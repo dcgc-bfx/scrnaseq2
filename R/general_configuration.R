@@ -23,25 +23,25 @@ options(Seurat.memsafe=TRUE)
 
 # Conda environment or python path needed for clustering, umap, other python packages
 # Note: maybe we can move to this to a _environment.local file
-conda_env = NULL
-python_path = NULL
-
-if (!is.null(conda_env)) {
-    reticulate::use_condaenv(conda_env)
-} else if (!is.null(python_path)) {
-    Sys.setenv(RETICULATE_PYTHON=python_path)
-} else {
-    python_path = Sys.getenv("RETICULATE_PYTHON")
-    if (is.null(python_path)) python_path = unname(Sys.which("python"))
-    Sys.setenv(RETICULATE_PYTHON=python_path)
-}
-
-assertthat::assert_that(reticulate::py_available(initialize = TRUE) && !is.null(reticulate::py_config()), msg="Python3 not available")
-python_modules = c("leidenalg", "anndata", "scipy")
-purrr::walk(python_modules, function(x) {
-  assertthat::assert_that(reticulate::py_module_available(x),
-                          msg=paste0("Python package '", x, "' not available"))
-})
+# conda_env = NULL
+# python_path = NULL
+# 
+# if (!is.null(conda_env)) {
+#     reticulate::use_condaenv(conda_env)
+# } else if (!is.null(python_path)) {
+#     Sys.setenv(RETICULATE_PYTHON=python_path)
+# } else {
+#     python_path = Sys.getenv("RETICULATE_PYTHON")
+#     if (is.null(python_path)) python_path = unname(Sys.which("python"))
+#     Sys.setenv(RETICULATE_PYTHON=python_path)
+# }
+# 
+# assertthat::assert_that(reticulate::py_available(initialize = TRUE) && !is.null(reticulate::py_config()), msg="Python3 not available")
+# python_modules = c("leidenalg", "anndata", "scipy")
+# purrr::walk(python_modules, function(x) {
+#   assertthat::assert_that(reticulate::py_module_available(x),
+#                           msg=paste0("Python package '", x, "' not available"))
+# })
 
 # Buffer for reading large text files
 Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
@@ -66,6 +66,7 @@ knitr::knit_hooks$set(timeit = local({
 
 # Set seed
 options(random_seed=11)
+set.seed(getOption("random_seed"))
 
 # Number of barcodes at which to start rasterising plots
 options(raster.threshold=100000)
@@ -79,6 +80,10 @@ options(bitmapType='cairo')
 
 # ggrepel: maximum number of overlaps
 options(ggrepel.max.overlaps=100)
+
+# Seurat and SeuratObject version
+seurat_version = packageVersion("Seurat")
+seuratobject_version = packageVersion("SeuratObject")
 
 # Increase timeout to be patient with Ensembl
 options(timeout = 30000)

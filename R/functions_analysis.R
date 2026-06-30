@@ -313,9 +313,9 @@ CalculateBoxplotStats = function(matrix, margin=1, chunk_size=NULL){
     
     # Calculate medians
     if (margin == 1) {
-      boxplot_stats = sparseMatrixStats::rowQuantiles(matrix)
+      boxplot_stats = sparseMatrixStats::rowQuantiles(matrix, na.rm=TRUE)
     } else {
-      boxplot_stats = sparseMatrixStats::colQuantiles(matrix)
+      boxplot_stats = sparseMatrixStats::colQuantiles(matrix, na.rm=TRUE)
     }
     boxplot_stats = as.data.frame(boxplot_stats)
   }

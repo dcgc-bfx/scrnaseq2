@@ -59,17 +59,11 @@ params:
   
   # When parsing plate information, set the name of the single-cell experiment (orig.ident) for each cell to the cell name after having removed the plate information
   plate_information_update_identity: false
-
-  # For 10x Xenium in situ data: Load cell "centroids", cell "segmentation" or both (default).
-  spatial_coordinate_type:
-    - "centroids"
-    - "segmentations"
-    
-  # For 10x Visium HD data: Which bin sizes to import.
-  visiumhd_bin_sizes:
-    - 8
-    - 16
   
+  # For segmentation-based (i.e. non-spot/bin-based) spatial data, which type of segmentation to load: 'nuclei' or 'cell' segmentations, or just 'centroids' cell centers. 
+  # When loading 'nuclei' or 'cell' segmentations, 'centroids' are loaded as well as default for plotting. 
+  segmentation_type: "cell"
+    
   # Number of cores to use for computations
   cores: 4
   
@@ -353,17 +347,13 @@ for (i in 1:nrow(datasets)) {
   # Read counts #
   ###############
   
-  # For Visium HD; which bin sizes to use
-  visiumhd_bin_sizes = param("visiumhd_bin_sizes")
-  
   # Read counts
   counts_lst[[i]] = ReadCounts(path=path,
                                technology=technology,
                                assays=assays,
                                barcode_metadata=barcode_metadata,
                                feature_metadata=feature_metadata,
-                               barcode_suffix=barcode_suffix,
-                               visiumhd_bin_sizes=visiumhd_bin_sizes)
+                               barcode_suffix=barcode_suffix)
   
   #################################
   # If requested, rename features #
@@ -947,67 +937,48 @@ for (i in 1:nrow(datasets)) {
     dplyr::filter(orig.ident==orig_ident) %>%
     dplyr::select(orig_barcode)
   barcodes = setNames(rownames(barcodes), barcodes$orig_barcode)
-  j = match(barcodes, SeuratSObject::Cells(sc))
+  j = match(barcodes, SeuratObject::Cells(sc))
   barcodes = barcodes[order(j)]
 
   # Image directorie(s) and default assays associated to the images
   # Image key (to access in Seurat object)
-  if (technology == "10x_visiumhd") {
-    # For Visium there is an image for each bin size
-    visiumhd_bin_sizes = param("visiumhd_bin_sizes")
-    visiumhd_bin_sizes = sprintf("%03d", visiumhd_bin_sizes)
-    image_dir = file.path(path, paste0("square_", visiumhd_bin_sizes, "um"), "spatial")
-    default_image_assay = paste0(gsub("\\d+$", "", default_assay), visiumhd_bin_sizes)
-    image_key = paste0("image", ".", orig_ident, visiumhd_bin_sizes)
-  } else if (technology == "10x_visium") {
-    image_dir = file.path(dirname(path), "spatial")
-    default_image_assay = default_assay
-    image_key = paste0("image", ".", orig_ident)
-  } else if (technology == "10x_xenium") {
-    image_dir = dirname(path)
-    default_image_assay = default_assay
-    image_key = paste0("image", ".", orig_ident)
-  }
+  # Default assay for image
+  image_dir = dirname(path)
+  default_image_assay = default_assay
+  image_key = paste0("image", ".", orig_ident)
   
-  # For Xenium: which coordinate type to use
-  spatial_coordinate_type = param("spatial_coordinate_type")
-  
-  # Read in image(s)
-  image_lst = purrr::map(seq_along(image_dir), function(j) {
-    with_progress({
-      image = ReadImage(image_dir=image_dir[j],
-                        technology=technology,
-                        assay=default_image_assay[j],
-                        barcodes=barcodes,
-                        coordinate_type=spatial_coordinate_type)
-      }, enable=verbose)
-    return(image)
-  })
+  # For segmentation-based (non-spot/bin-based), whether to load cell or nuclei segmentations
+  segmentation_type = param("segmentation_type")
 
+  # Read in image(s)
+  image = ReadImage(image_dir=image_dir,
+                        technology=technology,
+                        assay=default_image_assay,
+                        barcodes=barcodes,
+                        segmentation_type=segmentation_type)
+  barcode_metadata = attr(image, "barcode_metadata")
+  attr(image, "barcode_metadata") = NULL
+
+  # Update image key(s)
+  SeuratObject::Key(image) = paste0(gsub("[^[:alnum:]]", "", image_key), "_")
+    
   # Add to Seurat object
-  for (j in seq_along(image_lst)) {
-    # Update image key(s)
-    SeuratObject::Key(image_lst[[j]]) = paste0(gsub("[^[:alnum:]]", "", image_key[j]), "_")
-    
-    # Add to Seurat object
-    sc[[image_key[j]]] = image_lst[[j]]
-    
-    # If additional barcode metadata is provided, add as well
-    barcode_metadata = attr(image_lst[[j]], "barcode_metadata")
-    if (!is.null(barcode_metadata)) {
+  sc[[image_key]] = image
+
+  # If additional barcode metadata is provided, add as well
+  if (!is.null(barcode_metadata)) {
       sc = Seurat::AddMetaData(sc, barcode_metadata)
-    }
   }
   
-  # Remove image_lst and call garbage collector
-  rm(image_lst)
+  # Remove image and call garbage collector
+  rm(image)
   invisible(gc())
 }
 ```
 
 ## Basic statistics
 
-Finally, we calculate some basic statistics such as the precentage of counts in the top n features.
+Finally, we calculate some basic statistics such as the percentage of counts in the top n features.
 
 ```{r}
 #| label: read_data_basic_stats
