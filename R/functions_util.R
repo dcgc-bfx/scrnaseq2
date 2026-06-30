@@ -194,7 +194,7 @@ GetBiomaRt = function(species, ensembl_version) {
   assertthat::assert_that(
     length(idx) == 1,
     msg = FormatString(
-      "Could not find species {species} dataset (name: {species_dataset_name}) for Ensembl version {ensembl_annotation_version}."
+      "Could not find species {species} dataset (name: {species_dataset_name}) for Ensembl version {ensembl_version}."
     )
   )
   

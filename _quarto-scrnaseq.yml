@@ -77,9 +77,7 @@ params:
       parse_plate_information: true
       plate_information_regex: "_(\\d+)_([A-Z])(\\d+)$"
       plate_information_update_identity: true
-      spatial_coordinate_type:
-        - "centroids"
-        - "segmentations"
+      segmentation_type: "centroids"
 
     qc_filtering_rna:
       barcode_qc_cor:

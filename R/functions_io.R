@@ -1359,7 +1359,7 @@ WriteCounts_MatrixMarket = function(counts, path, overwrite=FALSE, barcode_data=
 #'
 #' @param image_dir Directory containing spatial image or coordinate data.
 #' @param barcodes Optional barcode vector used to filter, order or rename cells. Default is NULL.
-#' @param segmentation_type Which type of segmentation to read in: nuclei (centroids) or cells
+#' @param segmentation_type For segmented output, load 'nuclei' or 'cell' segmentations, or just 'centroids' cell centers. Default is 'centroids'.
 #' @return A Seurat Visium image object.
 #'
 #' @note AI-assisted documentation.
@@ -1382,7 +1382,7 @@ ReadImage_10xVisium = function(image_dir, barcodes=NULL, segmentation_type="cent
   assertthat::assert_that(segmentation_type %in% valid_segmentation_types,
                           msg=FormatString("Segmentation type is {segmentation_type} but must be one of: {valid_segmentation_types*}."))
   
-  # Image type: lowres or hires
+  # Image type: lowres
   image_type = "lowres"
   
   # Decide whether this is a bin/spot-based or a segmented dataset
@@ -1448,9 +1448,11 @@ ReadImage_10xVisium = function(image_dir, barcodes=NULL, segmentation_type="cent
       # Read barcode mappings to cells from parquet file
       barcode_mappings = arrow::read_parquet(file.path(data_dir, "barcode_mappings.parquet"),
                                                col_select=c("square_002um", "cell_id", "in_nucleus","in_cell"),
-                                               as_data_frame=TRUE)
+                                               as_data_frame=FALSE)
+      barcode_mappings = data.table::as.data.table(barcode_mappings)
       
-      # Compute cell and nuclei areas from 2x2um bins
+      # Compute cell and nuclei areas from 2x2um bins. Use dplyr with dtplyr on data.table.
+      library(dtplyr)
       barcode_metadata = barcode_mappings %>% 
         dplyr::filter(!is.na(cell_id)) %>%
         dplyr::group_by(cell_id) %>%
@@ -1463,7 +1465,7 @@ ReadImage_10xVisium = function(image_dir, barcodes=NULL, segmentation_type="cent
       # Add as metadata
       rownames(barcode_metadata) = as.character(barcode_metadata$cell_id)
       barcode_metadata$cell_id = NULL
-      attr(image, "barcode_metadata") = barcode_metadata
+      attr(image, "barcode_metadata") = as.data.frame(barcode_metadata)
   }
   
   # Reorder/rename
@@ -1538,11 +1540,11 @@ CreateSegmentationImproved = function(coords) {
 #'
 #' @param image_dir Directory containing spatial image or coordinate data.
 #' @param barcodes Optional barcode vector used to filter, order or rename cells. Default is NULL.
-#' @param coordinate_type Coordinate types to read. Default is c("centroids", "segmentation").
+#' @param segmentation_type For segmented output, load 'nuclei' or 'cell' segmentations  or just 'centroids' cell centers. Default is 'centroids'.
 #' @return A Seurat FOV object with barcode metadata attached.
 #'
 #' @note AI-assisted documentation.
-ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type="centroids") {
+ReadImage_10xXenium = function(image_dir, barcodes=NULL, segmentation_type="centroids") {
   # Checks
   assertthat::is.readable(image_dir)
   assertthat::assert_that(file.exists(file.path(image_dir, "cells.parquet")),
@@ -1560,19 +1562,15 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type="centro
   options(stringsAsFactors=FALSE)
   coords = list()
   
-  # Read cell centroids and cell area
-  cell_centroids = arrow::read_parquet(file.path(image_dir, "cells.parquet"),
-                                       col_select=c("cell_id", "x_centroid", "y_centroid", "cell_area", "nucleus_area"),
-                                       as_data_frame=TRUE)
-  
+  # Read cell centroids, nucleus and cell area
   cell_centroids = arrow::open_dataset(file.path(image_dir, "cells.parquet"),
                                         schema=arrow::schema(cell_id=arrow::string(), 
                                                              x_centroid=arrow::float(), 
                                                              y_centroid=arrow::float(),
                                                              cell_area=arrow::float(),
                                                              nucleus_area=arrow::float()))
-  cell_centroids = as.data.frame(cell_centroids)
-  names(cell_centroids) = c("cell", "x", "y", "cell_area", "nucleus_area")
+  cell_centroids = data.table::as.data.table(cell_centroids)
+  colnames(cell_centroids) = c("cell", "x", "y", "cell_area", "nucleus_area")
   
   if (!is.null(barcodes)) {
     # Keep only barcodes that are requested
@@ -1590,36 +1588,38 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type="centro
     cell_centroids$cell = barcodes
   }
   
-  if ("centroids" %in% coordinate_type) {
-    coords = c(coords, centroids = SeuratObject::CreateCentroids(cell_centroids[, c("cell", "x", "y")]))
-  }
+  coords = c(coords, centroids = SeuratObject::CreateCentroids(cell_centroids[, c("cell", "x", "y")]))
   
   # Read segmentations (area of cells)
-  if ("segmentation" %in% coordinate_type) {
-    cell_boundaries = arrow::open_dataset(file.path(image_dir, "cell_boundaries.parquet"),
+  if (segmentation_type %in% c("cell", "nuclei")) {
+    boundaries = arrow::open_dataset(file.path(image_dir, ifelse(segmentation_type=="cell", "cell_boundaries.parquet", "nucleus_boundaries.parquet")),
                                           schema=arrow::schema(cell_id=arrow::string(), 
                                                                vertex_x=arrow::float(), 
                                                                vertex_y=arrow::float()))
-    cell_boundaries = as.data.frame(cell_boundaries)
-    names(cell_boundaries) = c("cell", "x", "y")
+    boundaries = data.table::as.data.table(boundaries)
+    names(boundaries) = c("cell", "x", "y")
     
     if (!is.null(barcodes)) {
       # Keep only barcodes that are requested
-      i = which(cell_boundaries$cell %in% names(barcodes))
-      cell_boundaries = cell_boundaries[i, ]
+      i = which(boundaries$cell %in% names(barcodes))
+      boundaries = boundaries[i, ]
       
       # Reorder barcodes
-      i = match(cell_boundaries$cell, names(barcodes))
-      cell_boundaries = cell_boundaries[i, ]
+      boundaries$row = 1:nrow(boundaries)
+      boundaries$cell_idx = match(boundaries$cell, names(barcodes))
+      i = order(boundaries$cell_idx, boundaries$row)
+      boundaries = boundaries[i, ]
+      boundaries$row = NULL
+      boundaries$cell_idx = NULL
       
       # Rename
-      new = barcodes[cell_boundaries$cell]
+      new = barcodes[boundaries$cell]
       assertthat::assert_that(all(!is.na(new)),
                               msg="Barcodes for cell centroids do not match the requested barcodes.")
       
-      cell_boundaries$cell = new
+      boundaries$cell = new
     }
-    coords = c(coords, segmentation = CreateSegmentationImproved(cell_boundaries))
+    coords = c(coords, segmentations = CreateSegmentationImproved(boundaries))
   }
   
   # Load microns (molecule coordinates)
@@ -1629,7 +1629,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type="centro
                                                          y_location=arrow::float(), 
                                                          qv=arrow::float()))
   transcripts = transcripts %>% dplyr::filter(qv >= mols.qv.threshold) %>% dplyr::select(-qv)
-  transcripts = as.data.frame(transcripts)
+  transcripts = data.table::as.data.table(transcripts)
   colnames(transcripts) = c("gene", "x", "y")
   molecules = SeuratObject::CreateMolecules(transcripts, key='mols_')
   
@@ -1647,7 +1647,7 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type="centro
   attr(image, "barcode_metadata") = barcode_metadata
   
   # Set default boundary
-  SeuratObject::DefaultBoundary(image) = coordinate_type[1]
+  SeuratObject::DefaultBoundary(image) = "centroids"
   
   return(image)
 }
@@ -1660,11 +1660,11 @@ ReadImage_10xXenium = function(image_dir, barcodes=NULL, coordinate_type="centro
 #' @param technology Sequencing or spatial technology name.
 #' @param assay Assay to use; NULL uses the default assay when supported.
 #' @param barcodes Optional barcode vector used to filter, order or rename cells.
-#' @param coordinate_type Coordinate types to read. Default is c("centroids", "segmentations").
+#' @param segmentation_type For segmented output, load 'nuclei' or 'cell' segmentations, or just 'centroids' cell centers. Default is 'centroids'.
 #' @return A Seurat image or FOV object with the requested default assay.
 #'
 #' @note AI-assisted documentation.
-ReadImage = function(image_dir, technology, assay, barcodes, coordinate_type="centroids") {
+ReadImage = function(image_dir, technology, assay, barcodes, segmentation_type="centroids") {
   library(magrittr)
   
   # Checks

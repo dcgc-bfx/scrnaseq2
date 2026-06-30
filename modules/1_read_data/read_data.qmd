@@ -62,7 +62,7 @@ params:
   
   # For segmentation-based (i.e. non-spot/bin-based) spatial data, which type of segmentation to load: 'nuclei' or 'cell' segmentations, or just 'centroids' cell centers. 
   # When loading 'nuclei' or 'cell' segmentations, 'centroids' are loaded as well as default for plotting. 
-  spatial_segmentation_type: "cell"
+  segmentation_type: "cell"
     
   # Number of cores to use for computations
   cores: 4
@@ -948,14 +948,14 @@ for (i in 1:nrow(datasets)) {
   image_key = paste0("image", ".", orig_ident)
   
   # For segmentation-based (non-spot/bin-based), whether to load cell or nuclei segmentations
-  spatial_segmentation_type = param("spatial_segmentation_type")
+  segmentation_type = param("segmentation_type")
 
   # Read in image(s)
   image = ReadImage(image_dir=image_dir,
                         technology=technology,
                         assay=default_image_assay,
                         barcodes=barcodes,
-                        segmentation_type=spatial_segmentation_type)
+                        segmentation_type=segmentation_type)
   barcode_metadata = attr(image, "barcode_metadata")
   attr(image, "barcode_metadata") = NULL
 
@@ -978,7 +978,7 @@ for (i in 1:nrow(datasets)) {
 
 ## Basic statistics
 
-Finally, we calculate some basic statistics such as the precentage of counts in the top n features.
+Finally, we calculate some basic statistics such as the percentage of counts in the top n features.
 
 ```{r}
 #| label: read_data_basic_stats
