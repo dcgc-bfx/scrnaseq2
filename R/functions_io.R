@@ -778,7 +778,7 @@ ReadCounts_10x = function(path, assays=NULL, strip_suffix=NULL) {
 #'
 #' @description Reads 10x Visium count data and returns assay-specific count matrices.
 #'
-#' @param path Input or output path.
+#' @param path Input path.
 #' @param assays Assays to read, write or process. Default is NULL.
 #' @param strip_suffix Optional barcode suffix to remove. Default is NULL.
 #' @return A named list of sparse count matrices.
@@ -801,9 +801,9 @@ ReadCounts_10xVisium = function(path, assays=NULL, strip_suffix=NULL) {
 
 #' Read 10x Visium HD counts.
 #'
-#' @description Reads binned Visium HD count data for one or more bin sizes.
+#' @description Reads binned Visium HD count data.
 #'
-#' @param path Input or output path.
+#' @param path Input path to binned or segmented data.
 #' @param assays Assays to read, write or process. Default is NULL.
 #' @param strip_suffix Optional barcode suffix to remove. Default is NULL.
 #' @return A named list of sparse count matrices.
@@ -1432,7 +1432,7 @@ ReadImage_10xVisium = function(image_dir, barcodes=NULL, segmentation_type="cent
           image.dir=image_dir,
           data.dir=data_dir,
           image.name=paste0("tissue_", image_type, "_image.png"),
-          segmentation.type=ifelse(segmentation_type=="centroids", "nucleus", segmentation_type),
+          segmentation.type=ifelse(segmentation_type == "cell", "cell", "nucleus"),
           compact=TRUE
       )
       
@@ -1445,14 +1445,16 @@ ReadImage_10xVisium = function(image_dir, barcodes=NULL, segmentation_type="cent
       }
       
       # Add information about cell_area (2um bins in cell) and nucleus_area (2um bins in nucleus) as barcode_metadata
-      # Read barcode mappings to cells from parquet file
-      barcode_mappings = arrow::read_parquet(file.path(data_dir, "barcode_mappings.parquet"),
-                                               col_select=c("square_002um", "cell_id", "in_nucleus","in_cell"),
-                                               as_data_frame=FALSE)
-      barcode_mappings = data.table::as.data.table(barcode_mappings)
+      # Read barcode mappings to cells from parquet file.
+      # Since this is a big file, we do not read it entirely into memory but use arrow database functionalities to aggregate it.
       
-      # Compute cell and nuclei areas from 2x2um bins. Use dplyr with dtplyr on data.table.
-      library(dtplyr)
+      barcode_mappings = arrow::open_dataset(file.path(data_dir, "barcode_mappings.parquet"),
+                                       schema=arrow::schema(square_002um=arrow::string(),
+                                                            cell_id=arrow::string(),
+                                                            in_nucleus=arrow::bool(),
+                                                            in_cell=arrow::bool()))
+
+      # Compute cell and nuclei areas from 2x2um bins. Internally, this is done using arrow database operations
       barcode_metadata = barcode_mappings %>% 
         dplyr::filter(!is.na(cell_id)) %>%
         dplyr::group_by(cell_id) %>%
@@ -1472,6 +1474,12 @@ ReadImage_10xVisium = function(image_dir, barcodes=NULL, segmentation_type="cent
   if (!is.null(barcodes)) {
     image_bcs = SeuratObject::Cells(image)
     barcode_metadata = attr(image, "barcode_metadata")
+    
+    # Make sure all barcode (names) are cell names in the image
+    barcode_names = names(barcodes)
+    valid = barcode_names %in% SeuratObject::Cells(image)
+    assertthat::assert_that(all(valid),
+                            msg=FormatString("Some barcodes are not present in the image: {barcode_names[!valid]*}."))
     
     # Keep only barcodes that are requested
     i = which(image_bcs %in% names(barcodes))
@@ -2213,7 +2221,9 @@ ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, barcode
   if (is.null(embeddings)) embeddings = SeuratObject::Reductions(sc)
   embedding_names = embeddings
   embeddings = purrr::map(embedding_names, function(r) {
-    return(SeuratObject::Embeddings(sc, r)[,1:2])
+    emb = SeuratObject::Embeddings(sc, r)[,1:2]
+    emb = emb[barcodes, , drop=FALSE]
+    return(emb)
   })
   names(embeddings) = embedding_names
   
@@ -2231,8 +2241,8 @@ ExportLoupe = function(sc, assay=NULL, categories=NULL, embeddings=NULL, barcode
     segmented_cellids = gsub("-(\\d+)$", "_\\1", segmented_cellids)
     bcs[segmented_cellids_idx] = segmented_cellids
   }
-  
   colnames(counts) = bcs
+  
   embeddings = purrr::map(embeddings, function(emb) {
     rownames(emb) = bcs
     return(emb)
