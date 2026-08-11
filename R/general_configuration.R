@@ -21,6 +21,11 @@ options(Seurat.object.assay.version="v5")
 # May make it a bit slower but ensures that unused memory is freed
 options(Seurat.memsafe=TRUE)
 
+# Deactivated code block. 
+# It tests whether python and modules are available. 
+# However, loading python at this point seems to automatically load system libraries that are incompatible with some R function RunUMAP.
+# Thus, we deactivate this check and load python only when necessary. I created an issue for later.
+#
 # Conda environment or python path needed for clustering, umap, other python packages
 # Note: maybe we can move to this to a _environment.local file
 # conda_env = NULL
