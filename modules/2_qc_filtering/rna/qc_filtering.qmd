@@ -193,8 +193,6 @@ orig_idents = levels(sc$orig.ident)
 # BARCODES
 
 # Calculate percentage of counts in mitochondrial genes
-# Note: In case the argument 'features' is empty, PercentageFeatureSet will try the argument 'pattern' and will fail since 'pattern' is NULL. 
-# We provide a dummy pattern to avoid this. Ignore the warning.
 mt_features = grep(pattern="^MT-", x=rownames(feature_metadata), value=TRUE, ignore.case=TRUE)
 mt_vals = Seurat::PercentageFeatureSet(sc, features=mt_features)
 mt_vals = ifelse(is.nan(mt_vals), 0, mt_vals)
