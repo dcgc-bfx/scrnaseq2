@@ -168,6 +168,14 @@ param = function(p=NULL) {
 #'
 #' @note AI-assisted documentation.
 GetBiomaRt = function(species, ensembl_version) {
+  # Ensembl rebuilt its infrastructure in July 2026. The following old versions are maintained:
+  # 'GRCh37' (Feb 2014), '116', '115', '114', '113', '112', '111', '110', '109', '108', '107', '106', '105', '80', '77', '75', '54'.
+  
+  # If ensembl_version is NULL, use the last Ensembl release that is supported by biomaRt: 116
+  if (is.null(ensembl_version)) {
+    ensembl_version = "116"
+  }
+  
   # Check if we can find find an Ensembl database for this species and annotation version
   ensembl_archives = biomaRt::listEnsemblArchives()
   assertthat::assert_that(
@@ -176,11 +184,7 @@ GetBiomaRt = function(species, ensembl_version) {
   )
   
   # Get mart and check if the species is part of ensembl
-  if (!is.null(ensembl_version)) {
-    ensembl_mart = biomaRt::useMart(biomart = "ensembl", host = ensembl_archives[match(ensembl_version, ensembl_archives$version), "url"])
-  } else {
-    ensembl_mart = biomaRt::useMart(biomart = "ensembl")
-  }
+  ensembl_mart = biomaRt::useMart(biomart = "ensembl", host = ensembl_archives[match(ensembl_version, ensembl_archives$version), "url"])
   ensembl_datasets = biomaRt::listDatasets(ensembl_mart)
   
   if (species == "heterocephalus_glaber") {
@@ -219,7 +223,8 @@ GetBiomaRt = function(species, ensembl_version) {
 #' @note AI-assisted documentation.
 EnsemblFetchGeneInfo = function(ids, symbols=FALSE, species, ensembl_version, mart_attributes=c(ensembl_id="ensembl_gene_id", ensembl_symbol="external_gene_name", ensembl_biotype="gene_biotype", ensembl_description="description", ensembl_chr="chromosome_name", ensembl_start_position="start_position", ensembl_end_position="end_position", ensembl_strand="strand"), useCache=TRUE) {
   # Get species mart
-  species_mart = GetBiomaRt(species, ensembl_version)
+  # Version is hard-coded, because: biomaRt only works for Ensembl up to version 116 but versions 113-116 keep crashing
+  species_mart = GetBiomaRt(species, "110")
   
   # Check that we have Ensembl ids
   if (!symbols) {
