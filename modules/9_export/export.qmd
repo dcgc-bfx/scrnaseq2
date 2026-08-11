@@ -404,8 +404,6 @@ if (export_cellxgene) {
     # Port color names to hex colour codes
     is_color_name = l %in% colors()
     if (any(is_color_name)) l[is_color_name] = gplots::col2hex(l[is_color_name])
-    
-    #l = reticulate::np_array(unname(l), dtype="<U7")
     return(l)
   })
   names(colour_lists) = paste0(names(colour_lists), "_colors")
