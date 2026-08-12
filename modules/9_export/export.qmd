@@ -404,6 +404,7 @@ if (export_cellxgene) {
     # Port color names to hex colour codes
     is_color_name = l %in% colors()
     if (any(is_color_name)) l[is_color_name] = gplots::col2hex(l[is_color_name])
+    l = reticulate::np_array(unname(l), dtype="<U7")
     return(l)
   })
   names(colour_lists) = paste0(names(colour_lists), "_colors")
@@ -431,7 +432,7 @@ if (export_cellxgene) {
   main_layer = "data"
   X = Seurat::GetAssayData(object=adata, assay=default_assay, layer=main_layer)
   obs = sceasy:::.regularise_df(adata@meta.data, drop_single_values=FALSE)
-  var = sceasy:::.regularise_df(Seurat::GetAssay(adata, assay=default_assay)@meta.features, drop_single_values=TRUE)
+  var = sceasy:::.regularise_df(Seurat::GetAssay(adata, assay=default_assay)@meta.features, drop_single_values=FALSE)
   reductions = names(adata@reductions) 
   obsm = purrr::map(reductions, function(name) as.matrix(Seurat::Embeddings(adata, reduction=name)))
   names(obsm) = paste0("X_", tolower(reductions))
