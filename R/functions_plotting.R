@@ -5,6 +5,8 @@
 #' @param title Plot title. Default is NULL.
 #' @param col Line or point colours. Default is NULL.
 #' @param fill Fill colours. Default is NULL.
+#' @param shape Shapes. Default is NULL.
+#' @param alpha Alpha values. Default is NULL.
 #' @param legend_title Legend title. Default is NULL.
 #' @param legend_position Legend position. Default is NULL.
 #' @param xlab X-axis label. Default is NULL.
@@ -13,7 +15,7 @@
 #' @return A ggplot layer or theme object that can be added to a plot.
 #'
 #' @note AI-assisted documentation.
-AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, legend_position=NULL, xlab=NULL, ylab=NULL, font_size=11) {
+AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, shape=NULL, alpha=NULL, legend_title=NULL, legend_position=NULL, xlab=NULL, ylab=NULL, font_size=11) {
   style = list(
     # Basic theme
     ggplot2::theme_light(font_size),
@@ -21,12 +23,10 @@ AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, lege
   )
   
   # Title
-  if (!is.null(title)) {
-    if (nchar(title) > 0) {
-      style = c(style, list(ggplot2::ggtitle(title)))
-    } else {
-      style = c(style, list(ggplot2::theme(title=element_blank())))
-    }
+  if (!is.null(title) && nchar(title) > 0) {
+    style = c(style, list(ggplot2::ggtitle(title)))
+  } else {
+    style = c(style, list(ggplot2::theme(plot.title=element_blank())))
   }
   
   # Colour
@@ -34,14 +34,46 @@ AddPlotStyle = function(title=NULL, col=NULL, fill=NULL, legend_title=NULL, lege
   
   # Fill
   if (!is.null(fill)) style = c(style, list(ggplot2::scale_fill_manual(values=fill)))
+  
+  # Shape
+  if (!is.null(shape)) style = c(style, list(ggplot2::scale_shape_manual(values=shape)))
+  
+  # Alpha
+  if (!is.null(alpha)) style = c(style, list(ggplot2::scale_alpha_manual(values=alpha)))
     
-  # Legend title
-  if (!is.null(legend_title)) {
-    if (nchar(legend_title) > 0) {
-      style = c(style, list(labs(color=legend_title, fill=legend_title)))
-    } else {
-      style = c(style, list(ggplot2::theme(legend.title=element_blank())))
+  # Legend title. Can be:
+  # - blank
+  # - one legend title for all
+  # - one legend title per col, fill, shape and alpha
+  if (!is.null(legend_title) && max(nchar(legend_title)) > 0) {
+    # If it is just a string, set for all
+    if (length(legend_title) == 1 & is.null(names(legend_title))) {
+      legend_title = c("col"=legend_title, "fill"=legend_title, "shape"=legend_title, "alpha"=legend_title)
     }
+    
+    # Set per aesthetic
+    if ("col" %in% names(legend_title)) {
+      style = c(style, list(
+        ggplot2::guides(color=ggplot2::guide_legend(title=legend_title[["col"]]))
+      ))
+    }
+    if ("fill" %in% names(legend_title)) {
+      style = c(style, list(
+        ggplot2::guides(fill=ggplot2::guide_legend(title=legend_title[["fill"]]))
+      ))
+    }
+    if ("shape" %in% names(legend_title)) {
+      style = c(style, list(
+        ggplot2::guides(shape=ggplot2::guide_legend(title=legend_title[["shape"]]))
+      ))
+    }
+    if ("alpha" %in% names(legend_title)) {
+      style = c(style, list(
+        ggplot2::guides(alpha=ggplot2::guide_legend(title=legend_title[["alpha"]]))
+      ))
+    }
+  } else {
+    style = c(style, list(ggplot2::theme(legend.title=element_blank())))
   }
   
   # Legend position
