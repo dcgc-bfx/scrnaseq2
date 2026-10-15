@@ -1326,7 +1326,7 @@ WriteCounts_MatrixMarket = function(counts, path, overwrite=FALSE, barcode_data=
                               msg=FormatString("The number of rows in barcode_data differs from the number of columns in the counts matrix."))
     }
     
-    bh = gzfile(file.path(d, "barcodes.tsv.gz"), open="wb")
+    bh = gzfile(file.path(d, "barcodes.tsv.gz"), open="wt")
     if (ncol(barcode_data) > 1) {
       comment_line = paste(colnames(barcode_data), collapse = " ")
       comment_line = paste("#", comment_line)
@@ -1342,7 +1342,7 @@ WriteCounts_MatrixMarket = function(counts, path, overwrite=FALSE, barcode_data=
                               msg=FormatString("The number of rows in feature_data differs from the number of rows in the counts matrix."))
     }
     
-    fh = gzfile(file.path(d, "features.tsv.gz"), open="wb")
+    fh = gzfile(file.path(d, "features.tsv.gz"), open="wt")
     if (ncol(feature_data) > 1) {
       comment_line = paste(colnames(feature_data), collapse = " ")
       comment_line = paste("#", comment_line)
